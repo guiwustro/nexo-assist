@@ -1,6 +1,6 @@
 import { RequestContext } from '@mastra/core/request-context';
 import type { UIMessageStreamWriter } from 'ai';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { aiAgentRuns, conversations, knowledgeArticles, llmCalls } from '@/lib/db/schema';
 import { env, serverNow } from '@/lib/env';
@@ -273,8 +273,13 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
     ? null
     : await declararDecisao({ employee_text: i.text, actions: actionList, answer_text: answer, model, agent_run_id: run_id });
   if (decision) {
-    // Fontes saem das tools de verdade, não do que o modelo disse que consultou.
-    const sources = dedupe(turn.sources);
+    // Fontes saem das tools de verdade, não do que o modelo disse que consultou. Uma fonte citada que uma tool
+    // retornou num turno anterior desta conversa também vale (ex.: "Windows 10" respondido com o artigo já buscado).
+    const anteriores = await fontesJaVerificadas(i.conversation_id, run_id);
+    const sources = dedupe([
+      ...turn.sources,
+      ...decision.decision.sources.filter((s) => anteriores.has(`${s.kind}:${s.id}`)),
+    ]);
     const declarada = decision.decision.confidence;
     const ajustada = ajustarConfianca(declarada, { intent: decision.understanding.intent, sources_count: sources.length }) ?? declarada;
     const rules = [...decision.decision.rules_applied];
@@ -396,6 +401,15 @@ async function chamadoEmFoco(
   } catch {
     return null;
   }
+}
+
+/** Fontes que já entraram em decisões anteriores da conversa (e portanto vieram de tools). */
+async function fontesJaVerificadas(conversationId: string, exceptRunId: string): Promise<Set<string>> {
+  const rows = await getDb()
+    .select({ decision: aiAgentRuns.decision })
+    .from(aiAgentRuns)
+    .where(and(eq(aiAgentRuns.conversation_id, conversationId), ne(aiAgentRuns.id, exceptRunId)));
+  return new Set(rows.flatMap((r) => r.decision?.decision.sources.map((s) => `${s.kind}:${s.id}`) ?? []));
 }
 
 function dedupe<T extends { kind: string; id: string }>(xs: T[]): T[] {

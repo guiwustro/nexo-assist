@@ -160,6 +160,40 @@ describe('runTurn', () => {
     expect(msg?.body).toMatch(/fora do ar/);
   });
 
+  it('resposta de seguimento com o artigo do turno anterior não cai para baixa confiança', async () => {
+    const r1 = await turno('Meu notebook não conecta na VPN, erro 809');
+    const r2 = await turno('Windows 10', r1.conversation_id);
+    expect(r2.outcome).toBe('answered');
+    expect(await t.db.$count(handoffs, eq(handoffs.conversation_id, r1.conversation_id))).toBe(0);
+    const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, r2.run_id));
+    expect(run?.decision?.decision.sources.map((s) => s.id)).toEqual(['vpn-erro-809']);
+    expect(run?.decision?.decision.confidence).toBe(0.9);
+  });
+
+  it('fonte citada pelo modelo que nenhuma tool retornou continua ignorada', async () => {
+    setModelForTests(undefined, undefined, [
+      {
+        id: 'inventada',
+        match: /fonte inventada/i,
+        steps: [{ text: 'Segundo o artigo, reinicie o roteador.' }],
+        decision: {
+          understanding: { intent: 'question', summary: 'x', evidence: 'fonte inventada' },
+          decision: {
+            action: 'answer',
+            confidence: 0.9,
+            why: 'x',
+            rules_applied: [],
+            sources: [{ kind: 'article', id: 'wifi-visitantes', title: 'Wi-Fi de visitantes' }],
+          },
+        },
+      },
+    ]);
+    const r = await turno('fonte inventada');
+    const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, r.run_id));
+    expect(run?.decision?.decision.sources).toEqual([]);
+    expect(run?.decision?.decision.confidence).toBe(0.5);
+  });
+
   it('afirmou criação sem confirmação → mensagem de sistema corrige', async () => {
     setModelForTests(undefined, undefined, [
       {
