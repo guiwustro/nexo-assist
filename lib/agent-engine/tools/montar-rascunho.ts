@@ -14,7 +14,9 @@ export const montarRascunho = defineTool({
   description:
     'Monta o RASCUNHO de um chamado para o funcionário conferir. Não cria nada: só o clique em Confirmar cria. ' +
     'A prioridade e o prazo são calculados pelo sistema a partir de affected, blocks_work e deadline_today (Anexo A). ' +
-    'kind=update para complementar um chamado aberto sobre o mesmo problema (sem duplicar); kind=reopen para chamado resolvido há até 7 dias.',
+    'kind=update para complementar um chamado aberto sobre o mesmo problema (sem duplicar); kind=reopen para chamado resolvido há até 7 dias. ' +
+    'Em update/reopen, monte direto, sem perguntar: copie title, type, category e affected do chamado alvo, use blocks_work=false e ' +
+    'deadline_today=false se o funcionário não disse o contrário, e ponha o que ele contou em comment.',
   inputSchema: z.object({
     kind: DraftKindSchema,
     target_code: TicketCodeSchema.optional().describe('obrigatório em update e reopen'),
