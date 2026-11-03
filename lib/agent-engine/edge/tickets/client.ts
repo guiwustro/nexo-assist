@@ -117,7 +117,7 @@ export function createTicketsClient(opts: TicketsClientOptions): TicketsClient {
   };
 }
 
-const g = globalThis as unknown as { __nexoTickets?: TicketsClient; __nexoBreaker?: Breaker };
+const g = globalThis as unknown as { __nexoTickets?: TicketsClient; __nexoTicketsOverride?: TicketsClient; __nexoBreaker?: Breaker };
 
 function sharedBreaker(): Breaker {
   g.__nexoBreaker ??= createBreaker({ threshold: 3, openMs: 15_000 });
@@ -129,6 +129,7 @@ function sharedBreaker(): Breaker {
  * do turno (mesmo disjuntor) para a trilha mostrar "tentou de novo".
  */
 export function getTicketsClient(o: { onRetry?: (attempt: number) => void } = {}): TicketsClient {
+  if (g.__nexoTicketsOverride) return g.__nexoTicketsOverride;
   if (g.__nexoTickets && !o.onRetry) return g.__nexoTickets;
   const c = createTicketsClient({
     baseUrl: env.TICKETS_URL,
@@ -142,5 +143,5 @@ export function getTicketsClient(o: { onRetry?: (attempt: number) => void } = {}
 
 /** Só para testes: troca o cliente do processo (ex.: um falso em memória). */
 export function setTicketsClient(c: TicketsClient | undefined): void {
-  g.__nexoTickets = c;
+  g.__nexoTicketsOverride = c;
 }

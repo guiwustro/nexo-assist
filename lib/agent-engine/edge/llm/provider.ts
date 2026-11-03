@@ -1,7 +1,7 @@
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { env } from '@/lib/env';
-import { createScriptedModel, type ScriptedHooks } from './scripted-model';
+import { createScriptedModel, type Script, type ScriptedHooks } from './scripted-model';
 import { SCRIPTS } from './scripts';
 
 export type ModelInfo = { model: LanguageModelV4; provider: 'deepseek' | 'scripted'; model_id: string };
@@ -21,8 +21,9 @@ export function getModel(): ModelInfo {
 }
 
 /** Só para testes: troca o modelo do processo (ex.: roteirizado com ganchos). */
-export function setModelForTests(hooks?: ScriptedHooks, model?: LanguageModelV4): void {
-  g.__nexoModel = hooks || model
-    ? { model: model ?? createScriptedModel(SCRIPTS, hooks), provider: 'scripted', model_id: 'scripted-v1' }
-    : undefined;
+export function setModelForTests(hooks?: ScriptedHooks, model?: LanguageModelV4, extraScripts: Script[] = []): void {
+  g.__nexoModel =
+    hooks || model || extraScripts.length
+      ? { model: model ?? createScriptedModel([...extraScripts, ...SCRIPTS], hooks), provider: 'scripted', model_id: 'scripted-v1' }
+      : undefined;
 }

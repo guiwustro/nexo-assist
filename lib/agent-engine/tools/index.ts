@@ -36,7 +36,8 @@ export async function runTool(ctx: ToolCtx, name: ToolName, rawInput: unknown): 
   const input = parsed.data;
   const id = randomUUID();
   const t0 = Date.now();
-  const running = rotulosPara(name, input, undefined);
+  // Enquanto roda, só o primeiro rótulo aparece (com spinner); o resultado traz os definitivos.
+  const running = rotulosPara(name, input, undefined).slice(0, 1);
   const emit = (labels: string[], result: ActionTrace['result'], summary: string) =>
     labels.forEach((label, i) =>
       ctx.emitAction({ id: `${id}:${i}`, label, tool: name, result, duration_ms: Date.now() - t0, summary }),
