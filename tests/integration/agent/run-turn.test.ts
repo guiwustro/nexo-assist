@@ -194,6 +194,69 @@ describe('runTurn', () => {
     expect(run?.decision?.decision.confidence).toBe(0.5);
   });
 
+  it('ação da decisão segue o rascunho que a tool montou, não o que o modelo declarou', async () => {
+    setModelForTests(undefined, undefined, [
+      {
+        id: 'update-rotulado-errado',
+        match: /acesso negado agora/i,
+        steps: [
+          {
+            tool_calls: [
+              {
+                name: 'montar_rascunho',
+                args: {
+                  kind: 'update',
+                  target_code: 'INC-20298',
+                  title: 'Acesso à pasta Financeiro no SharePoint',
+                  description: 'Sem acesso à pasta Financeiro',
+                  type: 'incident',
+                  category: 'access',
+                  affected: 'me',
+                  blocks_work: false,
+                  deadline_today: false,
+                  comment: 'O erro agora diz acesso negado',
+                },
+              },
+            ],
+          },
+          { text: 'Montei o complemento do INC-20298. Confira e clique em Confirmar.' },
+        ],
+        decision: {
+          understanding: { intent: 'complement', summary: 'Complemento do INC-20298', evidence: 'acesso negado agora' },
+          decision: { action: 'draft_create', confidence: 0.9, why: 'x', rules_applied: [], sources: [] },
+        },
+      },
+    ]);
+    const r = await turno('acesso negado agora');
+    const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, r.run_id));
+    expect(run?.decision?.decision.action).toBe('draft_update');
+  });
+
+  it('texto de passos diferentes não sai grudado', async () => {
+    setModelForTests(undefined, undefined, [
+      {
+        id: 'dois-passos',
+        match: /dois passos/i,
+        steps: [
+          { text: 'Deixa eu conferir.', tool_calls: [{ name: 'buscar_meus_chamados', args: {} }] },
+          { text: 'Achei seus chamados.' },
+        ],
+        decision: {
+          understanding: { intent: 'status', summary: 'x', evidence: 'dois passos' },
+          decision: { action: 'answer', confidence: 0.9, why: 'x', rules_applied: [], sources: [] },
+        },
+      },
+    ]);
+    const r = await turno('dois passos');
+    const [out] = await t.db
+      .select()
+      .from(messages)
+      .where(and(eq(messages.agent_run_id, r.run_id), eq(messages.direction, 'outbound')));
+    expect(out?.body).toBe('Deixa eu conferir.\n\nAchei seus chamados.');
+    const deltas = r.chunks.filter((c) => c.type === 'text-delta').map((c) => c.delta).join('');
+    expect(deltas).toBe('Deixa eu conferir.\n\nAchei seus chamados.');
+  });
+
   it('afirmou criação sem confirmação → mensagem de sistema corrige', async () => {
     setModelForTests(undefined, undefined, [
       {

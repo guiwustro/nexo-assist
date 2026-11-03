@@ -143,19 +143,23 @@ export function createScriptedModel(scripts: Script[], hooks: ScriptedHooks = {}
     if (!s) return { content: [{ type: 'text', text: '' }], text: '', finish: 'stop' };
 
     const calls = typeof s.tool_calls === 'function' ? s.tool_calls(ctx) : (s.tool_calls ?? []);
+    const text = typeof s.text === 'function' ? s.text(ctx) : (s.text ?? '');
     if (calls.length > 0) {
+      // Como o modelo real: o passo pode trazer um texto curto antes das tool calls.
       return {
-        content: calls.map((c, i) => ({
-          type: 'tool-call' as const,
-          toolCallId: `call_${++seq}_${step}_${i}`,
-          toolName: c.name,
-          input: JSON.stringify(typeof c.args === 'function' ? (c.args as (x: StepCtx) => unknown)(ctx) : c.args),
-        })),
-        text: '',
+        content: [
+          ...(text ? [{ type: 'text' as const, text }] : []),
+          ...calls.map((c, i) => ({
+            type: 'tool-call' as const,
+            toolCallId: `call_${++seq}_${step}_${i}`,
+            toolName: c.name,
+            input: JSON.stringify(typeof c.args === 'function' ? (c.args as (x: StepCtx) => unknown)(ctx) : c.args),
+          })),
+        ],
+        text,
         finish: 'tool-calls',
       };
     }
-    const text = typeof s.text === 'function' ? s.text(ctx) : (s.text ?? '');
     return { content: [{ type: 'text', text }], text, finish: 'stop' };
   }
 

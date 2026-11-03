@@ -72,7 +72,10 @@ export const montarRascunho = defineTool({
       status: 'pending',
       payload,
     });
-    if (ctx.turn) ctx.turn.draft_priority = prioridade.priority;
+    if (ctx.turn) {
+      ctx.turn.draft_priority = prioridade.priority;
+      ctx.turn.draft_kind = input.kind;
+    }
     return {
       ok: true,
       draft_code: draft.code,

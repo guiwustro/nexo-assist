@@ -33,6 +33,7 @@ type Input = { conversation_id: string; employee: Session; text: string; writer:
 const GUARD_PROMESSA = 'Guardrail: o agent prometeu um analista, transferência executada';
 const GUARD_CRIACAO = 'Guardrail: o agent disse que criou o chamado, mas só a confirmação cria — aviso mostrado';
 export const AVISO_NAO_CRIADO = 'O chamado ainda não foi criado — confira o rascunho e confirme.';
+const ACAO_DO_RASCUNHO = { create: 'draft_create', update: 'draft_update', reopen: 'reopen' } as const;
 export const AVISO_ORCAMENTO = 'O assistente atingiu o limite de uso de hoje';
 
 function system(writer: TurnWriter, data: NexoDataParts['system']) {
@@ -245,7 +246,10 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
   let failed: string | null = null;
   let usage = { in: 0, out: 0, cached: 0 };
   let steps = 0;
+  let textStep = -1; // passo em que saiu o último texto: texto de um passo novo começa num parágrafo novo
   const writeText = (delta: string) => {
+    if (answer && textStep !== steps && !/\s$/.test(answer)) delta = `\n\n${delta.trimStart()}`;
+    textStep = steps;
     if (!started) {
       i.writer.write({ type: 'text-start', id: textId });
       started = true;
@@ -320,7 +324,9 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
     const ajustada = ajustarConfianca(declarada, { intent: decision.understanding.intent, sources_count: sources.length }) ?? declarada;
     const rules = [...decision.decision.rules_applied];
     if (ajustada < declarada) rules.push('Confiança ajustada: dúvida respondida sem fonte na central (máximo 50%)');
-    decision = { ...decision, decision: { ...decision.decision, confidence: ajustada, sources, rules_applied: rules } };
+    // A ação também sai do que a tool fez: um rascunho montado define se foi criação, atualização ou reabertura.
+    const action = turn.draft_kind ? ACAO_DO_RASCUNHO[turn.draft_kind] : decision.decision.action;
+    decision = { ...decision, decision: { ...decision.decision, action, confidence: ajustada, sources, rules_applied: rules } };
   }
 
   // 7. Pós-turno: só se a conversa continua com o agent (o analista pode ter assumido durante o stream).

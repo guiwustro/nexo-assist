@@ -23,6 +23,8 @@ export type ToolCtx = {
 
 export type TurnSignals = {
   draft_priority?: import('@/lib/contracts/enums').Priority;
+  /** Tipo do último rascunho montado no turno (a ação declarada é corrigida por ele). */
+  draft_kind?: 'create' | 'update' | 'reopen';
   overdue_ticket_code?: string;
   focus_ticket_code?: string;
   handoff_created?: boolean;

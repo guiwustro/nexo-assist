@@ -44,7 +44,7 @@ export const SCRIPTS: Script[] = [
                   args: { question: 'Qual é o sistema do seu notebook?', options: ['Windows 10', 'Windows 11'] },
                 },
               ],
-        text: FORA_DO_AR,
+        text: (c) => (caiu(c) ? FORA_DO_AR : ''),
       },
       {
         text: 'Encontrei um artigo sobre o erro 809, mas ele vale só para o Windows 10. Qual é o sistema do seu notebook?',
