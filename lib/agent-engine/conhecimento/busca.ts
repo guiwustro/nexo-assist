@@ -14,6 +14,9 @@ export function tokenizar(texto: string): string[] {
     .filter((t) => t.length > 1 && !STOPWORDS.has(t));
 }
 
+/** Abaixo desta fração do melhor score o artigo é ruído (ex.: casou só a palavra "erro"). */
+const RELEVANCIA_MINIMA = 0.4;
+
 /** Busca simples por palavras: 3×tags + 2×título + 1×corpo por token da consulta. */
 export function buscarArtigos(consulta: string, artigos: Article[], limite = 3): Array<Article & { score: number }> {
   const tokens = [...new Set(tokenizar(consulta))];
@@ -31,5 +34,6 @@ export function buscarArtigos(consulta: string, artigos: Article[], limite = 3):
     })
     .filter((a) => a.score > 0)
     .sort((x, y) => y.score - x.score)
+    .filter((a, _i, todos) => a.score >= todos[0]!.score * RELEVANCIA_MINIMA)
     .slice(0, limite);
 }

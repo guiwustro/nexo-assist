@@ -12,6 +12,7 @@ import type { NexoDataParts, NexoUIMessage } from '@/lib/contracts/ui';
 import type { ApiMessage } from '@/lib/conversations/serialize';
 import { AgentMessage, type DraftHandlers } from './AgentMessage';
 import { Composer } from './Composer';
+import { DecisionPanel } from './DecisionPanel';
 import { UserBubble } from './MessageBubble';
 import { SystemEvent } from './SystemEvent';
 import { TicketCard } from './TicketCard';
@@ -94,6 +95,8 @@ function ChatSession({ data, reload }: { data: CurrentData; reload: () => Promis
   const [banner, setBanner] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<{ text: string; n: number }>();
+  const [openRun, setOpenRun] = useState<string | null>(null);
+  const closeRun = useCallback(() => setOpenRun(null), []);
   const scroller = useRef<HTMLDivElement>(null);
   const lastSent = useRef<string>('');
 
@@ -195,13 +198,23 @@ function ChatSession({ data, reload }: { data: CurrentData; reload: () => Promis
               onSend={send}
               onOverdueAction={onOverdueAction}
               drafts={drafts}
+              onOpenRun={setOpenRun}
             />
           ))}
           {live.map((m, i) =>
             m.role === 'user' ? (
               <UserBubble key={m.id}>{userText(m)}</UserBubble>
             ) : (
-              <LiveAgent key={m.id} m={m} isLast={i === live.length - 1} streaming={busy} now={now} onSend={send} drafts={drafts} />
+              <LiveAgent
+                key={m.id}
+                m={m}
+                isLast={i === live.length - 1}
+                streaming={busy}
+                now={now}
+                onSend={send}
+                drafts={drafts}
+                onOpenRun={setOpenRun}
+              />
             ),
           )}
           {busy && live[live.length - 1]?.role === 'user' && (
@@ -233,6 +246,7 @@ function ChatSession({ data, reload }: { data: CurrentData; reload: () => Promis
         disabled={busy}
         prefill={prefill}
       />
+      {openRun && <DecisionPanel runId={openRun} onClose={closeRun} />}
     </div>
   );
 }
@@ -244,6 +258,7 @@ function LiveAgent({
   now,
   onSend,
   drafts,
+  onOpenRun,
 }: {
   m: NexoUIMessage;
   isLast: boolean;
@@ -251,6 +266,7 @@ function LiveAgent({
   now: Date;
   onSend: (t: string) => void;
   drafts: DraftHandlers;
+  onOpenRun: (id: string) => void;
 }) {
   const l = fromUI(m);
   return (
@@ -261,6 +277,7 @@ function LiveAgent({
         actions={l.actions}
         streaming={streaming && isLast}
         decision={l.runId ? (l.decisionReady ? 'ready' : 'preparing') : 'none'}
+        onOpenDecision={l.runId && l.decisionReady ? () => onOpenRun(l.runId!) : undefined}
         isLast={isLast}
         now={now}
         onSend={onSend}
@@ -280,6 +297,7 @@ function HistoryItem({
   onSend,
   onOverdueAction,
   drafts,
+  onOpenRun,
 }: {
   m: ApiMessage;
   now: Date;
@@ -287,6 +305,7 @@ function HistoryItem({
   onSend: (t: string) => void;
   onOverdueAction: (a: string, code: string) => void;
   drafts: DraftHandlers;
+  onOpenRun: (id: string) => void;
 }) {
   if (m.type === 'system') {
     const card = m.parts.find((p) => p.kind === 'ticket_card');
@@ -303,7 +322,8 @@ function HistoryItem({
       text={m.body}
       parts={m.parts}
       actions={m.actions}
-      decision={m.agent_run_id && m.has_decision ? 'ready' : 'none'}
+      decision={m.agent_run_id ? 'ready' : 'none'}
+      onOpenDecision={m.agent_run_id ? () => onOpenRun(m.agent_run_id!) : undefined}
       isLast={isLast}
       now={now}
       onSend={onSend}

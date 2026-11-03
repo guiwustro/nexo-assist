@@ -47,3 +47,14 @@ describe('buscarArtigos', () => {
     for (let i = 1; i < todos.length; i++) expect(todos[i - 1]!.score).toBeGreaterThanOrEqual(todos[i]!.score);
   });
 });
+
+import { SEED_ARTICLES } from '@/lib/db/seed-data';
+
+describe('buscarArtigos com a central de ajuda real', () => {
+  it('palavra genérica ("erro") não puxa artigo sem relação', () => {
+    expect(buscarArtigos('vpn erro 809', SEED_ARTICLES).map((a) => a.slug)).toEqual(['vpn-erro-809']);
+  });
+  it('horário do service desk acha só o artigo do horário', () => {
+    expect(buscarArtigos('horário do service desk', SEED_ARTICLES)[0]?.slug).toBe('horario-service-desk');
+  });
+});

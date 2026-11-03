@@ -32,4 +32,12 @@ test.describe('capturas das telas', () => {
     await expect(page.getByTestId('composer-input')).toBeEnabled();
     await page.screenshot({ path: 'test-results/telas/chat-consulta.png' });
   });
+
+  test('painel-decisao', async ({ page, loginAs }) => {
+    await loginAs(page, 'ana');
+    await enviar(page, 'Meu notebook não conecta na VPN, erro 809');
+    await page.getByTestId('status-line').last().click();
+    await expect(page.getByTestId('decision-cost')).toBeVisible();
+    await page.screenshot({ path: 'test-results/telas/painel-decisao.png' });
+  });
 });
