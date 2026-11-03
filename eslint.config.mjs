@@ -11,6 +11,10 @@ const config = [
     },
   },
   {
+    files: ['tests/**', 'e2e/**', 'evals/**'],
+    rules: { 'react-hooks/rules-of-hooks': 'off' },
+  },
+  {
     ignores: ['.next/**', 'node_modules/**', 'db/migrations/**', 'playwright-report/**', 'test-results/**', 'next-env.d.ts'],
   },
 ];

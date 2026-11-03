@@ -38,3 +38,11 @@ describe('parseEnv', () => {
     expect(env.LLM_PRICE_IN_CENTS_PER_MTOK).toBe(27);
   });
 });
+
+describe('parseEnv com .env copiado do exemplo', () => {
+  it('trata valores vazios como ausentes', () => {
+    const env = parseEnv({ ...base, LLM_PROVIDER: 'scripted', DEEPSEEK_API_KEY: '', LLM_DAILY_BUDGET_CENTS: '' });
+    expect(env.DEEPSEEK_API_KEY).toBeUndefined();
+    expect(env.LLM_DAILY_BUDGET_CENTS).toBeUndefined();
+  });
+});

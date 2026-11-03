@@ -41,7 +41,8 @@ const EnvSchema = z
 export type Env = z.infer<typeof EnvSchema>;
 
 export function parseEnv(raw: Record<string, string | undefined>): Env {
-  const parsed = EnvSchema.safeParse(raw);
+  const limpo = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined && v !== ''));
+  const parsed = EnvSchema.safeParse(limpo);
   if (!parsed.success) {
     const detail = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
     throw new Error(`Variáveis de ambiente inválidas — ${detail}`);
