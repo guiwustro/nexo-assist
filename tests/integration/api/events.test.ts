@@ -17,9 +17,7 @@ async function ouvir(session: Session, ms: number, during?: () => Promise<void>,
   const ctrl = new AbortController();
   const headers = new Headers({ cookie: await cookieFor(session) });
   if (lastEventId !== undefined) headers.set('last-event-id', String(lastEventId));
-  const res = await events(new Request('http://x/api/v1/events', { headers, signal: ctrl.signal }), {
-    params: Promise.resolve({}),
-  });
+  const res = await events(new Request('http://x/api/v1/events', { headers, signal: ctrl.signal }));
   expect(res.headers.get('content-type')).toMatch(/text\/event-stream/);
   const reader = res.body!.getReader();
   const dec = new TextDecoder();
