@@ -76,6 +76,9 @@ export function tagFor(
     if (row.handoff?.reason_code === 'session_limit') {
       return { kind: 'transferred', label: 'Transferida · limite da sessão' };
     }
+    if (row.handoff?.reason_code === 'budget_exceeded') {
+      return { kind: 'transferred', label: 'Transferida · limite de uso do assistente' };
+    }
     const code = row.focus_ticket_code;
     if (code) return { kind: 'transferred', label: `Transferida · ${code}` };
     return {

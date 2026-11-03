@@ -1,6 +1,7 @@
 import { RequestContext } from '@mastra/core/request-context';
 import type { UIMessageStreamWriter } from 'ai';
-import { and, eq, ne } from 'drizzle-orm';
+import { TZDate } from '@date-fns/tz';
+import { and, eq, gte, ne, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { aiAgentRuns, conversations, knowledgeArticles, llmCalls } from '@/lib/db/schema';
 import { env, serverNow } from '@/lib/env';
@@ -32,6 +33,7 @@ type Input = { conversation_id: string; employee: Session; text: string; writer:
 const GUARD_PROMESSA = 'Guardrail: o agent prometeu um analista, transferência executada';
 const GUARD_CRIACAO = 'Guardrail: o agent disse que criou o chamado, mas só a confirmação cria — aviso mostrado';
 export const AVISO_NAO_CRIADO = 'O chamado ainda não foi criado — confira o rascunho e confirme.';
+export const AVISO_ORCAMENTO = 'O assistente atingiu o limite de uso de hoje';
 
 function system(writer: TurnWriter, data: NexoDataParts['system']) {
   writer.write({ type: 'data-system', id: `sys-${crypto.randomUUID()}`, data });
@@ -167,7 +169,41 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
     return { run_id, outcome: 'transferred' };
   }
 
-  // 4. Turno com o modelo.
+  // 4. Teto diário de gasto: acima dele o modelo não é chamado e um analista continua.
+  const teto = env.LLM_DAILY_BUDGET_CENTS;
+  if (teto !== undefined && (await gastoDoDia(now)) >= teto) {
+    const run_id = await turnoDeRegra(
+      i,
+      reg.message.id,
+      `${AVISO_ORCAMENTO}. Transferi para um analista, que continua daqui com todo o histórico.`,
+      {
+        understanding: { intent: 'other', summary: 'O assistente atingiu o teto diário de uso', evidence: i.text },
+        decision: {
+          action: 'transfer',
+          confidence: 1,
+          why: 'O gasto com o modelo hoje chegou ao teto configurado; um analista continua o atendimento.',
+          rules_applied: ['Teto diário de uso do assistente atingido: o modelo não é chamado'],
+          sources: [],
+        },
+      },
+    );
+    await createHandoff(
+      {
+        conversation_id: i.conversation_id,
+        origin: 'budget',
+        reason_code: 'budget_exceeded',
+        level: 'N1',
+        employee_words: i.text,
+        agent_reading: 'O assistente atingiu o limite de uso de hoje e não leu esta mensagem; confira o histórico.',
+        attempts: [],
+      },
+      now,
+    );
+    system(i.writer, { kind: 'budget', text: AVISO_ORCAMENTO });
+    return { run_id, outcome: 'transferred' };
+  }
+
+  // 5. Turno com o modelo.
   const model = getModel();
   const [run] = await db
     .insert(aiAgentRuns)
@@ -268,7 +304,7 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
     latency_ms: Date.now() - t0,
   });
 
-  // 5. Decisão declarada (ausente ≠ vazia) + ajustes determinísticos.
+  // 6. Decisão declarada (ausente ≠ vazia) + ajustes determinísticos.
   let decision = failed
     ? null
     : await declararDecisao({ employee_text: i.text, actions: actionList, answer_text: answer, model, agent_run_id: run_id });
@@ -287,7 +323,7 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
     decision = { ...decision, decision: { ...decision.decision, confidence: ajustada, sources, rules_applied: rules } };
   }
 
-  // 6. Pós-turno: só se a conversa continua com o agent (o analista pode ter assumido durante o stream).
+  // 7. Pós-turno: só se a conversa continua com o agent (o analista pode ter assumido durante o stream).
   let outcome: TurnOutcome = failed ? 'failed' : 'answered';
   const atual = await getConversation(db, i.conversation_id);
   const rules: string[] = [];
@@ -362,7 +398,7 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
     decision = { ...decision, decision: { ...decision.decision, rules_applied: [...decision.decision.rules_applied, ...rules] } };
   }
 
-  // 7. Registro do run com custo somado das chamadas.
+  // 8. Registro do run com custo somado das chamadas.
   const calls = await db.select().from(llmCalls).where(eq(llmCalls.agent_run_id, run_id));
   const cost = calls.some((c) => c.cost_cents === null) ? null : calls.reduce((s, c) => s + (c.cost_cents ?? 0), 0);
   await db
@@ -401,6 +437,17 @@ async function chamadoEmFoco(
   } catch {
     return null;
   }
+}
+
+/** Soma do custo das chamadas ao modelo no dia corrente de São Paulo (custo não medido conta como zero). */
+async function gastoDoDia(now: Date): Promise<number> {
+  const sp = new TZDate(now.getTime(), 'America/Sao_Paulo');
+  const inicio = new TZDate(sp.getFullYear(), sp.getMonth(), sp.getDate(), 0, 0, 0, 'America/Sao_Paulo');
+  const [r] = await getDb()
+    .select({ total: sql<string | null>`sum(${llmCalls.cost_cents})` })
+    .from(llmCalls)
+    .where(gte(llmCalls.created_at, new Date(inicio.getTime())));
+  return Number(r?.total ?? 0);
 }
 
 /** Fontes que já entraram em decisões anteriores da conversa (e portanto vieram de tools). */

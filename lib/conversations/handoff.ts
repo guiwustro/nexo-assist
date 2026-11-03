@@ -32,6 +32,7 @@ const TITULO: Record<ReasonCode, string> = {
   overdue_ticket: 'Chamado vencido',
   low_confidence: 'Agent pediu ajuda',
   session_limit: 'Limite de mensagens da sessão',
+  budget_exceeded: 'Assistente atingiu o limite de uso de hoje',
 };
 
 export function briefing(employee_words: string, agent_reading: string): string {

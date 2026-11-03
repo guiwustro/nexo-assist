@@ -30,6 +30,7 @@ export const REASON_CODES = [
   'overdue_ticket',
   'low_confidence',
   'session_limit',
+  'budget_exceeded',
 ] as const;
 export const ReasonCodeSchema = z.enum(REASON_CODES);
 export type ReasonCode = z.infer<typeof ReasonCodeSchema>;
@@ -78,6 +79,7 @@ export const REASON_LABEL: Record<ReasonCode, string> = {
   overdue_ticket: 'chamado vencido',
   low_confidence: 'baixa confiança do agent',
   session_limit: 'limite da sessão',
+  budget_exceeded: 'limite de uso do assistente',
 };
 
 export type Tone = 'primary' | 'success' | 'warning' | 'danger' | 'neutral' | 'muted';

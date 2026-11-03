@@ -1,0 +1,2 @@
+ALTER TABLE "handoffs" DROP CONSTRAINT "handoffs_reason_check";--> statement-breakpoint
+ALTER TABLE "handoffs" ADD CONSTRAINT "handoffs_reason_check" CHECK ("handoffs"."reason_code" in ('requested_human','critical_priority','overdue_ticket','low_confidence','session_limit','budget_exceeded'));

@@ -1,7 +1,8 @@
 import { createUIMessageStream, createUIMessageStreamResponse } from 'ai';
 import { z } from 'zod';
 import { Conflict, NotFound } from '@/lib/api/errors';
-import { ok, withRoute } from '@/lib/api/wrappers';
+import { fail, ok, withRoute } from '@/lib/api/wrappers';
+import { chatLimiter } from '@/lib/api/rate-limit';
 import { env } from '@/lib/env';
 import { getDb } from '@/lib/db/client';
 import { appendMessage, getConversation, getOrCreateCurrent } from '@/lib/conversations/service';
@@ -46,6 +47,15 @@ export const POST = withRoute({ role: 'any', params: Params, body: Body }, async
       body: body.text,
     });
     return ok(toApiMessage(msg, session.name, null, null), { status: 201, requestId });
+  }
+
+  // Rate limit por funcionário, antes de abrir o stream (o chat mostra um banner com a espera).
+  const vez = chatLimiter().take(session.user_id);
+  if (!vez.ok) {
+    return fail('rate_limited', `Muitas mensagens em pouco tempo, aguarde ${vez.retry_after_s}s`, 429, undefined, {
+      requestId,
+      headers: { 'retry-after': String(vez.retry_after_s) },
+    });
   }
 
   // Funcionário: a conversa é sempre a dele (a da sessão); outra → 404.

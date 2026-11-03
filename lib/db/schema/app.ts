@@ -208,7 +208,7 @@ export const handoffs = pgTable(
     ),
     check(
       'handoffs_reason_check',
-      sql`${t.reason_code} in ('requested_human','critical_priority','overdue_ticket','low_confidence','session_limit')`,
+      sql`${t.reason_code} in ('requested_human','critical_priority','overdue_ticket','low_confidence','session_limit','budget_exceeded')`,
     ),
     check('handoffs_level_check', sql`${t.support_level} in ('N1','N2')`),
     check(

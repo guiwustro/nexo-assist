@@ -80,6 +80,7 @@ export function avaliarGatilhos(i: EntradaGatilhos): ResultadoGatilhos {
 /** Nível do suporte para cada motivo. */
 export const NIVEL_POR_MOTIVO: Record<ReasonCode, SupportLevel> = {
   session_limit: 'N1',
+  budget_exceeded: 'N1',
   requested_human: 'N1',
   low_confidence: 'N1',
   critical_priority: 'N2',

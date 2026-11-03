@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { fail, ok, withRoute } from '@/lib/api/wrappers';
 import { audit } from '@/lib/audit/audit';
+import { clientIp, loginLimiter } from '@/lib/api/rate-limit';
 import { createSessionToken, sessionCookie } from '@/lib/auth/session';
 import { findUserByEmail, publicUser } from '@/lib/users/queries';
 
@@ -13,7 +14,14 @@ const Body = z.object({
 });
 
 /** Login de demonstração: e-mail do seed + qualquer senha não vazia. */
-export const POST = withRoute({ role: 'public', body: Body }, async ({ body, requestId }) => {
+export const POST = withRoute({ role: 'public', body: Body }, async ({ req, body, requestId }) => {
+  const vez = loginLimiter().take(clientIp(req));
+  if (!vez.ok) {
+    return fail('rate_limited', `Muitas tentativas de entrar, aguarde ${vez.retry_after_s}s`, 429, undefined, {
+      requestId,
+      headers: { 'retry-after': String(vez.retry_after_s) },
+    });
+  }
   const user = await findUserByEmail(body.email);
   if (!user) {
     return fail('invalid_credentials', 'E-mail não encontrado', 401, undefined, { requestId });
