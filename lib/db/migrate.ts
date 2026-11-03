@@ -15,7 +15,8 @@ export async function migrateDb(url: string): Promise<void> {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Só como CLI (`pnpm db:migrate`); empacotado dentro do bootstrap, não roda de novo.
+if (process.argv[1] && /migrate\.[cm]?[tj]s$/.test(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await import('dotenv/config');
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL não definida');

@@ -16,5 +16,32 @@ services:
       timeout: 3s
       retries: 30
 
+  # Perfil "full": tudo em container (docker compose --profile full up --build). Usa o .env, com os
+  # endereços trocados para a rede do compose.
+  tickets:
+    profiles: [full]
+    build: { context: ., dockerfile: Dockerfile.tickets }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://nexo:nexo@db:5432/nexo
+      TICKETS_PORT: '4001'
+    depends_on:
+      db: { condition: service_healthy }
+      web: { condition: service_healthy } # o web aplica as migrations no start
+    restart: unless-stopped
+
+  web:
+    profiles: [full]
+    build: { context: ., dockerfile: Dockerfile }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://nexo:nexo@db:5432/nexo
+      TICKETS_URL: http://tickets:4001
+    ports:
+      - '${WEB_PORT:-3000}:3000'
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+
 volumes:
   nexo-db:

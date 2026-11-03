@@ -1,0 +1,47 @@
+# Produção na VPS (em /opt/nexo): só faz pull das imagens buildadas no GitHub Actions.
+#   docker compose -p nexo -f docker-compose.prod.yml pull && docker compose -p nexo -f docker-compose.prod.yml up -d
+# O Caddy do primare-hub (rede cliniai_internal) faz o HTTPS e encaminha para nexo-web:3000.
+# Banco: Postgres no Supabase (DATABASE_URL no .env). Limites de memória garantem que o Nexo não sufoca a VPS.
+name: nexo
+
+services:
+  nexo-web:
+    image: ghcr.io/guiwustro/nexo-web:${NEXO_TAG:-latest}
+    container_name: nexo-web
+    env_file: .env
+    environment:
+      TICKETS_URL: http://nexo-tickets:4001
+      NODE_OPTIONS: --max-old-space-size=320
+    mem_limit: 384m
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/v1/ping || exit 1']
+      interval: 15s
+      timeout: 3s
+      start_period: 30s
+      retries: 3
+    networks: [cliniai_internal]
+
+  nexo-tickets:
+    image: ghcr.io/guiwustro/nexo-tickets:${NEXO_TAG:-latest}
+    container_name: nexo-tickets
+    env_file: .env
+    environment:
+      TICKETS_PORT: '4001'
+      TICKETS_CHAOS_ENABLED: ${TICKETS_CHAOS_ENABLED:-false}
+      NODE_OPTIONS: --max-old-space-size=96
+    mem_limit: 128m
+    restart: unless-stopped
+    depends_on:
+      nexo-web: { condition: service_healthy } # o web aplica as migrations no start
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:4001/healthz || exit 1']
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    # Sem porta publicada: só o web fala com ele, pela rede interna.
+    networks: [cliniai_internal]
+
+networks:
+  cliniai_internal:
+    external: true

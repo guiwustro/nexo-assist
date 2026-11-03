@@ -364,7 +364,9 @@ export async function resetAndSeed(url: string, agora: Date = new Date()): Promi
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Só como CLI (`pnpm db:seed`). Empacotado no bootstrap do container, import.meta.url é o do bundle e o
+// seed rodaria a cada start apagando o histórico — por isso o nome do arquivo também é conferido.
+if (process.argv[1] && /seed\.[cm]?[tj]s$/.test(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await import('dotenv/config');
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL não definida');

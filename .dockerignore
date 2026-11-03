@@ -1,0 +1,17 @@
+node_modules
+.next
+.next-e2e
+dist
+.git
+.env
+.env.*
+!.env.example
+.superpowers
+referencias
+test-results
+playwright-report
+blob-report
+coverage
+*.tsbuildinfo
+docs
+evals/.cache
