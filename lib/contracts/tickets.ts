@@ -55,6 +55,7 @@ export const ReopenTicketInputSchema = z.object({
 export type ReopenTicketInput = z.infer<typeof ReopenTicketInputSchema>;
 
 export const TransferInputSchema = z.object({
+  requester_id: z.string().uuid(),
   level: SupportLevelSchema,
   summary: z.string().min(1).max(4000),
 });

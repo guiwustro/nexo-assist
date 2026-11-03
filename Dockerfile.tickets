@@ -1,0 +1,14 @@
+# Serviço de chamados (legado simulado). Roda com tsx: o código importa lib/contracts e lib/regras.
+FROM node:22-alpine
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile --prod=false
+COPY tsconfig.json ./
+COPY lib ./lib
+COPY services ./services
+ENV NODE_ENV=production TICKETS_PORT=4001
+USER node
+EXPOSE 4001
+HEALTHCHECK --interval=10s --timeout=3s CMD wget -qO- http://127.0.0.1:4001/healthz || exit 1
+CMD ["node_modules/.bin/tsx", "services/tickets/src/server.ts"]
