@@ -1,7 +1,8 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  output: 'standalone',
+  output: process.env.NEXT_OUTPUT === 'standalone' ? 'standalone' : undefined,
+  distDir: process.env.NEXT_DIST_DIR ?? '.next',
   serverExternalPackages: ['postgres'],
 };
 

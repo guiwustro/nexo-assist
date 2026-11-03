@@ -3,6 +3,45 @@
 @theme {
   --font-sans: var(--font-schibsted), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-newsreader), ui-serif, Georgia, serif;
+
+  --color-paper: #ffffff;
+  --color-desk: #f6f7f9;
+  --color-ink: #1b2431;
+  --color-ink-2: #3d4656;
+  --color-ink-3: #5b6472;
+  --color-rule: #e6e8ec;
+  --color-card-border: #1b243117;
+  --color-input-border: #1b24311f;
+  --color-cta: #0062c4;
+  --color-primary: #0285f7;
+  --color-primary-soft: #0285f712;
+  --color-primary-text: #0069c7;
+  --color-success: #00bd6c;
+  --color-success-soft: #00bd6c14;
+  --color-success-text: #00804a;
+  --color-warning: #f5a500;
+  --color-warning-soft: #f5a50018;
+  --color-warning-text: #946300;
+  --color-danger: #ee343b;
+  --color-danger-soft: #ee343b12;
+  --color-danger-text: #c4161d;
+  --color-thread: #eef1f5;
+  --color-bubble-ai: #e6effa;
+  --color-bubble-human: #e3f4ea;
+  --color-avatar: #dce9f7;
+  --color-prio-medium: #1b243166;
+
+  --text-tag: 11px;
+  --text-tag-list: 11.5px;
+  --text-label: 12.5px;
+  --text-body: 13.5px;
+  --text-value: 14.5px;
+  --text-card-title: 18px;
+
+  --radius-tag: 6px;
+  --radius-btn: 8px;
+  --radius-bubble: 12px;
+  --radius-card: 16px;
 }
 
 html,
@@ -12,6 +51,18 @@ body {
 
 body {
   font-family: var(--font-sans);
-  background: #ffffff;
-  color: #1b2431;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes nexo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes nexo-pulse {
+  50% {
+    opacity: 0.45;
+  }
 }
