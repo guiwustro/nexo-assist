@@ -145,3 +145,9 @@ export function getTicketsClient(o: { onRetry?: (attempt: number) => void } = {}
 export function setTicketsClient(c: TicketsClient | undefined): void {
   g.__nexoTicketsOverride = c;
 }
+
+/** Só para E2E: zera o disjuntor e o cliente do processo entre testes. */
+export function resetTicketsClient(): void {
+  g.__nexoTickets = undefined;
+  g.__nexoBreaker = undefined;
+}

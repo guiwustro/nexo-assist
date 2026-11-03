@@ -34,7 +34,8 @@ export function createTicketsApp(deps: TicketsAppDeps): Hono {
 
   app.post('/_chaos/outage', (c) => {
     if (!deps.chaosEnabled) return c.json({ error: { code: 'not_found', message: 'Rota inexistente' } }, 404);
-    const seconds = Math.min(300, Math.max(1, Number(c.req.query('seconds') ?? 10) || 10));
+    const raw = Number(c.req.query('seconds') ?? 10);
+    const seconds = Math.min(300, Math.max(0, Number.isFinite(raw) ? raw : 10));
     deps.chaos.startOutage(seconds);
     return c.json({ data: { outage_seconds: seconds } });
   });

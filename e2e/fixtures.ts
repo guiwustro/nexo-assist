@@ -14,7 +14,12 @@ type Fixtures = {
 
 export const test = base.extend<Fixtures>({
   seed: [
-    async ({}, use) => {
+    async ({ request }, use) => {
+      // Estado em memória dos dois processos volta ao zero: sem queda programada, disjuntor fechado.
+      await request.post(`http://127.0.0.1:${E2E_TICKETS_PORT}/_chaos/outage?seconds=0`, {
+        headers: { 'x-internal-secret': E2E_SECRET },
+      });
+      await request.post('/api/v1/_test/reset');
       await use(await resetAndSeed(E2E_DB, AGORA_E2E));
     },
     { auto: true },
