@@ -1,0 +1,2 @@
+CREATE DATABASE nexo_test;
+CREATE DATABASE nexo_e2e;
