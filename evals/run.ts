@@ -45,6 +45,9 @@ type Resultado = {
   custo_cents: number | null;
   latencia_ms: number;
   turnos: number;
+  tokens: { in: number; out: number };
+  /** Última resposta do agent (para entender a falha). */
+  resposta: string;
 };
 
 const normalizar = (s: string) =>
@@ -169,7 +172,12 @@ async function main() {
 
     const custos = chamadas.map((x) => x.cost_cents);
     const custo = custos.length && custos.every((x) => x !== null) ? custos.reduce((a, b) => a! + b!, 0)! : custos.length ? null : 0;
-    return { cenario: c, ok: falhas.length === 0, falhas, custo_cents: custo, latencia_ms: latencia, turnos: runs.length };
+    const tokens = {
+      in: chamadas.reduce((s, x) => s + x.input_tokens, 0),
+      out: chamadas.reduce((s, x) => s + x.output_tokens, 0),
+    };
+    const resposta = textos.at(-1)?.body ?? '';
+    return { cenario: c, ok: falhas.length === 0, falhas, custo_cents: custo, latencia_ms: latencia, turnos: runs.length, tokens, resposta };
   }
 
   const porCenario = new Map<string, Resultado[]>();
@@ -180,10 +188,11 @@ async function main() {
       try {
         r = await rodar(c, rep);
       } catch (err) {
-        r = { cenario: c, ok: false, falhas: [`erro: ${err instanceof Error ? err.message : String(err)}`], custo_cents: null, latencia_ms: 0, turnos: 0 };
+        r = { cenario: c, ok: false, falhas: [`erro: ${err instanceof Error ? err.message : String(err)}`], custo_cents: null, latencia_ms: 0, turnos: 0, tokens: { in: 0, out: 0 }, resposta: '' };
       }
       lista.push(r);
       console.log(`${r.ok ? '✓' : '✗'} ${c.id} #${rep + 1}${r.ok ? '' : ` — ${r.falhas.join('; ')}`}`);
+      if (!r.ok && r.resposta) console.log(`    agent: ${r.resposta.replace(/\s+/g, ' ').slice(0, 300)}`);
     }
     porCenario.set(c.id, lista);
   }
@@ -203,7 +212,9 @@ async function main() {
     const ok = rs.filter((r) => r.ok).length;
     const falhas = [...new Set(rs.flatMap((r) => r.falhas))].join('; ') || '—';
     const turnos = media(rs.map((r) => r.turnos)) || 1;
-    return `| ${id} | ${ok}/${rs.length}${ok / rs.length < LIMIAR ? ' ⚠' : ''} | ${fmtCusto(rs.map((r) => r.custo_cents))} | ${Math.round(media(rs.map((r) => r.latencia_ms)) / turnos)} ms | ${falhas} |`;
+    const tin = Math.round(media(rs.map((r) => r.tokens.in)));
+    const tout = Math.round(media(rs.map((r) => r.tokens.out)));
+    return `| ${id} | ${ok}/${rs.length}${ok / rs.length < LIMIAR ? ' ⚠' : ''} | ${fmtCusto(rs.map((r) => r.custo_cents))} | ${tin} / ${tout} | ${Math.round(media(rs.map((r) => r.latencia_ms)) / turnos)} ms | ${falhas} |`;
   });
 
   const md = [
@@ -212,10 +223,11 @@ async function main() {
     `Rodado em ${new Date().toISOString()} · modelo \`${modelo.provider}/${modelo.model_id}\` · ${cenarios.length} cenários × ${VEZES}.`,
     '',
     `**Taxa de acerto: ${passou}/${todos.length} (${(taxa * 100).toFixed(0)}%)** · limiar ${LIMIAR * 100}% · ` +
+      `tokens médios por conversa: ${Math.round(media(todos.map((r) => r.tokens.in)))} entrada / ${Math.round(media(todos.map((r) => r.tokens.out)))} saída · ` +
       `custo médio por conversa: ${custosMedidos.length === todos.length && custosMedidos.length ? `${media(custosMedidos).toFixed(3)}¢` : 'não medido (defina LLM_PRICE_*_CENTS_PER_MTOK)'}`,
     '',
-    '| Cenário | Passou | Custo médio/conversa | Latência média/turno | Falhas |',
-    '|---|---|---|---|---|',
+    '| Cenário | Passou | Custo médio/conversa | Tokens médios (entrada / saída) | Latência média/turno | Falhas |',
+    '|---|---|---|---|---|---|',
     ...linhas,
     '',
   ].join('\n');
