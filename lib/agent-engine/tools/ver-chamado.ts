@@ -19,6 +19,7 @@ export const verChamado = defineTool({
       ctx.emitPart({ kind: 'ticket_card', ticket, overdue: atraso !== null, ...(atraso ? { overdue_label: atraso } : {}) });
       if (ctx.turn) {
         ctx.turn.sources.push({ kind: 'ticket', id: ticket.code, title: ticket.title });
+        ctx.turn.focus_ticket_code = ticket.code;
         if (atraso) ctx.turn.overdue_ticket_code = ticket.code;
       }
       return {

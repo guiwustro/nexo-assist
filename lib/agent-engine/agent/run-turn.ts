@@ -2,11 +2,12 @@ import { RequestContext } from '@mastra/core/request-context';
 import type { UIMessageStreamWriter } from 'ai';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
-import { aiAgentRuns, knowledgeArticles, llmCalls } from '@/lib/db/schema';
+import { aiAgentRuns, conversations, knowledgeArticles, llmCalls } from '@/lib/db/schema';
 import { env, serverNow } from '@/lib/env';
 import type { Session } from '@/lib/auth/session';
 import type { ActionTrace, TurnDecision } from '@/lib/contracts/decision';
 import type { MessagePart } from '@/lib/contracts/parts';
+import type { Priority } from '@/lib/contracts/enums';
 import type { NexoDataParts, NexoUIMessage } from '@/lib/contracts/ui';
 import { appendMessage, getConversation, registerEmployeeMessage } from '@/lib/conversations/service';
 import { createHandoff } from '@/lib/conversations/handoff';
@@ -145,14 +146,19 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         },
       },
     );
+    const foco = await chamadoEmFoco(reg.conversation.focus_ticket_code, i.employee.user_id, 'N1');
     await createHandoff(
       {
         conversation_id: i.conversation_id,
+        ticket_code: foco?.code ?? null,
+        ticket_priority: foco?.priority,
         origin: 'explicit_request',
         reason_code: 'requested_human',
         level: 'N1',
         employee_words: i.text,
-        agent_reading: 'Pediu um analista; leia o histórico da conversa.',
+        agent_reading: foco
+          ? `Pediu um analista; o chamado em foco é o ${foco.code} (${foco.title}).`
+          : 'Pediu um analista; leia o histórico da conversa.',
         attempts: [],
       },
       now,
@@ -240,6 +246,9 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
   if (started) i.writer.write({ type: 'text-end', id: textId });
 
   const actionList = [...actions.values()];
+  if (turn.focus_ticket_code) {
+    await db.update(conversations).set({ focus_ticket_code: turn.focus_ticket_code }).where(eq(conversations.id, i.conversation_id));
+  }
   const outbound = await appendMessage(db, {
     conversation_id: i.conversation_id,
     direction: 'outbound',
@@ -370,6 +379,23 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
     .where(eq(aiAgentRuns.id, run_id));
   i.writer.write({ type: 'data-run', id: `run-${run_id}`, data: { run_id, decision_ready: true } });
   return { run_id, outcome };
+}
+
+/** Chamado em foco da conversa (para a passagem levar o código e o prazo certo). Falha do legado não bloqueia. */
+async function chamadoEmFoco(
+  code: string | null,
+  employeeId: string,
+  level: 'N1' | 'N2',
+): Promise<{ code: string; title: string; priority: Priority } | null> {
+  if (!code) return null;
+  try {
+    const tickets = getTicketsClient();
+    const t = await tickets.get(code, employeeId);
+    await tickets.transfer(t.code, { requester_id: employeeId, level, summary: 'Funcionário pediu um analista' }).catch(() => null);
+    return { code: t.code, title: t.title, priority: t.priority };
+  } catch {
+    return null;
+  }
 }
 
 function dedupe<T extends { kind: string; id: string }>(xs: T[]): T[] {

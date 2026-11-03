@@ -40,4 +40,22 @@ test.describe('capturas das telas', () => {
     await expect(page.getByTestId('decision-cost')).toBeVisible();
     await page.screenshot({ path: 'test-results/telas/painel-decisao.png' });
   });
+
+  test('console-transferida', async ({ page, loginAs, seed }) => {
+    await loginAs(page, 'rafael');
+    await page.goto(`/console/${seed.conversations.carla}`);
+    await expect(page.getByTestId('takeover-claim')).toBeVisible();
+    await expect(page.getByTestId('focus-ticket')).toBeVisible();
+    await page.screenshot({ path: 'test-results/telas/console-transferida.png' });
+  });
+
+  test('console-assumida', async ({ page, loginAs, seed }) => {
+    await loginAs(page, 'rafael');
+    await page.goto(`/console/${seed.conversations.carla}`);
+    await page.getByTestId('takeover-claim').click();
+    await page.getByTestId('console-composer').fill('Oi, Carla! Aqui é o Rafael. Vou liberar o acesso agora.');
+    await page.getByTestId('console-send').click();
+    await expect(page.getByTestId('human-message')).toBeVisible();
+    await page.screenshot({ path: 'test-results/telas/console-assumida.png' });
+  });
 });

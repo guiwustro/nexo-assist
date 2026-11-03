@@ -24,6 +24,7 @@ export type ToolCtx = {
 export type TurnSignals = {
   draft_priority?: import('@/lib/contracts/enums').Priority;
   overdue_ticket_code?: string;
+  focus_ticket_code?: string;
   handoff_created?: boolean;
   sources: Array<{ kind: 'article' | 'ticket'; id: string; title: string }>;
 };

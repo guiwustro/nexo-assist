@@ -94,6 +94,7 @@ export async function listForAnalyst(
   filter: QueueFilter = 'all',
   q?: string,
   agora: Date = serverNow(),
+  onlyId?: string,
 ): Promise<QueueItem[]> {
   const db = getDb();
   const latest = db
@@ -141,7 +142,7 @@ export async function listForAnalyst(
     .innerJoin(users, eq(users.id, conversations.employee_id))
     .leftJoin(assignee, eq(assignee.id, conversations.assigned_to_user_id))
     .leftJoin(latest, eq(latest.conversation_id, conversations.id))
-    .where(and(filtro(analystId, filter), busca))
+    .where(and(filtro(analystId, filter), busca, onlyId ? eq(conversations.id, onlyId) : undefined))
     .orderBy(sql`${conversations.last_message_at} desc nulls last`);
 
   return rows.map((r) => {
@@ -202,6 +203,7 @@ export async function listMessages(conversationId: string, opts: { limit?: numbe
     .select({
       m: messagesTable,
       sender: users.name,
+      sender_level: users.support_level,
       tool_calls: aiAgentRuns.tool_calls,
       has_decision: sql<boolean>`${aiAgentRuns.decision} is not null`,
     })
@@ -219,7 +221,12 @@ export async function listMessages(conversationId: string, opts: { limit?: numbe
   const page = rows.slice(0, limit).reverse();
   return {
     messages: page.map((r) =>
-      toApiMessage(r.m, r.sender, r.tool_calls ? { tool_calls: r.tool_calls, has_decision: Boolean(r.has_decision) } : null),
+      toApiMessage(
+        r.m,
+        r.sender,
+        r.tool_calls ? { tool_calls: r.tool_calls, has_decision: Boolean(r.has_decision) } : null,
+        r.sender_level,
+      ),
     ),
     next_cursor: rows.length > limit ? (page[0]?.m.created_at.toISOString() ?? null) : null,
   };

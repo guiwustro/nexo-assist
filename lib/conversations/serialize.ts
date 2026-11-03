@@ -8,9 +8,11 @@ export type ApiMessage = {
   sent_via: 'user' | 'ai' | 'system';
   sent_by_user_id: string | null;
   sender_name: string | null;
+  sender_level: 'N1' | 'N2' | null;
   body: string;
   parts: Message['parts'];
   agent_run_id: string | null;
+  handoff_id: string | null;
   actions: ActionTrace[];
   has_decision: boolean;
   created_at: string;
@@ -20,6 +22,7 @@ export function toApiMessage(
   m: Message,
   senderName: string | null = null,
   run: { tool_calls: ActionTrace[]; has_decision: boolean } | null = null,
+  senderLevel: string | null = null,
 ): ApiMessage {
   return {
     id: m.id,
@@ -28,9 +31,11 @@ export function toApiMessage(
     sent_via: m.sent_via as ApiMessage['sent_via'],
     sent_by_user_id: m.sent_by_user_id,
     sender_name: senderName,
+    sender_level: senderLevel === 'N1' || senderLevel === 'N2' ? senderLevel : null,
     body: m.body,
     parts: m.parts,
     agent_run_id: m.agent_run_id,
+    handoff_id: typeof m.metadata?.handoff_id === 'string' ? m.metadata.handoff_id : null,
     actions: m.sent_via === 'ai' ? (run?.tool_calls ?? []) : [],
     has_decision: m.sent_via === 'ai' ? (run?.has_decision ?? false) : false,
     created_at: m.created_at.toISOString(),

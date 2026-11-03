@@ -45,7 +45,7 @@ export const POST = withRoute({ role: 'any', params: Params, body: Body }, async
       sent_by_user_id: session.user_id,
       body: body.text,
     });
-    return ok(toApiMessage(msg, session.name), { status: 201, requestId });
+    return ok(toApiMessage(msg, session.name, null, null), { status: 201, requestId });
   }
 
   // Funcionário: a conversa é sempre a dele (a da sessão); outra → 404.

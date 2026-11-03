@@ -207,3 +207,12 @@ describe('fila do analista', () => {
     });
   });
 });
+
+describe('mensagem do 409 de assumir', () => {
+  it('diz quem já assumiu', async () => {
+    const carla = t.seed.conversations.carla!;
+    await applyTransition(carla, 'claim', rafael());
+    const e = await erroDe(applyTransition(carla, 'claim', juliana()));
+    expect(e.message).toBe('Rafael Lima já assumiu esta conversa');
+  });
+});

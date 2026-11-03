@@ -201,16 +201,23 @@ export async function applyTransition(
     }
     return updated[0]!;
   };
-  if (opts.tx) return run(opts.tx);
   try {
-    return await getDb().transaction(run);
+    return opts.tx ? await run(opts.tx) : await getDb().transaction(run);
   } catch (e) {
+    if (e instanceof Conflict && e.code === 'conversation_already_claimed') throw await comNomeDeQuemAssumiu(e);
     // Duas transações concorrentes: a perdedora pode bater no CHECK/serialização; relê e explica.
     if (e instanceof Conflict || e instanceof Forbidden || e instanceof NotFound) throw e;
     const conv = await getConversation(getDb(), conversationId);
     if (conv) throw conflitoPara(conv, event);
     throw e;
   }
+}
+
+async function comNomeDeQuemAssumiu(e: Conflict): Promise<Conflict> {
+  const id = (e.details as { assigned_to_user_id?: string | null } | undefined)?.assigned_to_user_id;
+  if (!id) return e;
+  const [u] = await getDb().select({ name: users.name }).from(users).where(eq(users.id, id));
+  return u ? new Conflict(e.code, `${u.name} já assumiu esta conversa`, { ...(e.details as object), assigned_to_name: u.name }) : e;
 }
 
 function conflitoPara(conv: Conversation, event: ConversationEvent): Conflict {

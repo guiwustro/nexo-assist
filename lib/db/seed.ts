@@ -288,6 +288,28 @@ export async function resetAndSeed(url: string, agora: Date = new Date()): Promi
       const conversation_id = conv!.id;
       convIds[c.key] = conversation_id;
 
+      let handoffId: string | null = null;
+      if (c.handoff) {
+        const h = c.handoff;
+        const at = new Date(c.msgs[1]!.at);
+        const [hrow] = await db.insert(handoffs).values({
+          conversation_id,
+          ticket_code: h.ticket_code ?? null,
+          origin: h.origin,
+          reason_code: h.reason,
+          support_level: h.level,
+          title: h.reason === 'requested_human' ? 'Pediu para falar com um analista' : 'Agent pediu ajuda',
+          body: `Palavras do funcionário: "${h.employee_words}"\nSegundo o agent — confira: ${h.agent_reading}`,
+          employee_words: h.employee_words,
+          agent_reading: h.agent_reading,
+          attempts: [],
+          confidence: h.confidence ?? null,
+          due_at: calcularPrazo(h.priority, at).due_at,
+          created_at: at,
+        }).returning({ id: handoffs.id });
+        handoffId = hrow!.id;
+      }
+
       for (const m of c.msgs) {
         let agent_run_id: string | null = null;
         if (m.run) {
@@ -328,29 +350,11 @@ export async function resetAndSeed(url: string, agora: Date = new Date()): Promi
           body: m.body,
           parts: m.parts ?? [],
           agent_run_id,
+          metadata: m.type === 'system' && handoffId ? { handoff_id: handoffId } : {},
           created_at: new Date(m.at),
         });
       }
 
-      if (c.handoff) {
-        const h = c.handoff;
-        const at = new Date(c.msgs[1]!.at);
-        await db.insert(handoffs).values({
-          conversation_id,
-          ticket_code: h.ticket_code ?? null,
-          origin: h.origin,
-          reason_code: h.reason,
-          support_level: h.level,
-          title: h.reason === 'requested_human' ? 'Pediu para falar com um analista' : 'Agent pediu ajuda',
-          body: `Palavras do funcionário: "${h.employee_words}"\nSegundo o agent — confira: ${h.agent_reading}`,
-          employee_words: h.employee_words,
-          agent_reading: h.agent_reading,
-          attempts: [],
-          confidence: h.confidence ?? null,
-          due_at: calcularPrazo(h.priority, at).due_at,
-          created_at: at,
-        });
-      }
     }
 
     const usersOut = Object.fromEntries(SEED_USERS.map((u) => [u.key, { id: u.id, email: u.email }])) as SeedResult['users'];

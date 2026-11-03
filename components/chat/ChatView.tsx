@@ -5,6 +5,7 @@ import { DefaultChatTransport } from 'ai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Banner } from '@/components/ui/Banner';
 import { api, ApiFailure, parseChatError, type CurrentData } from '@/lib/client/api';
+import { useEvents } from '@/lib/client/use-events';
 import type { ActionTrace } from '@/lib/contracts/decision';
 import type { DraftEdit } from '@/lib/contracts/drafts';
 import type { MessagePart } from '@/lib/contracts/parts';
@@ -133,6 +134,16 @@ function ChatSession({ data, reload }: { data: CurrentData; reload: () => Promis
   });
   const busy = chat.status === 'submitted' || chat.status === 'streaming';
 
+  // Tempo real: o analista assumiu, respondeu, devolveu ou encerrou → recarrega o histórico (fora do stream).
+  const busyRef = useRef(busy);
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
+  useEvents((e) => {
+    if (busyRef.current) return;
+    if (e.type === 'poll' || ('conversation_id' in e && e.conversation_id === convId)) void reload();
+  });
+
   const send = useCallback(
     (text: string) => {
       if (busy) return;
@@ -217,7 +228,7 @@ function ChatSession({ data, reload }: { data: CurrentData; reload: () => Promis
               />
             ),
           )}
-          {busy && live[live.length - 1]?.role === 'user' && (
+          {busy && !comAnalista && live[live.length - 1]?.role === 'user' && (
             <AgentMessage text="" parts={[]} actions={[]} streaming isLast={false} now={now} onSend={send} drafts={drafts} />
           )}
           {failed && (
@@ -269,6 +280,16 @@ function LiveAgent({
   onOpenRun: (id: string) => void;
 }) {
   const l = fromUI(m);
+  const semAgent = !l.runId && !l.text && l.actions.length === 0 && l.parts.length === 0;
+  if (semAgent) {
+    return (
+      <>
+        {l.systems.map((s, i) => (
+          <SystemEvent key={i} text={s} />
+        ))}
+      </>
+    );
+  }
   return (
     <>
       <AgentMessage
