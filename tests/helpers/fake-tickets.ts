@@ -35,6 +35,14 @@ export function createFakeTickets(agora: Date): FakeTickets {
     };
   });
   let seq = 20520;
+  const recibos = new Map<string, Ticket>();
+  const once = async (key: string, fn: () => Promise<Ticket>) => {
+    const r = recibos.get(key);
+    if (r) return r;
+    const t = await fn();
+    recibos.set(key, t);
+    return t;
+  };
   const fake: FakeTickets = {
     tickets,
     down: false,
@@ -52,8 +60,9 @@ export function createFakeTickets(agora: Date): FakeTickets {
       if (!t) throw new TicketsNotFoundError(code);
       return t;
     },
-    async create(input) {
+    async create(input, key) {
       guard('create');
+      return once(key, async () => {
       const t: Ticket = {
         ...input,
         subcategory: input.subcategory ?? null,
@@ -67,20 +76,25 @@ export function createFakeTickets(agora: Date): FakeTickets {
       };
       tickets.push(t);
       return t;
+      });
     },
-    async update(code, input) {
+    async update(code, input, key) {
       guard('update');
-      const t = await fake.get(code, input.requester_id);
-      t.last_update_at = agora.toISOString();
-      return t;
+      return once(key, async () => {
+        const t = await fake.get(code, input.requester_id);
+        t.last_update_at = agora.toISOString();
+        return t;
+      });
     },
-    async reopen(code, requesterId) {
+    async reopen(code, requesterId, key) {
       guard('reopen');
-      const t = await fake.get(code, requesterId);
-      if (!podeReabrir(t, agora).ok) throw new TicketsRejectedError('reopen_window_expired', 'Fora da janela', 422);
-      t.status = 'open';
-      t.resolved_at = null;
-      return t;
+      return once(key, async () => {
+        const t = await fake.get(code, requesterId);
+        if (!podeReabrir(t, agora).ok) throw new TicketsRejectedError('reopen_window_expired', 'Fora da janela', 422);
+        t.status = 'open';
+        t.resolved_at = null;
+        return t;
+      });
     },
     async transfer(code, input) {
       guard('transfer');

@@ -1,7 +1,8 @@
-import { and, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, ilike, lt, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getDb } from '@/lib/db/client';
-import { conversations, handoffs, users } from '@/lib/db/schema';
+import { conversations, handoffs, messages as messagesTable, users } from '@/lib/db/schema';
+import { toApiMessage, type ApiMessage } from './serialize';
 import { serverNow } from '@/lib/env';
 
 export type QueueFilter = 'all' | 'for_you' | 'with_agent' | 'mine';
@@ -188,4 +189,30 @@ export async function countsForAnalyst(analystId: string): Promise<Record<QueueF
     })
     .from(conversations);
   return { all: r?.all ?? 0, for_you: r?.for_you ?? 0, with_agent: r?.with_agent ?? 0, mine: r?.mine ?? 0 };
+}
+
+/** Mensagens mais recentes primeiro na consulta, devolvidas em ordem cronológica. `cursor` = created_at ISO. */
+export async function listMessages(conversationId: string, opts: { limit?: number; cursor?: string } = {}): Promise<{
+  messages: ApiMessage[];
+  next_cursor: string | null;
+}> {
+  const limit = Math.min(opts.limit ?? 50, 100);
+  const db = getDb();
+  const rows = await db
+    .select({ m: messagesTable, sender: users.name })
+    .from(messagesTable)
+    .leftJoin(users, eq(users.id, messagesTable.sent_by_user_id))
+    .where(
+      and(
+        eq(messagesTable.conversation_id, conversationId),
+        opts.cursor ? lt(messagesTable.created_at, new Date(opts.cursor)) : undefined,
+      ),
+    )
+    .orderBy(desc(messagesTable.created_at), desc(messagesTable.id))
+    .limit(limit + 1);
+  const page = rows.slice(0, limit).reverse();
+  return {
+    messages: page.map((r) => toApiMessage(r.m, r.sender)),
+    next_cursor: rows.length > limit ? (page[0]?.m.created_at.toISOString() ?? null) : null,
+  };
 }
