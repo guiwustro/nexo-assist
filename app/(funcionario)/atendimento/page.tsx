@@ -1,3 +1,7 @@
+import { ChatView } from '@/components/chat/ChatView';
+
+export const metadata = { title: 'Atendimento · Nexo Assist' };
+
 export default function AtendimentoPage() {
-  return <div className="p-8 text-body text-ink-3">Carregando atendimento…</div>;
+  return <ChatView />;
 }

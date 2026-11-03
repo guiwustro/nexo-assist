@@ -87,7 +87,7 @@ export const SCRIPTS: Script[] = [
           },
         ],
       },
-      { text: 'Certo, no Windows 11 o artigo não resolve: vamos abrir um chamado. Quem mais está sem VPN?' },
+      { text: 'Certo: no Windows 11 o artigo não resolve, então vamos abrir um chamado.' },
     ],
     decision: ({ text }) =>
       d('open_ticket', 'VPN com erro 809 no Windows 11', text, 'ask', 0.85, 'Para calcular a prioridade preciso saber quem está afetado.', [
@@ -160,13 +160,16 @@ export const SCRIPTS: Script[] = [
       text: (c) => {
         if (caiu(c)) return FORA_DO_AR;
         const r = c.results.find((x) => x.toolName === 'ver_chamado')?.output as
-          | { found?: boolean; overdue?: boolean; ticket?: { code: string; priority: string } }
+          | { found?: boolean; overdue?: boolean; overdue_label?: string; sla_rule?: string; ticket?: { code: string; priority: string } }
           | undefined;
         if (!r || r.found === false || !r.ticket) {
           return 'Não encontrei esse chamado entre os seus. Só consigo mostrar chamados abertos por você.';
         }
         if (r.overdue) {
-          return `O ${r.ticket.code} está sem atualização além do prazo do Anexo A. Quer que eu chame um analista?`;
+          const quando = r.overdue_label?.split(' · ')[0] ?? 'há dias';
+          const [prio, prazo] = (r.sla_rule ?? '').split(': ');
+          const prazoCurto = prazo?.replace(/ \(.*\)$/, '') ?? 'o prazo';
+          return `Está sem atualização ${quando}, acima do prazo de ${prazoCurto} para prioridade ${prio?.toLowerCase() ?? ''}. Quer que eu chame um analista?`;
         }
         return `Aqui está o ${r.ticket.code}. Está dentro do prazo.`;
       },

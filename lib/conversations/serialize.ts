@@ -1,3 +1,4 @@
+import type { ActionTrace } from '@/lib/contracts/decision';
 import type { Conversation, Message } from './service';
 
 export type ApiMessage = {
@@ -10,10 +11,16 @@ export type ApiMessage = {
   body: string;
   parts: Message['parts'];
   agent_run_id: string | null;
+  actions: ActionTrace[];
+  has_decision: boolean;
   created_at: string;
 };
 
-export function toApiMessage(m: Message, senderName: string | null = null): ApiMessage {
+export function toApiMessage(
+  m: Message,
+  senderName: string | null = null,
+  run: { tool_calls: ActionTrace[]; has_decision: boolean } | null = null,
+): ApiMessage {
   return {
     id: m.id,
     direction: m.direction as ApiMessage['direction'],
@@ -24,6 +31,8 @@ export function toApiMessage(m: Message, senderName: string | null = null): ApiM
     body: m.body,
     parts: m.parts,
     agent_run_id: m.agent_run_id,
+    actions: m.sent_via === 'ai' ? (run?.tool_calls ?? []) : [],
+    has_decision: m.sent_via === 'ai' ? (run?.has_decision ?? false) : false,
     created_at: m.created_at.toISOString(),
   };
 }

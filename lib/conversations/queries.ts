@@ -1,7 +1,7 @@
 import { and, desc, eq, ilike, lt, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getDb } from '@/lib/db/client';
-import { conversations, handoffs, messages as messagesTable, users } from '@/lib/db/schema';
+import { aiAgentRuns, conversations, handoffs, messages as messagesTable, users } from '@/lib/db/schema';
 import { toApiMessage, type ApiMessage } from './serialize';
 import { serverNow } from '@/lib/env';
 
@@ -199,9 +199,15 @@ export async function listMessages(conversationId: string, opts: { limit?: numbe
   const limit = Math.min(opts.limit ?? 50, 100);
   const db = getDb();
   const rows = await db
-    .select({ m: messagesTable, sender: users.name })
+    .select({
+      m: messagesTable,
+      sender: users.name,
+      tool_calls: aiAgentRuns.tool_calls,
+      has_decision: sql<boolean>`${aiAgentRuns.decision} is not null`,
+    })
     .from(messagesTable)
     .leftJoin(users, eq(users.id, messagesTable.sent_by_user_id))
+    .leftJoin(aiAgentRuns, eq(aiAgentRuns.id, messagesTable.agent_run_id))
     .where(
       and(
         eq(messagesTable.conversation_id, conversationId),
@@ -212,7 +218,9 @@ export async function listMessages(conversationId: string, opts: { limit?: numbe
     .limit(limit + 1);
   const page = rows.slice(0, limit).reverse();
   return {
-    messages: page.map((r) => toApiMessage(r.m, r.sender)),
+    messages: page.map((r) =>
+      toApiMessage(r.m, r.sender, r.tool_calls ? { tool_calls: r.tool_calls, has_decision: Boolean(r.has_decision) } : null),
+    ),
     next_cursor: rows.length > limit ? (page[0]?.m.created_at.toISOString() ?? null) : null,
   };
 }
