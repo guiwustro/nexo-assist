@@ -9,6 +9,14 @@ parâmetro, tipo e propriedade), quebra os nomes em palavras e confere cada pala
 identificadores (seção 7) foi gerada assim e revisada à mão. O mesmo mapa está em `docs/mapeamento-ingles.json`, para
 servir de entrada ao script de renomeação (seção 8).
 
+> **Executado em 04/11/2026 (fases 1 a 6), com as decisões da seção 3.** Seis commits `refactor(...)`, cada um com
+> typecheck, unitários, integração e E2E verdes. A renomeação usou o language service do TypeScript do projeto
+> (`findRenameLocations` e `getEditsForFileRename`) em vez do ts-morph, e recusava qualquer troca em que o nome
+> novo já estivesse visível num ponto de uso. Isso pegou `agora` × `now` em `createHandoff` e `applyTransition`,
+> onde `agora` (relógio real dos timestamps) virou `changedAt` para não ser capturado pelo `now` do servidor.
+> Os nomes acrescentados depois do levantamento (o trabalho de 04/11) entraram no JSON.
+> Evals com as tools em inglês: 40/42 (95%), contra 41/42 antes (detalhes no README).
+
 ## Resumo
 
 | O quê | Quantidade | Esforço |
@@ -48,15 +56,15 @@ servir de entrada ao script de renomeação (seção 8).
 
 1. **URLs que o usuário vê** (`/atendimento`, `/perfil`, `/chamados`, `/console/perfil`, `?sobre=`, `?aba=resolvidos`).
    Aparecem na barra de endereço, então são texto de produto.
-   **Minha sugestão: manter em português.** O grupo de rotas `app/(funcionario)` não aparece na URL e vira
+   **Decidido: ficam em português.** O grupo de rotas `app/(funcionario)` não aparece na URL e virou
    `app/(employee)`.
 2. **Comentários.** Hoje explicam regras de negócio em português ("Anexo A", "horário útil").
-   **Sugestão: traduzir numa fase separada, no fim.** É o maior volume e o que menos quebra.
+   **Decidido: ficam em português.**
 3. **Nomes dos testes** (`it('a 30ª atinge o limite…')`). Muitos citam o texto da tela entre aspas.
-   **Sugestão: traduzir junto com os comentários, mantendo em português só o trecho citado da UI**
-   (ex.: `it('shows "Nada encontrado" when nothing matches')`).
+   **Decidido: ficam em português.**
 4. **Nomes das tools do modelo.** Trocar `buscar_meus_chamados` por `list_my_tickets` é código, mas o modelo vê o nome.
-   Os efeitos estão na seção 5. **Sugestão: trocar, e rodar os evals completos depois.**
+   Os efeitos estão na seção 5. **Decidido: trocar e rodar os evals completos** (feito; migration 0005 para os
+   dados gravados).
 
 ## 4. Pastas e arquivos
 
