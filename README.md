@@ -12,7 +12,7 @@ serviço de chamados legado simulado em Hono · Vitest + Playwright.
 
 ## 1. Como rodar
 
-Pré-requisitos: Node 22+, pnpm 10+ (`corepack enable`), Docker.
+Pré-requisitos: Node 22+, pnpm 12 (`corepack enable` usa a versão do `packageManager`), Docker.
 
 ```bash
 cp .env.example .env          # funciona como está: modelo roteirizado, sem chave
@@ -59,7 +59,7 @@ janela e assuma a conversa.
 ```
 ┌─────────────────────────────── web (Next.js 16, um processo) ───────────────────────────────┐
 │  UI (React)                  │  API /api/v1 (Route Handlers)         │  Agent (Mastra)        │
-│  /login                      │  POST conversations/current/messages  │  runTurn               │
+│  /login                      │  POST conversations/:id/messages      │  runTurn               │
 │  /atendimento  (funcionário) │       → stream (AI SDK UI messages)   │   ├ tools (6)          │
 │  /perfil                     │  POST drafts/:id/confirm (idempotente)│   ├ decisão declarada  │
 │  /console      (analista)    │  GET  conversations (fila) · claim ·  │   ├ regras/ (puras)    │
@@ -136,9 +136,9 @@ Duas perguntas diferentes, dois instrumentos:
 | Camada | Comando | O que cobre | Resultado |
 |---|---|---|---|
 | Typecheck + lint | `pnpm typecheck && pnpm lint` | TS estrito, React hooks | 0 erros, 0 avisos |
-| Unitários | `pnpm test` | Anexo A, prazos em horário útil, reabertura, máquina de estados, gatilhos, guardrails, busca, contratos, componentes | **218/218** (26 arquivos) |
-| Integração | `pnpm test:int` (Postgres) | `runTurn` com memória e banco reais, API com sessão e papéis, serviço de chamados, idempotência, SSE | **93/93** (11 arquivos) |
-| E2E | `pnpm test:e2e` (Playwright) | As histórias do PRD de ponta a ponta: abrir, consultar, complementar, transparência, privacidade, fora de escopo, transferência e console, instabilidade do legado, limite da sessão, continuidade | **27/27** (~2 min) |
+| Unitários | `pnpm test` | Anexo A, prazos em horário útil, reabertura, máquina de estados, gatilhos, guardrails, busca, contratos, componentes | **230/230** (26 arquivos) |
+| Integração | `pnpm test:int` (Postgres) | `runTurn` com memória e banco reais, API com sessão e papéis, serviço de chamados, idempotência, SSE | **96/96** (11 arquivos) |
+| E2E | `pnpm test:e2e` (Playwright) | As histórias do PRD de ponta a ponta: abrir, consultar, complementar, transparência, privacidade, fora de escopo, transferência e console, instabilidade do legado, limite da sessão, continuidade | **28/28** (~2 min) |
 | Evals | `pnpm eval` (DeepSeek) | Julgamento do modelo nas 13 histórias | **39/39 (100%)** |
 
 `pnpm check` roda typecheck, lint e unitários juntos. Números da última rodada completa, em 04/11/2026.
@@ -204,8 +204,9 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
   trocar por um provedor com contrato de retenção zero (o provedor é uma env).
 - **Chamada extra de decisão por turno:** custa tokens a mais (já incluídos no custo da §6), mas garante uma decisão estruturada e
   validada em todo turno, em vez de depender de o modelo lembrar de chamar uma tool opcional.
-- **Sessão de 30 mensagens:** ao bater o limite, a conversa vai para um analista com o resumo — o funcionário
-  não fica sem atendimento.
+- **Sessão de 30 mensagens:** o limite existe para o custo do modelo. Ao bater 30, a conversa vai para um analista
+  com todo o histórico, e as mensagens para o analista não contam no limite — o funcionário não fica sem
+  atendimento.
 - **Login de demonstração:** e-mail do seed + qualquer senha; "Esqueci minha senha" é simulado.
 
 ### Divergências do protótipo (`referencias/nexo.pen`)
@@ -252,10 +253,11 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
 - **Produção:** `docker-compose.prod.yml` com `nexo-web` (384 MB) e `nexo-tickets` (128 MB, sem porta
   publicada), atrás do Caddy da VPS, que termina o HTTPS. Banco: Postgres gerenciado. O web aplica as migrations
   no start.
-- **Chave do modelo:** só no `.env` do servidor, nunca no repositório nem no cliente; o navegador só fala com a
-  API do app.
+- **Segredos:** a chave do modelo e o `SESSION_SECRET` ficam só no `.env` do servidor, nunca no repositório nem no
+  cliente; o navegador só fala com a API do app. Gere um segredo novo para produção (`openssl rand -base64 48`) —
+  o do `.env.example` é público.
 - **Proteção:** rate limit de mensagens por funcionário (`RATE_LIMIT_PER_MINUTE`, 429 com `Retry-After` antes de
-  abrir o stream) e de login por IP; **teto diário de gasto** (`LLM_DAILY_BUDGET_CENTS`) — acima dele o agent
+  abrir o stream) e de login por IP; **teto diário de gasto** (`LLM_DAILY_BUDGET_CENTS`, exige os dois `LLM_PRICE_*`; sem eles o app não sobe) — acima dele o agent
   para de chamar o modelo e transfere para um analista; cabeçalhos de segurança (`X-Frame-Options: DENY`,
   `nosniff`, `Referrer-Policy`, `Permissions-Policy`) e sem `X-Powered-By`.
 - **CI** (`.github/workflows/ci.yml`): typecheck + lint + unitários, integração com Postgres, E2E.
