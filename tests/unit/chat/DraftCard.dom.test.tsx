@@ -74,4 +74,23 @@ describe('DraftCard', () => {
     expect(screen.getByText('Criado como INC-20520')).toBeInTheDocument();
     expect(screen.queryByTestId('draft-confirm')).toBeNull();
   });
+
+  it('na edição, o tipo tem rótulo próprio e "impede de trabalhar" e "compromisso hoje" podem mudar', async () => {
+    const onSave = vi.fn();
+    render(<DraftCard part={part} now={agora} onConfirm={vi.fn()} onCancel={vi.fn()} onSave={onSave} />);
+    fireEvent.click(screen.getByTestId('draft-edit'));
+
+    expect(screen.getByLabelText('Tipo')).toBe(screen.getByTestId('draft-field-type'));
+    const bloqueia = screen.getByLabelText('Impede de trabalhar');
+    const hoje = screen.getByLabelText('Compromisso hoje');
+    expect(bloqueia).toBeChecked();
+    expect(hoje).toBeChecked();
+
+    fireEvent.click(bloqueia);
+    fireEvent.click(hoje);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('draft-save'));
+    });
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ blocks_work: false, deadline_today: false }));
+  });
 });

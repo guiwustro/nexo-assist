@@ -1,7 +1,7 @@
 'use client';
 
 import { RotateCcw } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Kbd } from '@/components/ui/Kbd';
 import { Spinner } from '@/components/ui/Spinner';
 import { Dot } from '@/components/ui/Tag';
@@ -59,10 +59,16 @@ function Estado({ part, error }: { part: DraftCardPart; error?: string | null })
   );
 }
 
-function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+function Campo({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1">
-      <span className="text-label text-ink-3">{label}</span>
+      {htmlFor ? (
+        <label htmlFor={htmlFor} className="text-label text-ink-3">
+          {label}
+        </label>
+      ) : (
+        <span className="text-label text-ink-3">{label}</span>
+      )}
       <div className="flex items-center gap-1.5 text-value font-medium text-ink">{children}</div>
     </div>
   );
@@ -92,6 +98,7 @@ export function DraftCard({
   const busyRef = useRef(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<DraftEdit>({});
+  const ids = useId();
   const p = part.payload;
   const pending = part.status === 'pending';
 
@@ -120,7 +127,15 @@ export function DraftCard({
   });
 
   function abrirEdicao() {
-    setForm({ title: p.title, description: p.description, category: p.category, affected: p.affected, type: p.type });
+    setForm({
+      title: p.title,
+      description: p.description,
+      category: p.category,
+      affected: p.affected,
+      type: p.type,
+      blocks_work: p.blocks_work,
+      deadline_today: p.deadline_today,
+    });
     setEditing(true);
   }
 
@@ -174,9 +189,10 @@ export function DraftCard({
       </div>
       <div className="px-[18px] pb-4">
         <div className="flex gap-6 border-t border-rule pt-3">
-          <Campo label="Categoria">
+          <Campo label="Categoria" htmlFor={editing ? `${ids}-category` : undefined}>
             {editing ? (
               <select
+                id={`${ids}-category`}
                 data-testid="draft-field-category"
                 className={inputCls}
                 value={form.category}
@@ -192,9 +208,10 @@ export function DraftCard({
               CATEGORY_LABEL[p.category]
             )}
           </Campo>
-          <Campo label="Prioridade">
+          <Campo label={editing ? 'Tipo' : 'Prioridade'} htmlFor={editing ? `${ids}-type` : undefined}>
             {editing ? (
               <select
+                id={`${ids}-type`}
                 data-testid="draft-field-type"
                 className={inputCls}
                 value={form.type}
@@ -211,9 +228,10 @@ export function DraftCard({
               </>
             )}
           </Campo>
-          <Campo label="Afetados">
+          <Campo label="Afetados" htmlFor={editing ? `${ids}-affected` : undefined}>
             {editing ? (
               <select
+                id={`${ids}-affected`}
                 data-testid="draft-field-affected"
                 className={inputCls}
                 value={form.affected}
@@ -230,6 +248,31 @@ export function DraftCard({
             )}
           </Campo>
         </div>
+        {editing && (
+          <div className="flex flex-wrap gap-x-6 gap-y-2 pt-3 text-body text-ink-2">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                data-testid="draft-field-blocks-work"
+                className="size-4 accent-cta"
+                checked={form.blocks_work ?? false}
+                onChange={(e) => setForm({ ...form, blocks_work: e.target.checked })}
+              />
+              Impede de trabalhar
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                data-testid="draft-field-deadline-today"
+                className="size-4 accent-cta"
+                checked={form.deadline_today ?? false}
+                onChange={(e) => setForm({ ...form, deadline_today: e.target.checked })}
+              />
+              Compromisso hoje
+            </label>
+            <span className="w-full text-label text-ink-3">A prioridade e o prazo são recalculados ao salvar.</span>
+          </div>
+        )}
       </div>
 
       {(pending || part.status === 'failed') && (
