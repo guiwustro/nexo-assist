@@ -1,7 +1,7 @@
 import { RequestContext } from '@mastra/core/request-context';
 import type { UIMessageStreamWriter } from 'ai';
 import { TZDate } from '@date-fns/tz';
-import { and, eq, gte, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, ne, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { aiAgentRuns, conversations, knowledgeArticles, llmCalls } from '@/lib/db/schema';
 import { env, serverNow } from '@/lib/env';
@@ -118,15 +118,23 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         },
       },
     );
+    const caso = await resumoDoCaso(i.conversation_id, run_id);
     await createHandoff(
       {
         conversation_id: i.conversation_id,
+        ticket_code: reg.conversation.focus_ticket_code,
         origin: 'session_limit',
         reason_code: 'session_limit',
         level: 'N1',
         employee_words: i.text,
-        agent_reading: `A sessão chegou a ${limit} mensagens sem resolver; confira o histórico.`,
-        attempts: [],
+        agent_reading: [
+          `A sessão chegou a ${limit} mensagens sem resolver.`,
+          caso.resumos.length ? `Assuntos dos últimos turnos: ${caso.resumos.map((r) => `"${r}"`).join('; ')}.` : '',
+          reg.conversation.focus_ticket_code ? `Chamado em foco: ${reg.conversation.focus_ticket_code}.` : '',
+        ]
+          .filter(Boolean)
+          .join(' '),
+        attempts: caso.tentativas,
       },
       now,
     );
@@ -477,6 +485,25 @@ async function transferirSeComAgent(input: Parameters<typeof createHandoff>[0], 
     if (e instanceof Conflict && e.code === 'invalid_transition') return false;
     throw e;
   }
+}
+
+/**
+ * Resumo do caso para a passagem sem modelo (limite da sessão): o que o agent entendeu nos últimos turnos e o que
+ * ele já fez, a partir dos runs gravados. Sem chamada ao modelo, para não gastar token numa sessão já no limite.
+ */
+async function resumoDoCaso(conversationId: string, exceptRunId: string): Promise<{ resumos: string[]; tentativas: ActionTrace[] }> {
+  const runs = await getDb()
+    .select({ decision: aiAgentRuns.decision, tool_calls: aiAgentRuns.tool_calls })
+    .from(aiAgentRuns)
+    .where(and(eq(aiAgentRuns.conversation_id, conversationId), ne(aiAgentRuns.id, exceptRunId), isNotNull(aiAgentRuns.decision)))
+    .orderBy(desc(aiAgentRuns.started_at))
+    .limit(5);
+  const resumos = [...new Set(runs.map((r) => r.decision!.understanding.summary))].slice(0, 3).reverse();
+  const vistas = new Set<string>();
+  const tentativas = runs
+    .flatMap((r) => r.tool_calls)
+    .filter((a) => a.result !== 'running' && !vistas.has(a.label) && vistas.add(a.label));
+  return { resumos, tentativas };
 }
 
 /** Chamado em foco da conversa (para a passagem levar o código e o prazo certo). Falha do legado não bloqueia. */

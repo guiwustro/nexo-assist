@@ -106,6 +106,24 @@ describe('runTurn', () => {
     expect(h?.reason_code).toBe('session_limit');
   });
 
+  it('a passagem pelo limite leva o resumo do caso, o que já foi tentado e o chamado em foco', async () => {
+    const vpn = await turno('Meu notebook não conecta na VPN, erro 809');
+    const [antes] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, vpn.run_id));
+    const resumo = antes!.decision!.understanding.summary;
+    await t.db
+      .update(conversations)
+      .set({ session_message_count: 29, focus_ticket_code: 'INC-20298' })
+      .where(eq(conversations.id, vpn.conversation_id));
+
+    const r = await turno('mais uma pergunta');
+    expect(r.outcome).toBe('limit');
+    const [h] = await t.db.select().from(handoffs).where(eq(handoffs.conversation_id, vpn.conversation_id));
+    expect(h?.agent_reading).toContain(resumo);
+    expect(h?.agent_reading).not.toMatch(/confira o histórico\.$/);
+    expect(h?.attempts.map((a) => a.label)).toContain('buscou na central de ajuda');
+    expect(h?.ticket_code).toBe('INC-20298');
+  });
+
   it('confiança 0.41 transfere para N1 com motivo low_confidence', async () => {
     const r = await turno('não sei explicar o que houve com o sistema');
     expect(r.outcome).toBe('transferred');
