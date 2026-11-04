@@ -39,6 +39,13 @@ describe('parseEnv', () => {
   });
 });
 
+describe('parseEnv: modelo', () => {
+  it('sem MODEL_ID usa deepseek-flash, o modelo da tabela de preços atual da DeepSeek', () => {
+    const { MODEL_ID: _ignorado, ...semModelo } = base;
+    expect(parseEnv({ ...semModelo, LLM_PROVIDER: 'scripted' }).MODEL_ID).toBe('deepseek-flash');
+  });
+});
+
 describe('parseEnv com .env copiado do exemplo', () => {
   it('trata valores vazios como ausentes', () => {
     const env = parseEnv({ ...base, LLM_PROVIDER: 'scripted', DEEPSEEK_API_KEY: '', LLM_DAILY_BUDGET_CENTS: '' });

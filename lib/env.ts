@@ -14,7 +14,7 @@ const EnvSchema = z
     TICKETS_URL: z.string().url().default('http://localhost:4001'),
     TICKETS_INTERNAL_SECRET: z.string().min(8),
     LLM_PROVIDER: z.enum(['deepseek', 'scripted']).default('scripted'),
-    MODEL_ID: z.string().min(1).default('deepseek-chat'),
+    MODEL_ID: z.string().min(1).default('deepseek-flash'),
     DEEPSEEK_API_KEY: z.string().min(1).optional(),
     LOW_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.6),
     SESSION_MESSAGE_LIMIT: z.coerce.number().int().positive().default(30),

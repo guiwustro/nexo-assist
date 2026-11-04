@@ -19,7 +19,7 @@ export const E2E_ENV: Record<string, string> = {
   TICKETS_CHAOS_ENABLED: 'true',
   TICKETS_FAILURE_RATE: '0',
   LLM_PROVIDER: 'scripted',
-  MODEL_ID: 'deepseek-chat',
+  MODEL_ID: 'deepseek-flash',
   SESSION_MESSAGE_LIMIT: '30',
   LOW_CONFIDENCE_THRESHOLD: '0.6',
   RATE_LIMIT_PER_MINUTE: '1000',
