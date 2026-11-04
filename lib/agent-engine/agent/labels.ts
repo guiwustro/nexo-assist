@@ -9,21 +9,21 @@ export function labelsFor(tool: string, input: unknown, output: unknown): string
   if (out?.error === 'tickets_unavailable') return [UNAVAILABLE_LABEL];
   const inp = asObj(input);
   switch (tool) {
-    case 'buscar_meus_chamados':
+    case 'list_my_tickets':
       return ['consultou seus chamados'];
-    case 'ver_chamado': {
+    case 'get_ticket': {
       const code = String((asObj(out?.ticket)?.code as string | undefined) ?? inp?.code ?? 'chamado');
       return out?.found === false ? [`consultou o ${code}`] : [`consultou o ${code}`, 'calculou o prazo'];
     }
-    case 'buscar_artigos':
+    case 'search_articles':
       return ['buscou na central de ajuda'];
-    case 'montar_rascunho':
+    case 'build_draft':
       // Recusado por duplicidade: só os chamados foram consultados, nenhum rascunho saiu.
       if (out?.error === 'possible_duplicate') return ['consultou seus chamados'];
       return ['classificou a prioridade', 'consultou o SLA', 'montou o rascunho'];
-    case 'transferir_para_analista':
+    case 'transfer_to_analyst':
       return ['transferiu para um analista'];
-    case 'oferecer_opcoes':
+    case 'offer_options':
       return [];
     default:
       return [tool.replace(/_/g, ' ')];

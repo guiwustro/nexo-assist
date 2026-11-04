@@ -30,8 +30,8 @@ export const SCRIPTS: Script[] = [
     steps: [
       {
         tool_calls: [
-          { name: 'buscar_meus_chamados', args: { status: 'open' } },
-          { name: 'buscar_artigos', args: { query: 'vpn erro 809' } },
+          { name: 'list_my_tickets', args: { status: 'open' } },
+          { name: 'search_articles', args: { query: 'vpn erro 809' } },
         ],
       },
       {
@@ -40,7 +40,7 @@ export const SCRIPTS: Script[] = [
             ? []
             : [
                 {
-                  name: 'oferecer_opcoes',
+                  name: 'offer_options',
                   args: { question: 'Qual é o sistema do seu notebook?', options: ['Windows 10', 'Windows 11'] },
                 },
               ],
@@ -82,7 +82,7 @@ export const SCRIPTS: Script[] = [
       {
         tool_calls: [
           {
-            name: 'oferecer_opcoes',
+            name: 'offer_options',
             args: { question: 'Quem mais está sem VPN?', options: ['Só eu', 'Minha equipe', 'Toda a empresa', 'Não sei'] },
           },
         ],
@@ -101,7 +101,7 @@ export const SCRIPTS: Script[] = [
       {
         tool_calls: [
           {
-            name: 'montar_rascunho',
+            name: 'build_draft',
             args: {
               kind: 'create',
               title: 'VPN não conecta no Windows 11 (erro 809)',
@@ -138,11 +138,11 @@ export const SCRIPTS: Script[] = [
     id: 'resolved',
     match: /resolvid|antig|encerrad|hist[oó]rico/i,
     steps: [
-      { tool_calls: [{ name: 'buscar_meus_chamados', args: { status: 'closed', show: true } }] },
+      { tool_calls: [{ name: 'list_my_tickets', args: { status: 'closed', show: true } }] },
       {
         text: (c) => {
           if (isDown(c)) return TICKETS_DOWN_MESSAGE;
-          const r = c.results.find((x) => x.toolName === 'buscar_meus_chamados')?.output as { tickets?: unknown[] } | undefined;
+          const r = c.results.find((x) => x.toolName === 'list_my_tickets')?.output as { tickets?: unknown[] } | undefined;
           const n = r?.tickets?.length ?? 0;
           if (n === 0) return 'Você ainda não tem chamados resolvidos.';
           return `Estes são os seus ${n === 1 ? 'chamado resolvido' : `${n} chamados resolvidos`}. Todos ficam também em "Meus chamados", no menu ao lado.`;
@@ -156,11 +156,11 @@ export const SCRIPTS: Script[] = [
     id: 'status',
     match: /status|como est[aá][\s\S]*chamado|meus chamados/i,
     steps: [
-      { tool_calls: [{ name: 'buscar_meus_chamados', args: { status: 'open', show: true } }] },
+      { tool_calls: [{ name: 'list_my_tickets', args: { status: 'open', show: true } }] },
       {
         text: (c) => {
           if (isDown(c)) return TICKETS_DOWN_MESSAGE;
-          const r = c.results.find((x) => x.toolName === 'buscar_meus_chamados')?.output as { tickets?: unknown[] } | undefined;
+          const r = c.results.find((x) => x.toolName === 'list_my_tickets')?.output as { tickets?: unknown[] } | undefined;
           const n = r?.tickets?.length ?? 0;
           if (n === 0) return 'Você não tem chamados abertos agora.';
           if (n === 1) return 'Este é o seu chamado aberto:';
@@ -174,10 +174,10 @@ export const SCRIPTS: Script[] = [
   {
     id: 'ticket-by-code',
     match: /^(INC|REQ)-\d+/i,
-    steps: [{ tool_calls: [{ name: 'ver_chamado', args: (c: StepCtx) => ({ code: c.match[0].toUpperCase() }) }] }, {
+    steps: [{ tool_calls: [{ name: 'get_ticket', args: (c: StepCtx) => ({ code: c.match[0].toUpperCase() }) }] }, {
       text: (c) => {
         if (isDown(c)) return TICKETS_DOWN_MESSAGE;
-        const r = c.results.find((x) => x.toolName === 'ver_chamado')?.output as
+        const r = c.results.find((x) => x.toolName === 'get_ticket')?.output as
           | { found?: boolean; overdue?: boolean; overdue_label?: string; sla_rule?: string; ticket?: { code: string; priority: string } }
           | undefined;
         if (!r || r.found === false || !r.ticket) {
@@ -216,7 +216,7 @@ export const SCRIPTS: Script[] = [
     id: 'hours-question',
     match: /hor[áa]rio/i,
     steps: [
-      { tool_calls: [{ name: 'buscar_artigos', args: { query: 'horário do service desk' } }] },
+      { tool_calls: [{ name: 'search_articles', args: { query: 'horário do service desk' } }] },
       { text: 'O service desk atende de segunda a sexta, das 8h às 18h. Chamados críticos têm plantão 24 horas.' },
     ],
     decision: ({ text }) =>

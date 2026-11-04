@@ -8,11 +8,11 @@ import { TurnDecisionSchema } from '@/lib/contracts/decision';
 const stub = (result: unknown = { ok: true }) =>
   tool({ inputSchema: z.record(z.string(), z.unknown()), execute: async () => result });
 const tools = {
-  buscar_meus_chamados: stub([]),
-  buscar_artigos: stub([{ slug: 'vpn-erro-809' }]),
-  oferecer_opcoes: stub({ shown: true }),
-  ver_chamado: stub({ found: false }),
-  montar_rascunho: stub({ draft_code: 'D-381' }),
+  list_my_tickets: stub([]),
+  search_articles: stub([{ slug: 'vpn-erro-809' }]),
+  offer_options: stub({ shown: true }),
+  get_ticket: stub({ found: false }),
+  build_draft: stub({ draft_code: 'D-381' }),
 };
 
 const run = (text: string) =>
@@ -26,8 +26,8 @@ const run = (text: string) =>
 describe('modelo roteirizado', () => {
   it('VPN 809: consulta chamados e artigos, depois oferece opções', async () => {
     const r = await run('VPN com erro 809');
-    expect(r.steps[0]?.toolCalls.map((c) => c.toolName)).toEqual(['buscar_meus_chamados', 'buscar_artigos']);
-    expect(r.steps[1]?.toolCalls[0]?.toolName).toBe('oferecer_opcoes');
+    expect(r.steps[0]?.toolCalls.map((c) => c.toolName)).toEqual(['list_my_tickets', 'search_articles']);
+    expect(r.steps[1]?.toolCalls[0]?.toolName).toBe('offer_options');
     expect(r.steps[1]?.toolCalls[0]?.input).toMatchObject({ options: ['Windows 10', 'Windows 11'] });
     expect(r.text.length).toBeGreaterThan(10);
   });
@@ -38,9 +38,9 @@ describe('modelo roteirizado', () => {
     expect(r.text).toMatch(/me contar/);
   });
 
-  it('código de chamado vira ver_chamado com o código capturado', async () => {
+  it('código de chamado vira get_ticket com o código capturado', async () => {
     const r = await run('INC-20388');
-    expect(r.steps[0]?.toolCalls[0]).toMatchObject({ toolName: 'ver_chamado', input: { code: 'INC-20388' } });
+    expect(r.steps[0]?.toolCalls[0]).toMatchObject({ toolName: 'get_ticket', input: { code: 'INC-20388' } });
     const r2 = await run('INC-20311 · Notebook lento após atualização');
     expect(r2.steps[0]?.toolCalls[0]?.input).toEqual({ code: 'INC-20311' });
   });
@@ -68,7 +68,7 @@ describe('modelo roteirizado', () => {
   it('usa o resultado das tools no texto final quando o sistema está fora', async () => {
     const r = await generateText({
       model: createScriptedModel(SCRIPTS),
-      tools: { ...tools, buscar_meus_chamados: stub({ ok: false, error: 'tickets_unavailable' }) },
+      tools: { ...tools, list_my_tickets: stub({ ok: false, error: 'tickets_unavailable' }) },
       messages: [{ role: 'user', content: 'qual o status do meu chamado?' }],
       stopWhen: isStepCount(5),
     });

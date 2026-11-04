@@ -187,7 +187,7 @@ describe('runTurn', () => {
           {
             tool_calls: [
               {
-                name: 'transferir_para_analista',
+                name: 'transfer_to_analyst',
                 args: { reason: 'overdue_ticket', reading: 'INC-20311 vencido, quer escalar', ticket_code: 'INC-20311' },
               },
             ],
@@ -251,7 +251,7 @@ describe('runTurn', () => {
           {
             tool_calls: [
               {
-                name: 'montar_rascunho',
+                name: 'build_draft',
                 args: {
                   kind: 'update',
                   target_code: 'INC-20298',
@@ -289,7 +289,7 @@ describe('runTurn', () => {
           {
             tool_calls: [
               {
-                name: 'montar_rascunho',
+                name: 'build_draft',
                 args: {
                   kind: 'create',
                   title: 'Sistema de vendas fora do ar',
@@ -302,7 +302,7 @@ describe('runTurn', () => {
                 },
               },
               {
-                name: 'transferir_para_analista',
+                name: 'transfer_to_analyst',
                 args: { reason: 'critical_priority', reading: 'Sistema de vendas parado para a equipe toda' },
               },
             ],
@@ -327,7 +327,7 @@ describe('runTurn', () => {
         id: 'dois-passos',
         match: /dois passos/i,
         steps: [
-          { text: 'Deixa eu conferir.', tool_calls: [{ name: 'buscar_meus_chamados', args: {} }] },
+          { text: 'Deixa eu conferir.', tool_calls: [{ name: 'list_my_tickets', args: {} }] },
           { text: 'Achei seus chamados.' },
         ],
         decision: {

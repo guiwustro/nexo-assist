@@ -4,23 +4,23 @@ import type { RequestContext } from '@mastra/core/request-context';
 import { TicketsRejectedError, TicketsTransportError } from '@/lib/agent-engine/edge/tickets/errors';
 import { labelsFor } from '@/lib/agent-engine/agent/labels';
 import type { ActionTrace } from '@/lib/contracts/decision';
-import { buscarArtigosTool } from './buscar-artigos';
-import { buscarMeusChamados } from './buscar-meus-chamados';
-import { montarRascunho } from './montar-rascunho';
-import { oferecerOpcoes } from './oferecer-opcoes';
-import { transferirParaAnalista } from './transferir';
+import { searchArticlesTool } from './search-articles';
+import { listMyTicketsTool } from './list-my-tickets';
+import { buildDraftTool } from './build-draft';
+import { offerOptionsTool } from './offer-options';
+import { transferToAnalystTool } from './transfer-to-analyst';
 import type { ToolCtx, ToolDef } from './types';
-import { verChamado } from './ver-chamado';
+import { getTicketTool } from './get-ticket';
 
 export type { ToolCtx } from './types';
 
 export const TOOL_DEFS = {
-  buscar_meus_chamados: buscarMeusChamados,
-  ver_chamado: verChamado,
-  buscar_artigos: buscarArtigosTool,
-  montar_rascunho: montarRascunho,
-  oferecer_opcoes: oferecerOpcoes,
-  transferir_para_analista: transferirParaAnalista,
+  list_my_tickets: listMyTicketsTool,
+  get_ticket: getTicketTool,
+  search_articles: searchArticlesTool,
+  build_draft: buildDraftTool,
+  offer_options: offerOptionsTool,
+  transfer_to_analyst: transferToAnalystTool,
 } as const satisfies Record<string, ToolDef>;
 
 export type ToolName = keyof typeof TOOL_DEFS;
@@ -52,17 +52,17 @@ export async function runTool(ctx: ToolCtx, name: ToolName, rawInput: unknown): 
     if (e instanceof TicketsTransportError) output = { ok: false, error: 'tickets_unavailable' };
     else if (e instanceof TicketsRejectedError) output = { ok: false, error: e.code };
     else {
-      console.error(`[tool ${name}] falhou`, e);
+      console.error(`[tool ${name}] failed`, e);
       output = { ok: false, error: 'internal_error' };
     }
   } finally {
     ctx.retry.current = null;
   }
   const err = (output as { error?: string } | null)?.error;
-  const finais = labelsFor(name, input, output);
+  const final = labelsFor(name, input, output);
   // Se o rótulo final mudou (ex.: "sistema indisponível"), os ids de "running" são reaproveitados.
   emit(
-    finais,
+    final,
     err === 'tickets_unavailable' || err === 'internal_error' ? 'error' : 'ok',
     err && err !== 'possible_duplicate' ? describeError(err) : def.summary(output, input, ctx),
   );

@@ -6,8 +6,8 @@ import type { Priority } from '@/lib/contracts/enums';
 import { createHandoff } from '@/lib/conversations/handoff';
 import { defineTool } from './types';
 
-export const transferirParaAnalista = defineTool({
-  name: 'transferir_para_analista',
+export const transferToAnalystTool = defineTool({
+  name: 'transfer_to_analyst',
   description:
     'Transfere a conversa para um analista humano, com um resumo do caso. Use quando o funcionário pedir, em caso crítico, ' +
     'chamado vencido que ele quer escalar, ou quando você não tiver segurança. Depois disso o agent fica pausado.',
@@ -45,7 +45,7 @@ export const transferirParaAnalista = defineTool({
         await ctx.tickets.transfer(input.ticket_code, { requester_id: ctx.employee_id, level, summary: input.reading });
       } catch (e) {
         if (!(e instanceof TicketsTransportError)) throw e;
-        console.warn(`[transferir] legado fora ao transferir ${input.ticket_code}; passagem já registrada no app`);
+        console.warn(`[transfer_to_analyst] legacy down while transferring ${input.ticket_code}; handoff already recorded in the app`);
       }
     }
     return { ok: true, level, note: 'Conversa transferida. Avise o funcionário que um analista vai continuar.' };

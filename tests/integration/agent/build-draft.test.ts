@@ -42,10 +42,10 @@ const base = {
   deadline_today: true,
 };
 
-describe('montar_rascunho', () => {
+describe('build_draft', () => {
   it('calcula Alta no servidor e grava o rascunho D-381 pendente', async () => {
     const { c, parts } = await ctx();
-    const out = (await runTool(c, 'montar_rascunho', { kind: 'create', ...base })) as {
+    const out = (await runTool(c, 'build_draft', { kind: 'create', ...base })) as {
       draft_code: string;
       priority: string;
       priority_rule: string;
@@ -63,26 +63,26 @@ describe('montar_rascunho', () => {
 
   it('reabrir INC-19877 (60 dias) → reopen_window_expired', async () => {
     const { c } = await ctx();
-    const out = await runTool(c, 'montar_rascunho', { kind: 'reopen', target_code: 'INC-19877', ...base });
+    const out = await runTool(c, 'build_draft', { kind: 'reopen', target_code: 'INC-19877', ...base });
     expect(out).toMatchObject({ ok: false, error: 'reopen_window_expired' });
     expect(await t.db.$count(ticketDrafts)).toBe(0);
   });
 
   it('reabrir INC-20150 (4 dias) → rascunho de reabertura', async () => {
     const { c } = await ctx();
-    const out = await runTool(c, 'montar_rascunho', { kind: 'reopen', target_code: 'INC-20150', ...base });
+    const out = await runTool(c, 'build_draft', { kind: 'reopen', target_code: 'INC-20150', ...base });
     expect(out).toMatchObject({ draft_code: 'D-381' });
   });
 
   it('atualizar chamado da Carla → found:false', async () => {
     const { c } = await ctx();
-    const out = await runTool(c, 'montar_rascunho', { kind: 'update', target_code: 'INC-20388', ...base, comment: 'x' });
+    const out = await runTool(c, 'build_draft', { kind: 'update', target_code: 'INC-20388', ...base, comment: 'x' });
     expect(out).toEqual({ found: false });
   });
 
   it('atualizar sem target_code → erro de entrada', async () => {
     const { c } = await ctx();
-    const out = await runTool(c, 'montar_rascunho', { kind: 'update', ...base });
+    const out = await runTool(c, 'build_draft', { kind: 'update', ...base });
     expect(out).toMatchObject({ ok: false, error: 'target_code_required' });
   });
 
@@ -91,7 +91,7 @@ describe('montar_rascunho', () => {
 
     it('criar com um aberto na mesma categoria → possible_duplicate, sem rascunho', async () => {
       const { c, parts, actions } = await ctx();
-      const out = await runTool(c, 'montar_rascunho', { kind: 'create', ...sharepoint });
+      const out = await runTool(c, 'build_draft', { kind: 'create', ...sharepoint });
       expect(out).toMatchObject({ ok: false, error: 'possible_duplicate', open_tickets: [{ code: 'INC-20298' }] });
       expect(await t.db.$count(ticketDrafts)).toBe(0);
       expect(parts).toHaveLength(0);
@@ -100,13 +100,13 @@ describe('montar_rascunho', () => {
 
     it('o agent confirma que é outro problema (distinct_from) → cria o rascunho', async () => {
       const { c } = await ctx();
-      const out = await runTool(c, 'montar_rascunho', { kind: 'create', ...sharepoint, distinct_from: ['INC-20298'] });
+      const out = await runTool(c, 'build_draft', { kind: 'create', ...sharepoint, distinct_from: ['INC-20298'] });
       expect(out).toMatchObject({ ok: true, draft_code: 'D-381' });
     });
 
     it('chamados resolvidos não contam', async () => {
       const { c } = await ctx();
-      const out = await runTool(c, 'montar_rascunho', {
+      const out = await runTool(c, 'build_draft', {
         kind: 'create',
         ...base,
         title: 'Outlook não sincroniza no celular',
@@ -118,7 +118,7 @@ describe('montar_rascunho', () => {
     it('sistema de chamados fora: não dá para checar, o rascunho sai mesmo assim', async () => {
       const { c } = await ctx();
       (c.tickets as FakeTickets).down = true;
-      const out = await runTool(c, 'montar_rascunho', { kind: 'create', ...sharepoint });
+      const out = await runTool(c, 'build_draft', { kind: 'create', ...sharepoint });
       expect(out).toMatchObject({ ok: true });
     });
   });

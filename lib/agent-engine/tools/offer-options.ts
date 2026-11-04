@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { defineTool } from './types';
 
-export const oferecerOpcoes = defineTool({
-  name: 'oferecer_opcoes',
+export const offerOptionsTool = defineTool({
+  name: 'offer_options',
   description:
     'Mostra uma pergunta com 2 a 4 opções rápidas clicáveis. Use quando faltar um campo do chamado (ex.: quem está afetado: "Só eu", "Minha equipe", "Toda a empresa", "Não sei").',
   inputSchema: z.object({

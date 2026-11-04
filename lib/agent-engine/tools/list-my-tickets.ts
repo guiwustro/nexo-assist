@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { describeOverdue, isOverdue } from '@/lib/rules/overdue';
 import { defineTool } from './types';
 
-export const buscarMeusChamados = defineTool({
-  name: 'buscar_meus_chamados',
+export const listMyTicketsTool = defineTool({
+  name: 'list_my_tickets',
   description:
     'Lista os chamados do próprio funcionário (identidade vem da sessão). Use SEMPRE antes de montar um rascunho, para evitar duplicidade. ' +
     'Passe show=true só quando o funcionário quer ver os chamados (ex.: "qual o status do meu chamado?") — aí a lista aparece para ele escolher. ' +
@@ -33,8 +33,8 @@ export const buscarMeusChamados = defineTool({
       for (const t of list) ctx.turn?.sources.push({ kind: 'ticket', id: t.code, title: t.title });
       if (list.length === 1) {
         const t = list[0]!;
-        const atraso = describeOverdue(t, ctx.now);
-        ctx.emitPart({ kind: 'ticket_card', ticket: t, overdue: atraso !== null, ...(atraso ? { overdue_label: atraso } : {}) });
+        const delay = describeOverdue(t, ctx.now);
+        ctx.emitPart({ kind: 'ticket_card', ticket: t, overdue: delay !== null, ...(delay ? { overdue_label: delay } : {}) });
       } else if (list.length > 1) {
         ctx.emitPart({
           kind: 'ticket_selector',

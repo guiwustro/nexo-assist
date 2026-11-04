@@ -101,9 +101,9 @@ A divisão é: **o modelo interpreta, o código decide o que tem regra.**
 | Código (`guardrails/`) | O agent prometeu um analista sem transferir → o sistema transfere. Disse que criou um chamado → aviso "o chamado ainda não foi criado". Fonte que nenhuma tool retornou → descartada. Rascunho de chamado novo com outro aberto na mesma categoria → recusado até o agent atualizar o existente ou dizer que é outro problema |
 | Funcionário | Criar, atualizar ou reabrir chamado: **só o clique em Confirmar** cria (idempotente) |
 
-**Tools** (identidade sempre da sessão, nunca do modelo): `buscar_artigos`, `buscar_meus_chamados`,
-`ver_chamado`, `montar_rascunho` (o modelo informa *quem é afetado / impede de trabalhar / compromisso hoje*; a
-prioridade é calculada), `oferecer_opcoes` (opções rápidas), `transferir_para_analista`.
+**Tools** (identidade sempre da sessão, nunca do modelo): `search_articles`, `list_my_tickets`,
+`get_ticket`, `build_draft` (o modelo informa *quem é afetado / impede de trabalhar / compromisso hoje*; a
+prioridade é calculada), `offer_options` (opções rápidas), `transfer_to_analyst`.
 
 **Um turno** (`lib/agent-engine/agent/run-turn.ts`):
 

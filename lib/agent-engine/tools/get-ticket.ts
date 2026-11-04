@@ -6,8 +6,8 @@ import { describeOverdue } from '@/lib/rules/overdue';
 import { computeDeadline } from '@/lib/rules/deadline';
 import { defineTool } from './types';
 
-export const verChamado = defineTool({
-  name: 'ver_chamado',
+export const getTicketTool = defineTool({
+  name: 'get_ticket',
   description:
     'Mostra um chamado do próprio funcionário pelo código (INC-… ou REQ-…), com status e se está vencido. ' +
     'Chamado de outra pessoa e inexistente dão a mesma resposta: found=false. Nunca cite um chamado que não veio desta tool.',
@@ -15,18 +15,18 @@ export const verChamado = defineTool({
   async run(ctx, input) {
     try {
       const ticket = await ctx.tickets.get(input.code, ctx.employee_id);
-      const atraso = describeOverdue(ticket, ctx.now);
-      ctx.emitPart({ kind: 'ticket_card', ticket, overdue: atraso !== null, ...(atraso ? { overdue_label: atraso } : {}) });
+      const delay = describeOverdue(ticket, ctx.now);
+      ctx.emitPart({ kind: 'ticket_card', ticket, overdue: delay !== null, ...(delay ? { overdue_label: delay } : {}) });
       if (ctx.turn) {
         ctx.turn.sources.push({ kind: 'ticket', id: ticket.code, title: ticket.title });
         ctx.turn.focus_ticket_code = ticket.code;
-        if (atraso) ctx.turn.overdue_ticket_code = ticket.code;
+        if (delay) ctx.turn.overdue_ticket_code = ticket.code;
       }
       return {
         found: true,
         ticket,
-        overdue: atraso !== null,
-        overdue_label: atraso,
+        overdue: delay !== null,
+        overdue_label: delay,
         sla_rule: computeDeadline(ticket.priority, new Date(ticket.last_update_at)).rule,
       };
     } catch (e) {

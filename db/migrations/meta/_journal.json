@@ -36,6 +36,13 @@
       "when": 1793800568432,
       "tag": "0004_user_password_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793802888634,
+      "tag": "0005_tool_names_en",
+      "breakpoints": true
     }
   ]
 }

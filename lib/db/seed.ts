@@ -342,7 +342,7 @@ export async function resetAndSeed(url: string, now: Date = new Date()): Promise
                 {
                   id: 'seed-1',
                   label: 'buscou na central de ajuda',
-                  tool: 'buscar_artigos',
+                  tool: 'search_articles',
                   result: 'ok',
                   duration_ms: 12,
                   summary: 'nenhum artigo relacionado',

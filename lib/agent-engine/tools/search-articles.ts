@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { searchArticles } from '@/lib/agent-engine/knowledge/search';
 import { defineTool } from './types';
 
-export const buscarArtigosTool = defineTool({
-  name: 'buscar_artigos',
+export const searchArticlesTool = defineTool({
+  name: 'search_articles',
   description:
     'Busca na central de ajuda. Use para dúvidas e antes de abrir chamado: se um artigo resolve, responda com ele (atenção ao campo applies_to, ex.: só Windows 10).',
   inputSchema: z.object({ query: z.string().min(2).max(200) }),

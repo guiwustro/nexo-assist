@@ -9,8 +9,8 @@ import { computePriority } from '@/lib/rules/priority';
 import { canReopen } from '@/lib/rules/reopening';
 import { defineTool } from './types';
 
-export const montarRascunho = defineTool({
-  name: 'montar_rascunho',
+export const buildDraftTool = defineTool({
+  name: 'build_draft',
   description:
     'Monta o RASCUNHO de um chamado para o funcionário conferir. Não cria nada: só o clique em Confirmar cria. ' +
     'A prioridade e o prazo são calculados pelo sistema a partir de affected, blocks_work e deadline_today (Anexo A). ' +
@@ -40,10 +40,10 @@ export const montarRascunho = defineTool({
     if (input.kind !== 'create' && !input.target_code) return { ok: false, error: 'target_code_required' };
     if (input.target_code) {
       try {
-        const alvo = await ctx.tickets.get(input.target_code, ctx.employee_id);
+        const target = await ctx.tickets.get(input.target_code, ctx.employee_id);
         if (input.kind === 'reopen') {
-          const r = canReopen(alvo, ctx.now);
-          if (!r.ok) return { ok: false, error: 'reopen_window_expired', regra: r.rule };
+          const r = canReopen(target, ctx.now);
+          if (!r.ok) return { ok: false, error: 'reopen_window_expired', rule: r.rule };
         }
       } catch (e) {
         if (e instanceof TicketsNotFoundError) return { found: false };
@@ -51,20 +51,20 @@ export const montarRascunho = defineTool({
       }
     }
     if (input.kind === 'create') {
-      const parecidos = await abertosNaCategoria(ctx, input.category, input.distinct_from ?? []);
-      if (parecidos.length) {
+      const similar = await openInCategory(ctx, input.category, input.distinct_from ?? []);
+      if (similar.length) {
         return {
           ok: false,
           error: 'possible_duplicate',
-          open_tickets: parecidos,
+          open_tickets: similar,
           note:
             'O funcionário já tem chamado aberto nesta categoria. Se for o mesmo problema, monte kind=update nele (sem duplicar). ' +
             'Se for outro problema, monte de novo com distinct_from contendo os códigos.',
         };
       }
     }
-    const prioridade = computePriority(input);
-    const prazo = computeDeadline(prioridade.priority, ctx.now);
+    const priority = computePriority(input);
+    const deadline = computeDeadline(priority.priority, ctx.now);
     const payload: DraftPayload = {
       title: input.title,
       description: input.description,
@@ -73,9 +73,9 @@ export const montarRascunho = defineTool({
       affected: input.affected,
       blocks_work: input.blocks_work,
       deadline_today: input.deadline_today,
-      priority: prioridade.priority,
-      priority_rule: prioridade.rule,
-      due_at: prazo.due_at.toISOString(),
+      priority: priority.priority,
+      priority_rule: priority.rule,
+      due_at: deadline.due_at.toISOString(),
       ...(input.comment ? { comment: input.comment } : {}),
     };
     const draft = await createDraft({
@@ -95,16 +95,16 @@ export const montarRascunho = defineTool({
       payload,
     });
     if (ctx.turn) {
-      ctx.turn.draft_priority = prioridade.priority;
+      ctx.turn.draft_priority = priority.priority;
       ctx.turn.draft_kind = input.kind;
     }
     return {
       ok: true,
       draft_code: draft.code,
       draft_id: draft.id,
-      priority: prioridade.priority,
-      priority_rule: prioridade.rule,
-      sla_rule: prazo.rule,
+      priority: priority.priority,
+      priority_rule: priority.rule,
+      sla_rule: deadline.rule,
       due_at: payload.due_at,
       note: 'Rascunho mostrado ao funcionário. O chamado ainda NÃO existe: peça para conferir e clicar em Confirmar.',
     };
@@ -131,15 +131,15 @@ export const montarRascunho = defineTool({
  * Chamados abertos do funcionário na mesma categoria (checagem determinística contra duplicidade, além do prompt).
  * Sistema de chamados fora: não dá para checar, e o rascunho segue — a confirmação depende do sistema de qualquer jeito.
  */
-async function abertosNaCategoria(
-  ctx: Parameters<typeof montarRascunho.run>[0],
+async function openInCategory(
+  ctx: Parameters<typeof buildDraftTool.run>[0],
   category: string,
-  conferidos: string[],
+  checked: string[],
 ): Promise<Array<{ code: string; title: string; status: string }>> {
   try {
-    const abertos = await ctx.tickets.listByRequester(ctx.employee_id, 'open');
-    return abertos
-      .filter((t) => t.category === category && !conferidos.includes(t.code))
+    const OPEN_STATUSES = await ctx.tickets.listByRequester(ctx.employee_id, 'open');
+    return OPEN_STATUSES
+      .filter((t) => t.category === category && !checked.includes(t.code))
       .map((t) => ({ code: t.code, title: t.title, status: t.status }));
   } catch (e) {
     if (e instanceof TicketsTransportError) return [];

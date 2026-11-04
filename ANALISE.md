@@ -178,8 +178,8 @@ Tudo que é regra dura vira função pura testável; o LLM só preenche as entra
 |---|---|
 | Tipo INC × REQ | Modelo classifica (com motivo + confiança). Validado por Zod (enum). |
 | Categorias (6) | Enum fechado. Modelo escolhe; "Outros" quando incerto. |
-| Campos obrigatórios (título, descrição, tipo, categoria, prioridade, afetados) | Tool `montar_rascunho` com schema Zod; se faltar campo, o agent **pergunta** (com opções rápidas) em vez de inventar. |
-| **Rascunho antes de criar** | **Garantido pela arquitetura, não pelo prompt:** o agent só tem a tool `montar_rascunho`. Quem cria de fato é o **clique em Confirmar** → API → serviço de chamados. O modelo não tem como criar sem confirmação. |
+| Campos obrigatórios (título, descrição, tipo, categoria, prioridade, afetados) | Tool `build_draft` com schema Zod; se faltar campo, o agent **pergunta** (com opções rápidas) em vez de inventar. |
+| **Rascunho antes de criar** | **Garantido pela arquitetura, não pelo prompt:** o agent só tem a tool `build_draft`. Quem cria de fato é o **clique em Confirmar** → API → serviço de chamados. O modelo não tem como criar sem confirmação. |
 | Sem duplicidade | Tool `buscar_chamados_do_funcionario` antes de qualquer rascunho; regra determinística: existe aberto na mesma categoria → modelo julga se é o mesmo problema → rascunho de **atualização** em vez de criação. Resolvido há ≤ 7 dias → oferta de **reabrir** (função pura `podeReabrir(ticket, agora)`). |
 | **Prioridade = impacto × urgência** | Modelo extrai só `impacto` (eu / equipe / empresa) e `urgencia` (compromisso hoje? há alternativa?). Função pura `calcularPrioridade(impacto, urgencia)` dá Crítica/Alta/Média/Baixa. Cada saída carrega a **regra aplicada** em texto ("Alta: impede uma pessoa de trabalhar com compromisso no mesmo dia"). |
 | Prazos (1h / 4h úteis / 3 dias úteis / 5 dias úteis) | Função pura `calcularPrazo(prioridade, desde)` com **horário útil 8h–18h seg–sex**; Crítica conta **corrido** (plantão 24h). Testes unitários cobrindo virada de dia/fim de semana. |
@@ -248,7 +248,7 @@ desafio-tecnico-nexo-assist/
 │  ├─ components/console/            # ConversationList, TakeoverBar, TicketHistory, SystemEvent
 │  ├─ agent/
 │  │  ├─ nexo-agent.ts               # definição Mastra (instruções + tools)
-│  │  ├─ tools/                      # buscar_artigos, buscar_chamados, ver_chamado, montar_rascunho, transferir…
+│  │  ├─ tools/                      # search_articles, buscar_chamados, get_ticket, build_draft, transferir…
 │  │  ├─ regras/                     # prioridade.ts, prazo.ts, horario-util.ts, reabertura.ts, escopo.ts  (PURAS + testes)
 │  │  ├─ gatilhos/                   # transferência (puros + testes)
 │  │  ├─ guardrails/                 # promessa-de-analista, vazamento de chamado alheio
@@ -439,16 +439,16 @@ vale trazer — **em versão enxuta**.
 
 **Abrir chamado (Tela 2)**
 1. Funcionária: "Notebook não conecta na VPN, erro 809".
-2. Tools: `buscar_chamados` (nenhum aberto sobre VPN) → `buscar_artigos` (artigo 809 só Win10).
+2. Tools: `buscar_chamados` (nenhum aberto sobre VPN) → `search_articles` (artigo 809 só Win10).
 3. Falta SO / afetados → pergunta com **opções rápidas** (Só eu / Minha equipe / Toda a empresa / Não sei).
 4. Resposta: "Só eu, reunião às 14h" → modelo extrai impacto=individual, urgência=compromisso hoje →
-   `calcularPrioridade` = **Alta** → `calcularPrazo` = 4h úteis → `montar_rascunho`.
+   `calcularPrioridade` = **Alta** → `calcularPrazo` = 4h úteis → `build_draft`.
 5. UI mostra **DraftCard** "Aguardando confirmação" → clique **Confirmar** → API → serviço (com idempotency) →
    mensagem de sistema "INC-20517 criado" + card do chamado.
 
 **Consultar status (Tela 3)**
 1. "Qual o status do meu chamado?" → `buscar_chamados` → 3 abertos → **TicketSelector**.
-2. Seleção → `ver_chamado` + `estaVencido` → **TicketCard** "há 5 dias · prazo vencido".
+2. Seleção → `get_ticket` + `estaVencido` → **TicketCard** "há 5 dias · prazo vencido".
 3. Vencido → gatilho oferece analista (Falar com analista / Adicionar informação / Não, obrigado).
 
 **Transferir (Telas 4 e 5)**
