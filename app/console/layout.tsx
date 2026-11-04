@@ -5,5 +5,5 @@ export const dynamic = 'force-dynamic';
 
 export default async function ConsoleLayout({ children }: { children: React.ReactNode }) {
   const { user } = await requirePageUser('analyst');
-  return <ConsoleFrame me={{ name: user.name }}>{children}</ConsoleFrame>;
+  return <ConsoleFrame me={{ name: user.name, email: user.email, support_level: user.support_level }}>{children}</ConsoleFrame>;
 }

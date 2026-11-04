@@ -2,8 +2,9 @@
 
 import { LogOut, MessageSquare, UserRound } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { NexoMark } from '@/components/ui/NexoMark';
+import { useSair } from '@/lib/client/use-sair';
 
 const NAV = [
   { href: '/atendimento', label: 'Atendimento', Icon: MessageSquare },
@@ -12,13 +13,7 @@ const NAV = [
 
 export function Sidebar({ name, email, initials }: { name: string; email: string; initials: string }) {
   const path = usePathname();
-  const router = useRouter();
-
-  async function sair() {
-    await fetch('/api/v1/auth/logout', { method: 'POST' }).catch(() => null);
-    router.replace('/login');
-    router.refresh();
-  }
+  const sair = useSair();
 
   return (
     <aside className="flex h-screen w-[232px] shrink-0 flex-col border-r border-rule px-3.5 pt-5 pb-3.5">

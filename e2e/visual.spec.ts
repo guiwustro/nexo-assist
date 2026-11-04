@@ -15,6 +15,20 @@ test.describe('capturas das telas', () => {
     await page.screenshot({ path: 'test-results/telas/perfil.png' });
   });
 
+  test('console-menu-conta', async ({ page, loginAs }) => {
+    await loginAs(page, 'rafael');
+    await page.getByTestId('console-user').click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await page.screenshot({ path: 'test-results/telas/console-menu-conta.png' });
+  });
+
+  test('console-perfil', async ({ page, loginAs }) => {
+    await loginAs(page, 'rafael');
+    await page.goto('/console/perfil');
+    await expect(page.getByTestId('perfil-nivel')).toBeVisible();
+    await page.screenshot({ path: 'test-results/telas/console-perfil.png' });
+  });
+
   test('chat-novo-chamado', async ({ page, loginAs }) => {
     await loginAs(page, 'ana');
     await enviar(page, 'Meu notebook não conecta na VPN desde ontem. Aparece o erro 809.');

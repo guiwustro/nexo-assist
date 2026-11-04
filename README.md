@@ -220,6 +220,9 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
 - REQ-10442 aparece "há 2 dias" em vez de "há 1 semana", para não cair exatamente no limite do prazo.
 - O seletor de chamados ordena pela última atualização, não pela ordem ilustrativa do protótipo.
 - "digitando…" na lista do console não foi implementado.
+- **Adição:** no protótipo o avatar do analista, no rail do console, não faz nada. Aqui ele abre um menu com nome,
+  e-mail, nível (N1/N2), "Meu perfil" (`/console/perfil`, o mesmo perfil do funcionário mais o nível de suporte) e
+  "Sair".
 
 ### Telas (capturas do E2E, `e2e/visual.spec.ts`)
 
@@ -231,6 +234,8 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
 | 4 — Console, conversa transferida | ![Console, transferida](docs/telas/console-transferida.png) |
 | 5 — Console, atendimento assumido | ![Console, assumida](docs/telas/console-assumida.png) |
 | 6 — Meu perfil | ![Meu perfil](docs/telas/perfil.png) |
+| Adição — menu do analista | ![Console, menu da conta](docs/telas/console-menu-conta.png) |
+| Adição — perfil do analista | ![Console, perfil](docs/telas/console-perfil.png) |
 
 ---
 

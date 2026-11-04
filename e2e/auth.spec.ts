@@ -50,6 +50,28 @@ test.describe('login e papéis', () => {
     await expect(page.getByTestId('topbar-status')).toHaveCount(0);
   });
 
+  test('analista sai do console pelo menu do avatar e as páginas exigem sessão', async ({ page, loginAs }) => {
+    await loginAs(page, 'rafael');
+    await page.getByTestId('console-user').click();
+    await page.getByRole('menuitem', { name: 'Sair' }).click();
+    await expect(page).toHaveURL(/\/login$/);
+    await page.goto('/console');
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test('analista abre o próprio perfil pelo menu do avatar e volta às conversas', async ({ page, loginAs }) => {
+    await loginAs(page, 'rafael');
+    await page.getByTestId('console-user').click();
+    await expect(page.getByRole('menu')).toContainText('rafael.lima@nexo.com.br');
+    await page.getByRole('menuitem', { name: 'Meu perfil' }).click();
+    await expect(page).toHaveURL(/\/console\/perfil$/);
+    await expect(page.getByTestId('perfil-email')).toContainText('rafael.lima@nexo.com.br');
+    await expect(page.getByTestId('perfil-nivel')).toContainText(/Analista N[12]/);
+    await page.getByRole('link', { name: 'Conversas' }).click();
+    await expect(page).toHaveURL(/\/console$/);
+    await expect(page.getByText('Selecione uma conversa')).toBeVisible();
+  });
+
   test('botão Entrar mostra spinner e fica desabilitado durante o envio', async ({ page }) => {
     await page.route('**/api/v1/auth/login', async (route) => {
       await new Promise((r) => setTimeout(r, 800));

@@ -1,18 +1,24 @@
 'use client';
 
 import { MessageCircle } from 'lucide-react';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { NexoMark } from '@/components/ui/NexoMark';
 import { api } from '@/lib/client/api';
 import { useEvents } from '@/lib/client/use-events';
 import type { QueueFilter, QueueItem } from '@/lib/conversations/queries';
-import { iniciaisDe } from './avatar';
 import { ConversationList } from './ConversationList';
+import { UserMenu, type ConsoleMe } from './UserMenu';
 
-export function ConsoleFrame({ me, children }: { me: { name: string }; children: React.ReactNode }) {
+/** Seções do console que não são conversa: o segundo pedaço da URL não é um id. */
+const SECOES = new Set(['perfil']);
+
+export function ConsoleFrame({ me, children }: { me: ConsoleMe; children: React.ReactNode }) {
   const path = usePathname();
-  const selectedId = path.split('/')[2] ?? null;
+  const segmento = path.split('/')[2] ?? null;
+  const selectedId = segmento && !SECOES.has(segmento) ? segmento : null;
+  const emConversas = !segmento || !SECOES.has(segmento);
   const [filter, setFilter] = useState<QueueFilter>('all');
   const [q, setQ] = useState('');
   const [items, setItems] = useState<QueueItem[] | null>(null);
@@ -51,8 +57,16 @@ export function ConsoleFrame({ me, children }: { me: { name: string }; children:
         <span className="flex size-10 items-center justify-center pb-2">
           <NexoMark size={22} color="#037AF6" />
         </span>
-        <span className="relative flex size-10 items-center justify-center rounded-bubble bg-paper" title="Conversas">
-          <MessageCircle size={19} className="text-ink" />
+        <Link
+          href="/console"
+          title="Conversas"
+          aria-label="Conversas"
+          aria-current={emConversas ? 'page' : undefined}
+          className={`relative flex size-10 items-center justify-center rounded-bubble ${
+            emConversas ? 'bg-paper' : 'hover:bg-paper/60'
+          }`}
+        >
+          <MessageCircle size={19} className={emConversas ? 'text-ink' : 'text-ink-3'} />
           {counts && counts.for_you > 0 && (
             <span
               data-testid="rail-badge"
@@ -61,12 +75,9 @@ export function ConsoleFrame({ me, children }: { me: { name: string }; children:
               {counts.for_you}
             </span>
           )}
-        </span>
+        </Link>
         <span className="flex-1" />
-        <span className="relative flex size-9 items-center justify-center rounded-full bg-primary-soft text-label font-bold text-primary-text">
-          {iniciaisDe(me.name)}
-          <span className="absolute right-0 bottom-0 size-2.5 rounded-full border-2 border-desk bg-success" />
-        </span>
+        <UserMenu me={me} />
       </nav>
       <ConversationList
         items={items}
