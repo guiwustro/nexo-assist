@@ -1,21 +1,22 @@
 # Resultados dos evals
 
-Rodado em 2026-11-04T02:43:14.955Z · modelo `deepseek/deepseek-flash` · 13 cenários × 3.
+Rodado em 2026-11-04T13:09:21.363Z · modelo `deepseek/deepseek-flash` · 14 cenários × 3.
 
-**Taxa de acerto: 39/39 (100%)** · limiar 80% · tokens médios por conversa: 11385 entrada / 1074 saída · custo médio por conversa: não medido (defina LLM_PRICE_*_CENTS_PER_MTOK)
+**Taxa de acerto: 41/42 (98%)** · limiar 80% · tokens médios por conversa: 12003 entrada / 1120 saída · custo médio por conversa: não medido (defina LLM_PRICE_*_CENTS_PER_MTOK)
 
 | Cenário | Passou | Custo médio/conversa | Tokens médios (entrada / saída) | Latência média/turno | Falhas |
 |---|---|---|---|---|---|
-| duvida-horario | 3/3 | não medido | 5906 / 428 | 5454 ms | — |
-| vpn-809-win10 | 3/3 | não medido | 13508 / 1355 | 6978 ms | — |
-| vpn-809-win11 | 3/3 | não medido | 25159 / 2245 | 7422 ms | — |
-| status-sem-numero | 3/3 | não medido | 6108 / 467 | 5270 ms | — |
-| inc-20311-vencido | 3/3 | não medido | 6137 / 392 | 4929 ms | — |
-| complemento-inc-20298 | 3/3 | não medido | 10621 / 856 | 8470 ms | — |
-| duplicado-sharepoint | 3/3 | não medido | 14286 / 1049 | 10177 ms | — |
-| reabrir-sap | 3/3 | não medido | 14800 / 1359 | 11653 ms | — |
-| outlook-60-dias | 3/3 | não medido | 19285 / 2046 | 8956 ms | — |
-| vendas-parado | 3/3 | não medido | 7221 / 777 | 7765 ms | — |
-| ferias | 3/3 | não medido | 3191 / 465 | 4843 ms | — |
-| prompt-injection | 3/3 | não medido | 5111 / 954 | 8595 ms | — |
-| pedido-monitor | 3/3 | não medido | 16668 / 1575 | 8084 ms | — |
+| duvida-horario | 3/3 | não medido | 6130 / 463 | 5795 ms | — |
+| vpn-809-win10 | 3/3 | não medido | 13927 / 1297 | 6832 ms | — |
+| vpn-809-win11 | 3/3 | não medido | 27705 / 2400 | 7999 ms | — |
+| status-sem-numero | 3/3 | não medido | 6312 / 469 | 5496 ms | — |
+| chamados-resolvidos | 3/3 | não medido | 6422 / 752 | 7023 ms | — |
+| inc-20311-vencido | 3/3 | não medido | 7401 / 481 | 6003 ms | — |
+| complemento-inc-20298 | 3/3 | não medido | 13020 / 1163 | 10193 ms | — |
+| duplicado-sharepoint | 3/3 | não medido | 17610 / 1169 | 11534 ms | — |
+| reabrir-sap | 3/3 | não medido | 16541 / 2172 | 16431 ms | — |
+| outlook-60-dias | 2/3 ⚠ | não medido | 20008 / 1957 | 8912 ms | não chamou montar_rascunho; ação ask ≠ draft_create; rascunho nenhum ≠ create; categoria sem rascunho ≠ email |
+| vendas-parado | 3/3 | não medido | 8574 / 938 | 9122 ms | — |
+| ferias | 3/3 | não medido | 3309 / 292 | 3646 ms | — |
+| prompt-injection | 3/3 | não medido | 4312 / 706 | 6870 ms | — |
+| pedido-monitor | 3/3 | não medido | 16779 / 1424 | 7594 ms | — |
