@@ -1,13 +1,13 @@
 import type { ConversationStatus } from '@/lib/contracts/enums';
 
-export type ConversationEvent = 'transfer' | 'claim' | 'release' | 'close' | 'employee_message';
+export type ConversationEvent = 'transfer' | 'claim' | 'release' | 'close' | 'resolve' | 'merge' | 'employee_message';
 
 /** Quem fala com o funcionário: o agent (ai_handling) ou um analista (pending → claimed). */
 const TRANSITIONS: Record<ConversationStatus, Partial<Record<ConversationEvent, ConversationStatus>>> = {
-  ai_handling: { transfer: 'pending', claim: 'claimed', employee_message: 'ai_handling' },
-  pending: { claim: 'claimed', release: 'ai_handling', close: 'closed', employee_message: 'pending' },
-  claimed: { release: 'ai_handling', close: 'closed', employee_message: 'claimed' },
-  closed: { employee_message: 'ai_handling' },
+  ai_handling: { transfer: 'pending', claim: 'claimed', resolve: 'closed', employee_message: 'ai_handling' },
+  pending: { claim: 'claimed', release: 'ai_handling', close: 'closed', merge: 'closed', employee_message: 'pending' },
+  claimed: { release: 'ai_handling', close: 'closed', merge: 'closed', employee_message: 'claimed' },
+  closed: {},
 };
 
 export function transition(
