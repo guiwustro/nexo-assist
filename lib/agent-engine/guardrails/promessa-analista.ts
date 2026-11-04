@@ -7,8 +7,14 @@ const PROMESSAS = [
   /\b(estou|to) (te )?(transferindo|encaminhando)\b/,
 ];
 
-/** O texto afirma (não oferece) que um humano vai assumir. */
+// Oferta condicional ("se preferir…", "caso continue…", "quer que eu…?") não é promessa: o funcionário decide.
+const CONDICIONAL = /\b(se|caso|quer que|prefere|preferir|posso)\b/;
+
+/** O texto afirma (não oferece) que um humano vai assumir. Avalia frase a frase; frase condicional ou pergunta não conta. */
 export function prometeuAnalista(texto: string): boolean {
-  const t = normalizar(texto);
-  return PROMESSAS.some((re) => re.test(t));
+  const frases = normalizar(texto).match(/[^.!?]+[.!?]*/g) ?? [];
+  return frases.some((f) => {
+    if (f.trim().endsWith('?') || CONDICIONAL.test(f)) return false;
+    return PROMESSAS.some((re) => re.test(f));
+  });
 }

@@ -14,6 +14,11 @@ describe('prometeuAnalista', () => {
     'Posso transferir para um analista, quer?',
     'Se preferir, um analista pode te ajudar.',
     'O analista respondeu ontem no chamado.',
+    'Se não resolver, vou te passar para um analista.',
+    'Se preferir, um analista vai te atender.',
+    'Caso o erro continue, vou te transferir para o suporte.',
+    'Quer que eu te transfira? Vou te passar para um analista se você confirmar.',
+    'Está vencido há 3 dias. Quer que eu vou te encaminhar para um analista?',
   ])('"%s" → não prometeu', (t) => expect(prometeuAnalista(t)).toBe(false));
 });
 
