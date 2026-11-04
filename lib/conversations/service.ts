@@ -1,7 +1,7 @@
-import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { Conflict, Forbidden, NotFound } from '@/lib/api/errors';
 import { getDb, type DbOrTx, type Tx } from '@/lib/db/client';
-import { conversations, messages, users } from '@/lib/db/schema';
+import { conversations, employeeSessions, messages, users } from '@/lib/db/schema';
 import { emitEvent } from '@/lib/event-log/emit';
 import type { ConversationStatus } from '@/lib/contracts/enums';
 import type { MessagePart } from '@/lib/contracts/parts';
@@ -21,24 +21,25 @@ export type Actor = { user_id: string; role: 'employee' | 'analyst' };
 export async function getOrCreateCurrent(employeeId: string, sid: string, loginAt: Date = new Date()): Promise<Conversation> {
   const db = getDb();
   const now = new Date();
-  await db
-    .insert(conversations)
-    .values({ employee_id: employeeId, session_id: sid, session_started_at: loginAt, session_message_count: 0 })
-    .onConflictDoNothing({ target: conversations.employee_id });
-  const [current] = await db.select().from(conversations).where(eq(conversations.employee_id, employeeId));
+  let [current] = await db.select().from(conversations).where(eq(conversations.employee_id, employeeId)).limit(1);
+  if (!current) {
+    await db
+      .insert(conversations)
+      .values({ employee_id: employeeId, status: 'ai_handling' })
+      .onConflictDoNothing({ target: conversations.employee_id, where: sql`status = 'ai_handling'` });
+    [current] = await db.select().from(conversations).where(eq(conversations.employee_id, employeeId)).limit(1);
+  }
   if (!current) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
-  if (current.session_id === sid) return current;
-  const [next] = await db
-    .update(conversations)
-    .set({ session_id: sid, session_started_at: loginAt, session_message_count: 0, updated_at: now })
-    .where(
-      and(
-        eq(conversations.id, current.id),
-        or(isNull(conversations.session_started_at), lt(conversations.session_started_at, loginAt)),
-      ),
-    )
-    .returning();
-  return next ?? current;
+  const [session] = await db.select().from(employeeSessions).where(eq(employeeSessions.employee_id, employeeId));
+  if (!session) {
+    await db.insert(employeeSessions).values({ employee_id: employeeId, session_id: sid, session_started_at: loginAt });
+  } else if (session.session_id !== sid && session.session_started_at < loginAt) {
+    await db
+      .update(employeeSessions)
+      .set({ session_id: sid, session_started_at: loginAt, message_count: 0, updated_at: now })
+      .where(eq(employeeSessions.employee_id, employeeId));
+  }
+  return current;
 }
 
 export async function getConversation(db: DbOrTx, id: string): Promise<Conversation | null> {
@@ -110,7 +111,18 @@ export async function registerEmployeeMessage(
   return getDb().transaction(async (tx) => {
     const [conv] = await tx.select().from(conversations).where(eq(conversations.id, conversationId)).for('update');
     if (!conv) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
-    const count = conv.session_message_count + 1;
+    let [session] = await tx
+      .select()
+      .from(employeeSessions)
+      .where(eq(employeeSessions.employee_id, conv.employee_id))
+      .for('update');
+    if (!session) {
+      [session] = await tx
+        .insert(employeeSessions)
+        .values({ employee_id: conv.employee_id, session_id: 'legacy', session_started_at: new Date(0) })
+        .returning();
+    }
+    const count = session!.message_count + 1;
     if (count > limit && !isWithAnalyst(conv.status as ConversationStatus)) {
       throw new Conflict('session_limit_reached', `Limite de ${limit} mensagens nesta sessão`, { limit });
     }
@@ -119,11 +131,15 @@ export async function registerEmployeeMessage(
     const [updated] = await tx
       .update(conversations)
       .set({
-        session_message_count: count,
+        updated_at: new Date(),
         ...(next !== conv.status ? { status: next, status_changed_at: new Date(), assigned_to_user_id: null } : {}),
       })
       .where(eq(conversations.id, conversationId))
       .returning();
+    await tx
+      .update(employeeSessions)
+      .set({ message_count: count, updated_at: new Date() })
+      .where(eq(employeeSessions.employee_id, conv.employee_id));
     const message = await appendMessage(tx, {
       conversation_id: conversationId,
       direction: 'inbound',
@@ -186,7 +202,13 @@ export async function applyTransition(
     const set =
       event === 'claim'
         ? { assigned_to_user_id: actor.user_id, assigned_at: changedAt, unread_count_for_assignee: 0 }
-        : { assigned_to_user_id: null, assigned_at: null };
+        : {
+            assigned_to_user_id: null,
+            assigned_at: null,
+            ...(event === 'close' || event === 'resolve' || event === 'merge'
+              ? { closed_at: now, closed_reason: event === 'close' ? 'analyst' : event === 'resolve' ? 'resolved' : 'merged' }
+              : {}),
+          };
     const updated = await tx
       .update(conversations)
       .set({ status: r.next, status_changed_at: changedAt, updated_at: changedAt, ...set })

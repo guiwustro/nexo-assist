@@ -50,6 +50,7 @@ export function toApiConversation(c: Conversation) {
     assigned_to_user_id: c.assigned_to_user_id,
     focus_ticket_code: c.focus_ticket_code,
     last_message_at: c.last_message_at?.toISOString() ?? null,
-    session_message_count: c.session_message_count,
+    closed_at: c.closed_at?.toISOString() ?? null,
+    closed_reason: c.closed_reason,
   };
 }

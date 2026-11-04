@@ -1,13 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { expect, test } from './fixtures';
 import { send } from './helpers';
-import { conversations } from '../lib/db/schema';
+import { conversations, employeeSessions } from '../lib/db/schema';
 import { DEMO_PASSWORD } from '../lib/db/seed-data';
 
 test('a 30ª mensagem da sessão transfere para um analista', async ({ page, loginAs, db, seed, browser }) => {
   await loginAs(page, 'diego');
   await expect(page.getByTestId('session-counter')).toContainText('0/30');
-  await db.update(conversations).set({ session_message_count: 29 }).where(eq(conversations.id, seed.conversations.diego!));
+  await db.update(employeeSessions).set({ message_count: 29 }).where(eq(employeeSessions.employee_id, seed.users.diego.id));
 
   await send(page, 'mais uma dúvida sobre a impressora');
   await expect(page.getByTestId('session-counter')).toContainText('30/30');
@@ -25,7 +25,7 @@ test('a 30ª mensagem da sessão transfere para um analista', async ({ page, log
 test('depois do limite o funcionário continua falando com o analista; de volta ao agent, vê o aviso', async ({ page, loginAs, db, seed }) => {
   await loginAs(page, 'diego');
   await expect(page.getByTestId('session-counter')).toContainText('0/30');
-  await db.update(conversations).set({ session_message_count: 29 }).where(eq(conversations.id, seed.conversations.diego!));
+  await db.update(employeeSessions).set({ message_count: 29 }).where(eq(employeeSessions.employee_id, seed.users.diego.id));
   await send(page, 'mais uma dúvida sobre a impressora');
   await expect(page.getByTestId('composer-input')).toHaveAttribute('placeholder', 'Conversa com analista');
 

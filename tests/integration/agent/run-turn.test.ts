@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { UIMessageStreamWriter } from 'ai';
 import { useTestDb } from '@/tests/helpers/db';
 import { createFakeTickets, type FakeTickets } from '@/tests/helpers/fake-tickets';
-import { aiAgentRuns, conversations, handoffs, llmCalls, messages } from '@/lib/db/schema';
+import { aiAgentRuns, conversations, employeeSessions, handoffs, llmCalls, messages } from '@/lib/db/schema';
 import { runTurn } from '@/lib/agent-engine/agent/run-turn';
 import { closeMemory } from '@/lib/agent-engine/agent/memory';
 import { setTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
@@ -98,7 +98,7 @@ describe('runTurn', () => {
 
   it('a 30ª mensagem transfere por limite da sessão', async () => {
     const conv = await getOrCreateCurrent(ana().user_id, 'sid-1');
-    await t.db.update(conversations).set({ session_message_count: 29 }).where(eq(conversations.id, conv.id));
+    await t.db.update(employeeSessions).set({ message_count: 29 }).where(eq(employeeSessions.employee_id, ana().user_id));
     const r = await runTurnFor('mais uma pergunta');
     expect(r.outcome).toBe('limit');
     expect(await t.db.$count(llmCalls)).toBe(0);
@@ -110,10 +110,8 @@ describe('runTurn', () => {
     const vpn = await runTurnFor('Meu notebook não conecta na VPN, erro 809');
     const [before] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, vpn.run_id));
     const summary = before!.decision!.understanding.summary;
-    await t.db
-      .update(conversations)
-      .set({ session_message_count: 29, focus_ticket_code: 'INC-20298' })
-      .where(eq(conversations.id, vpn.conversation_id));
+    await t.db.update(employeeSessions).set({ message_count: 29 }).where(eq(employeeSessions.employee_id, ana().user_id));
+    await t.db.update(conversations).set({ focus_ticket_code: 'INC-20298' }).where(eq(conversations.id, vpn.conversation_id));
 
     const r = await runTurnFor('mais uma pergunta');
     expect(r.outcome).toBe('limit');

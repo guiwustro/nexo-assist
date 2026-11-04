@@ -52,6 +52,7 @@ type Msg = {
 type ConvSeed = {
   key: UserKey;
   status: 'ai_handling' | 'pending' | 'closed';
+  closed_reason?: 'resolved';
   unread?: number;
   focus?: string;
   msgs: Msg[];
@@ -166,6 +167,7 @@ function seedConversations(now: number): ConvSeed[] {
     {
       key: 'fabio',
       status: 'closed',
+      closed_reason: 'resolved',
       msgs: [
         { at: now - 5 * H, direction: 'inbound', sent_via: 'user', body: 'A impressora não imprime nada' },
         {
@@ -180,6 +182,7 @@ function seedConversations(now: number): ConvSeed[] {
     {
       key: 'gabriela',
       status: 'closed',
+      closed_reason: 'resolved',
       msgs: [
         { at: now - D - 2 * H, direction: 'inbound', sent_via: 'user', body: 'Qual a senha do Wi-Fi de visitantes?' },
         {
@@ -288,6 +291,8 @@ export async function resetAndSeed(url: string, now: Date = new Date()): Promise
         .values({
           employee_id: employee.id,
           status: c.status,
+          closed_reason: c.closed_reason ?? null,
+          closed_at: c.status === 'closed' ? new Date(last.at) : null,
           status_changed_at: new Date(last.at),
           focus_ticket_code: c.focus ?? null,
           last_message_at: new Date(last.at),

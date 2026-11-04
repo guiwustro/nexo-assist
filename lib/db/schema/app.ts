@@ -57,9 +57,8 @@ export const conversations = pgTable(
     last_message_at: tstz('last_message_at'),
     last_message_preview: text('last_message_preview'),
     unread_count_for_assignee: integer('unread_count_for_assignee').notNull().default(0),
-    session_id: text('session_id'),
-    session_message_count: integer('session_message_count').notNull().default(0),
-    session_started_at: tstz('session_started_at'),
+    closed_at: tstz('closed_at'),
+    closed_reason: text('closed_reason'),
     summary: text('summary'),
     last_handoff_at: tstz('last_handoff_at'),
     last_handoff_reason: text('last_handoff_reason'),
@@ -68,15 +67,28 @@ export const conversations = pgTable(
     updated_at: tstz('updated_at').notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex('conversations_employee_unique').on(t.employee_id),
+    uniqueIndex('conversations_one_with_agent').on(t.employee_id).where(sql`${t.status} = 'ai_handling'`),
     index('conversations_status_idx').on(t.status, t.last_message_at),
+    index('conversations_employee_idx').on(t.employee_id, t.last_message_at),
     check('conversations_status_check', sql`${t.status} in ('ai_handling','pending','claimed','closed')`),
+    check('conversations_closed_reason_check', sql`${t.closed_reason} is null or ${t.closed_reason} in ('analyst','resolved','merged')`),
+    check('conversations_closed_requires_reason', sql`${t.status} <> 'closed' or ${t.closed_reason} is not null`),
     check(
       'conversations_claimed_has_assignee',
       sql`${t.status} <> 'claimed' or ${t.assigned_to_user_id} is not null`,
     ),
   ],
 );
+
+export const employeeSessions = pgTable('employee_sessions', {
+  employee_id: uuid('employee_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  session_id: text('session_id').notNull(),
+  session_started_at: tstz('session_started_at').notNull(),
+  message_count: integer('message_count').notNull().default(0),
+  updated_at: tstz('updated_at').notNull().defaultNow(),
+});
+
+export type EmployeeSession = typeof employeeSessions.$inferSelect;
 
 export const messages = pgTable(
   'messages',

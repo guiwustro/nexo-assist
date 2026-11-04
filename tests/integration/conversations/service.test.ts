@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { useTestDb } from '@/tests/helpers/db';
-import { conversations, eventLog, handoffs, messages } from '@/lib/db/schema';
+import { conversations, employeeSessions, eventLog, handoffs, messages } from '@/lib/db/schema';
 import {
   applyTransition,
   getOrCreateCurrent,
@@ -28,6 +28,11 @@ async function events(conversationId: string, type: string) {
     .where(and(eq(eventLog.conversation_id, conversationId), eq(eventLog.event_type, type)));
 }
 
+async function sessionCount(employeeId: string) {
+  const [session] = await t.db.select().from(employeeSessions).where(eq(employeeSessions.employee_id, employeeId));
+  return session?.message_count ?? 0;
+}
+
 describe('getOrCreateCurrent', () => {
   it('mesmo sid → mesma conversa e contador preservado; sid novo zera', async () => {
     const ana = t.seed.users.ana.id;
@@ -35,10 +40,10 @@ describe('getOrCreateCurrent', () => {
     await registerEmployeeMessage(c1.id, 'oi', 30);
     const c2 = await getOrCreateCurrent(ana, 'sid-a');
     expect(c2.id).toBe(c1.id);
-    expect(c2.session_message_count).toBe(1);
+    expect(await sessionCount(ana)).toBe(1);
     const c3 = await getOrCreateCurrent(ana, 'sid-b');
     expect(c3.id).toBe(c1.id);
-    expect(c3.session_message_count).toBe(0);
+    expect(await sessionCount(ana)).toBe(0);
   });
 
   it('dois aparelhos alternando não zeram o contador; só um login mais novo zera', async () => {
@@ -48,22 +53,23 @@ describe('getOrCreateCurrent', () => {
     const a1 = await getOrCreateCurrent(ana, 'sid-a', loginA);
     await registerEmployeeMessage(a1.id, 'oi do notebook', 30);
     const b1 = await getOrCreateCurrent(ana, 'sid-b', loginB);
-    expect(b1.session_message_count).toBe(0);
+    expect(await sessionCount(ana)).toBe(0);
     await registerEmployeeMessage(b1.id, 'oi do celular', 30);
     await registerEmployeeMessage(b1.id, 'de novo', 30);
 
     const a2 = await getOrCreateCurrent(ana, 'sid-a', loginA);
-    expect(a2.session_message_count).toBe(2);
+    expect(await sessionCount(ana)).toBe(2);
     await registerEmployeeMessage(a2.id, 'voltei ao notebook', 30);
     const b2 = await getOrCreateCurrent(ana, 'sid-b', loginB);
-    expect(b2.session_message_count).toBe(3);
+    expect(b2.id).toBe(a2.id);
+    expect(await sessionCount(ana)).toBe(3);
   });
 });
 
 describe('registerEmployeeMessage', () => {
   it('a 30ª atinge o limite e a 31ª é recusada', async () => {
     const conv = await getOrCreateCurrent(t.seed.users.ana.id, 'sid-a');
-    await t.db.update(conversations).set({ session_message_count: 29 }).where(eq(conversations.id, conv.id));
+    await t.db.update(employeeSessions).set({ message_count: 29 }).where(eq(employeeSessions.employee_id, t.seed.users.ana.id));
     const r = await registerEmployeeMessage(conv.id, 'trigésima', 30);
     expect(r).toMatchObject({ count: 30, reached_limit: true });
     const e = await errorOf(registerEmployeeMessage(conv.id, 'trigésima primeira', 30));
@@ -73,7 +79,7 @@ describe('registerEmployeeMessage', () => {
 
   it('com o analista, a mensagem passa do limite: o limite vale só para o agent', async () => {
     const carla = t.seed.conversations.carla!; // pendente, esperando um analista
-    await t.db.update(conversations).set({ session_message_count: 30 }).where(eq(conversations.id, carla));
+    await t.db.insert(employeeSessions).values({ employee_id: t.seed.users.carla.id, session_id: 'sid-c', session_started_at: t.now, message_count: 30 });
     const r = await registerEmployeeMessage(carla, 'ainda estou aqui', 30);
     expect(r.message.body).toBe('ainda estou aqui');
     await applyTransition(carla, 'claim', rafael());

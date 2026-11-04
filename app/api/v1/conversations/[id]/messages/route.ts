@@ -62,7 +62,7 @@ export const POST = withRoute({ role: 'any', params: Params, body: Body }, async
   // Funcionário: a conversa é sempre a dele (a da sessão); outra → 404.
   const conv = await getOrCreateCurrent(session.user_id, session.sid, loginAt(session));
   if (conv.id !== params.id) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
-  if (conv.session_message_count >= env.SESSION_MESSAGE_LIMIT && !isWithAnalyst(conv.status as ConversationStatus)) {
+  if (0 >= env.SESSION_MESSAGE_LIMIT && !isWithAnalyst(conv.status as ConversationStatus)) { // TODO(Task 3)
     throw new Conflict('session_limit_reached', `Limite de ${env.SESSION_MESSAGE_LIMIT} mensagens nesta sessão`);
   }
 

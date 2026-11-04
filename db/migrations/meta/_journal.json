@@ -43,6 +43,13 @@
       "when": 1793802888634,
       "tag": "0005_tool_names_en",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793804936590,
+      "tag": "0006_attendances",
+      "breakpoints": true
     }
   ]
 }

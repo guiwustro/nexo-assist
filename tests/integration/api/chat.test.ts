@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { useTestDb } from '@/tests/helpers/db';
 import { createFakeTickets } from '@/tests/helpers/fake-tickets';
 import { call, json } from '@/tests/helpers/api';
-import { conversations, messages } from '@/lib/db/schema';
+import { conversations, employeeSessions, messages } from '@/lib/db/schema';
 import { GET as current } from '@/app/api/v1/conversations/current/route';
 import { GET as listMessages, POST as postMessage } from '@/app/api/v1/conversations/[id]/messages/route';
 import { GET as getRun } from '@/app/api/v1/ai/runs/[id]/route';
@@ -53,7 +53,7 @@ describe('chat', () => {
 
   it('31ª mensagem pela API → 409', async () => {
     const id = await anaConversation();
-    await t.db.update(conversations).set({ session_message_count: 30 }).where(eq(conversations.id, id));
+    await t.db.update(employeeSessions).set({ message_count: 30 }).where(eq(employeeSessions.employee_id, t.seed.users.ana.id));
     const res = await call(postMessage, { session: ana(), method: 'POST', params: { id }, body: { text: 'oi' } });
     expect(res.status).toBe(409);
     expect((await json(res)).error?.code).toBe('session_limit_reached');
@@ -61,7 +61,8 @@ describe('chat', () => {
 
   it('depois da transferência pelo limite, o funcionário continua falando com o analista', async () => {
     const id = await anaConversation();
-    await t.db.update(conversations).set({ session_message_count: 30, status: 'pending' }).where(eq(conversations.id, id));
+    await t.db.update(employeeSessions).set({ message_count: 30 }).where(eq(employeeSessions.employee_id, t.seed.users.ana.id));
+    await t.db.update(conversations).set({ status: 'pending' }).where(eq(conversations.id, id));
     const res = await call(postMessage, { session: ana(), method: 'POST', params: { id }, body: { text: 'ainda preciso de ajuda' } });
     expect(res.status).toBe(200);
     await res.text();

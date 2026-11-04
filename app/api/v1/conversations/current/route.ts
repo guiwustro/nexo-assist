@@ -15,7 +15,7 @@ export const GET = withRoute({ role: 'employee' }, async ({ session, requestId }
       conversation: toApiConversation(conv),
       messages,
       next_cursor,
-      session: { count: conv.session_message_count, limit: env.SESSION_MESSAGE_LIMIT },
+      session: { count: 0, limit: env.SESSION_MESSAGE_LIMIT }, // TODO(Task 3)
     },
     { requestId },
   );
