@@ -29,6 +29,25 @@ test.describe('capturas das telas', () => {
     await page.screenshot({ path: 'test-results/telas/console-perfil.png' });
   });
 
+  test('console-busca', async ({ page, loginAs, seed }) => {
+    await loginAs(page, 'rafael');
+    await page.goto(`/console/${seed.conversations.carla}`);
+    await page.getByTestId('console-search').fill('analis');
+    await expect(page.getByTestId('conversation-match').first()).toBeVisible();
+    await page.getByTestId('header-search').click();
+    await page.getByRole('searchbox', { name: 'Buscar na conversa' }).fill('analista');
+    await expect(page.getByTestId('busca-contador')).toBeVisible();
+    await page.screenshot({ path: 'test-results/telas/console-busca.png' });
+  });
+
+  test('console-detalhe-chamado', async ({ page, loginAs, seed }) => {
+    await loginAs(page, 'rafael');
+    await page.goto(`/console/${seed.conversations.carla}`);
+    await page.getByTestId('employee-ticket-REQ-10460').click();
+    await expect(page.getByTestId('ticket-detail')).toContainText('Histórico');
+    await page.screenshot({ path: 'test-results/telas/console-detalhe-chamado.png' });
+  });
+
   test('chat-novo-chamado', async ({ page, loginAs }) => {
     await loginAs(page, 'ana');
     await enviar(page, 'Meu notebook não conecta na VPN desde ontem. Aparece o erro 809.');

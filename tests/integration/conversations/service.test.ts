@@ -188,7 +188,7 @@ describe('fila do analista', () => {
     );
     const counts = await countsForAnalyst(t.seed.users.rafael.id);
     expect(counts).toEqual({ all: 7, for_you: 3, with_agent: 2, mine: 0 });
-    const paraVoce = await listForAnalyst(t.seed.users.rafael.id, 'for_you', undefined, t.agora);
+    const paraVoce = await listForAnalyst(t.seed.users.rafael.id, { filter: 'for_you', agora: t.agora });
     expect(paraVoce.map((c) => c.employee.name)).toContain('Ana Souza');
     const bruno = paraVoce.find((c) => c.employee.name === 'Bruno Tavares');
     expect(bruno?.tag).toEqual({ kind: 'agent_asked_help', label: 'Agent pediu ajuda · confiança 41%' });
@@ -196,20 +196,86 @@ describe('fila do analista', () => {
     expect(carla?.tag).toEqual({ kind: 'transferred', label: 'Transferida · INC-20388' });
     await applyTransition(conv.id, 'claim', rafael());
     expect((await countsForAnalyst(t.seed.users.rafael.id)).mine).toBe(1);
-    const minhas = await listForAnalyst(t.seed.users.rafael.id, 'mine');
+    const minhas = await listForAnalyst(t.seed.users.rafael.id, { filter: 'mine' });
     expect(minhas[0]?.tag).toEqual({ kind: 'with_me', label: 'Você está atendendo' });
   });
 
   it('busca por nome, preview e chamado em foco', async () => {
-    expect((await listForAnalyst(t.seed.users.rafael.id, 'all', 'carla')).map((c) => c.employee.name)).toEqual([
+    expect((await listForAnalyst(t.seed.users.rafael.id, { q: 'carla' })).map((c) => c.employee.name)).toEqual([
       'Carla Mendes',
     ]);
-    expect((await listForAnalyst(t.seed.users.rafael.id, 'all', 'INC-20519'))[0]?.employee.name).toBe('Elisa Prado');
-    expect((await listForAnalyst(t.seed.users.rafael.id, 'all', 'wi-fi'))[0]?.employee.name).toBe('Gabriela Rocha');
+    expect((await listForAnalyst(t.seed.users.rafael.id, { q: 'INC-20519' }))[0]?.employee.name).toBe('Elisa Prado');
+    expect((await listForAnalyst(t.seed.users.rafael.id, { q: 'wi-fi' }))[0]?.employee.name).toBe('Gabriela Rocha');
+  });
+
+  describe('busca da fila', () => {
+    const rafa = () => t.seed.users.rafael.id;
+    const nomes = (l: Array<{ employee: { name: string } }>) => l.map((c) => c.employee.name);
+
+    /** Conversa da Ana sobre VPN em que a última mensagem não fala de VPN. */
+    async function anaFalouDeVpn() {
+      const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
+      await registerEmployeeMessage(conv.id, 'Meu notebook não conecta na VPN, aparece o erro 809', 30);
+      await registerEmployeeMessage(conv.id, 'Ok, vou tentar e te aviso', 30);
+      return conv;
+    }
+
+    it('ignora acento: "fabio" acha Fábio Nunes, pelo nome', async () => {
+      const r = await listForAnalyst(rafa(), { q: 'fabio' });
+      expect(nomes(r)).toEqual(['Fábio Nunes']);
+      expect(r[0]?.match).toEqual({ kind: 'name', text: 'Fábio Nunes' });
+    });
+
+    it('procura em todas as mensagens, não só na última, e mostra o trecho', async () => {
+      await anaFalouDeVpn();
+      for (const q of ['vpn', '809']) {
+        const r = await listForAnalyst(rafa(), { q });
+        expect(nomes(r), q).toEqual(['Ana Souza']);
+        expect(r[0]?.match?.kind).toBe('message');
+        expect(r[0]?.match?.text).toContain('VPN, aparece o erro 809');
+      }
+    });
+
+    it('"ana" acha a Ana pelo nome e não quem só escreveu "analista"', async () => {
+      await anaFalouDeVpn();
+      expect(nomes(await listForAnalyst(rafa(), { q: 'ana' }))).toEqual(['Ana Souza']);
+      expect(nomes(await listForAnalyst(rafa(), { q: 'analis' }))).toEqual(['Carla Mendes', 'Bruno Tavares']);
+    });
+
+    it('chamados do funcionário (código e título) vindos do serviço de chamados', async () => {
+      const carla = t.seed.users.carla.id;
+      const porCodigo = await listForAnalyst(rafa(), {
+        q: 'REQ-10460',
+        ticketHits: [{ requester_id: carla, code: 'REQ-10460', title: 'Licença do Power BI' }],
+      });
+      expect(nomes(porCodigo)).toEqual(['Carla Mendes']);
+      expect(porCodigo[0]?.match).toEqual({ kind: 'ticket', text: 'REQ-10460 · Licença do Power BI' });
+      const porTitulo = await listForAnalyst(rafa(), {
+        q: 'diretoria',
+        ticketHits: [{ requester_id: carla, code: 'INC-20388', title: 'Acesso à pasta da Diretoria' }],
+      });
+      expect(nomes(porTitulo)).toEqual(['Carla Mendes']);
+    });
+
+    it('nome vem antes de conteúdo', async () => {
+      const conv = await getOrCreateCurrent(t.seed.users.bruno.id, 's');
+      await registerEmployeeMessage(conv.id, 'A Carla Mendes também está sem acesso', 30);
+      expect(nomes(await listForAnalyst(rafa(), { q: 'carla' }))).toEqual(['Carla Mendes', 'Bruno Tavares']);
+    });
+
+    it('combina com os filtros', async () => {
+      expect(nomes(await listForAnalyst(rafa(), { filter: 'for_you', q: 'carla' }))).toEqual(['Carla Mendes']);
+      expect(await listForAnalyst(rafa(), { filter: 'with_agent', q: 'carla' })).toEqual([]);
+      expect(nomes(await listForAnalyst(rafa(), { filter: 'with_agent', q: 'figma' }))).toEqual(['Diego Ramos']);
+    });
+
+    it('sem busca não há motivo', async () => {
+      expect((await listForAnalyst(rafa()))[0]?.match).toBeNull();
+    });
   });
 
   it('encerrada sem analista aparece como resolvida pelo agent', async () => {
-    const todas = await listForAnalyst(t.seed.users.rafael.id, 'all');
+    const todas = await listForAnalyst(t.seed.users.rafael.id);
     expect(todas.find((c) => c.employee.name === 'Fábio Nunes')?.tag.kind).toBe('resolved_by_agent');
     expect(todas.find((c) => c.employee.name === 'Diego Ramos')?.tag).toEqual({
       kind: 'agent_handling',

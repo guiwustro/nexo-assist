@@ -1,7 +1,7 @@
 'use client';
 
 import { Bot, CircleCheckBig, EllipsisVertical, Search } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DecisionPanel } from '@/components/chat/DecisionPanel';
 import { Toast } from '@/components/ui/Toast';
 import { api, ApiFailure } from '@/lib/client/api';
@@ -10,8 +10,10 @@ import type { QueueItem } from '@/lib/conversations/queries';
 import type { ApiMessage } from '@/lib/conversations/serialize';
 import { hora } from '@/lib/format';
 import { formatarPrazoCurto } from '@/lib/regras/prazo';
+import { acharTrechos } from '@/lib/text/trechos';
 import { Avatar } from './avatar';
 import { ConsoleThread } from './ConsoleThread';
+import { ConversationSearch } from './ConversationSearch';
 import { EmployeeTickets, type EmployeeTicketsData } from './EmployeeTickets';
 import type { HandoffView } from './HandoffCard';
 import { TakeoverBar, type TakeoverMode } from './TakeoverBar';
@@ -25,6 +27,8 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
   const [painel, setPainel] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [why, setWhy] = useState<string | null>(null);
+  const [busca, setBusca] = useState<string | null>(null);
+  const [buscaAtual, setBuscaAtual] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
   const fecharToast = useCallback(() => setToast(null), []);
   const fecharWhy = useCallback(() => setWhy(null), []);
@@ -70,6 +74,24 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [state?.messages.length]);
+
+  /** Resultados da busca, da mensagem mais recente para a mais antiga (o primeiro é o que está mais perto do fim). */
+  const resultados = useMemo(() => {
+    if (!busca?.trim() || !state) return [];
+    return [...state.messages]
+      .reverse()
+      .flatMap((m) => acharTrechos(m.body, busca).map((_, k) => ({ id: m.id, k })).reverse());
+  }, [busca, state]);
+  const ativo = resultados.length > 0 ? (resultados[Math.min(buscaAtual, resultados.length - 1)] ?? null) : null;
+
+  useEffect(() => {
+    scroller.current?.querySelector('[data-busca-ativa]')?.scrollIntoView?.({ block: 'center' });
+  }, [ativo?.id, ativo?.k]);
+
+  const fecharBusca = useCallback(() => {
+    setBusca(null);
+    setBuscaAtual(0);
+  }, []);
 
   if (!state) {
     return <div className="flex flex-1 items-center justify-center bg-thread text-body text-ink-3">Carregando conversa…</div>;
@@ -162,7 +184,14 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
                     : 'Encerrada'}
             </span>
           )}
-          <button type="button" className="flex size-9 items-center justify-center rounded-full text-ink-2 hover:bg-desk" aria-label="Buscar na conversa">
+          <button
+            type="button"
+            data-testid="header-search"
+            onClick={() => (busca === null ? setBusca('') : fecharBusca())}
+            aria-pressed={busca !== null}
+            className={`flex size-9 items-center justify-center rounded-full text-ink-2 hover:bg-desk ${busca !== null ? 'bg-desk' : ''}`}
+            aria-label="Buscar na conversa"
+          >
             <Search size={18} />
           </button>
           <button
@@ -174,9 +203,21 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
             <EllipsisVertical size={18} />
           </button>
         </header>
+        {busca !== null && (
+          <ConversationSearch
+            termo={busca}
+            onTermo={setBusca}
+            total={resultados.length}
+            atual={Math.min(buscaAtual, Math.max(resultados.length - 1, 0))}
+            onAtual={setBuscaAtual}
+            onClose={fecharBusca}
+          />
+        )}
         <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto px-10 pt-5 pb-4">
           <div className="mt-auto">
-            <ConsoleThread messages={state.messages} handoffs={state.handoffs} employeeName={item.employee.name} onWhy={setWhy} />
+            <ConsoleThread messages={state.messages} handoffs={state.handoffs} employeeName={item.employee.name} onWhy={setWhy}
+              destaque={busca ? { termo: busca, ativo } : undefined}
+            />
           </div>
         </div>
         <TakeoverBar
@@ -191,6 +232,7 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
       </section>
       {painel && (
         <EmployeeTickets
+          employeeId={item.employee.id}
           employeeName={item.employee.name}
           data={tickets}
           error={ticketsErro}

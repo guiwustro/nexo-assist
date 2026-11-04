@@ -48,9 +48,11 @@ export async function readSession(req: Request): Promise<Session | null> {
   return verifySessionToken(readCookie(req.headers.get('cookie'), SESSION_COOKIE));
 }
 
-export function sessionCookie(token: string): string {
+/** `persistent: false` ("Manter conectado" desmarcado): cookie some ao fechar o navegador; o token vence igual. */
+export function sessionCookie(token: string, opts: { persistent?: boolean } = {}): string {
   const secure = env.NODE_ENV === 'production' ? '; Secure' : '';
-  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_S}${secure}`;
+  const maxAge = opts.persistent === false ? '' : `; Max-Age=${SESSION_TTL_S}`;
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax${maxAge}${secure}`;
 }
 
 export function clearSessionCookie(): string {

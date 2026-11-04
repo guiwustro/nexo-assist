@@ -6,10 +6,12 @@ import { Dot, TONE_TEXT } from '@/components/ui/Tag';
 import { CATEGORY_LABEL, PRIORITY_LABEL, STATUS_LABEL, STATUS_TONE } from '@/lib/contracts/enums';
 import type { Ticket } from '@/lib/contracts/tickets';
 import { dataCurta } from '@/lib/format';
+import { TicketDetail } from './TicketDetail';
 
 export type EmployeeTicketsData = { tickets: Array<Ticket & { overdue: boolean; overdue_label: string | null }>; open: number; closed: number };
 
 export function EmployeeTickets({
+  employeeId,
   employeeName,
   data,
   error,
@@ -18,6 +20,7 @@ export function EmployeeTickets({
   onRetry,
   onClose,
 }: {
+  employeeId: string;
   employeeName: string;
   data: EmployeeTicketsData | null;
   error: boolean;
@@ -27,6 +30,7 @@ export function EmployeeTickets({
   onClose: () => void;
 }) {
   const [todos, setTodos] = useState(false);
+  const [aberto, setAberto] = useState<string | null>(null);
   const primeiro = employeeName.split(' ')[0];
   const foco = data?.tickets.find((t) => t.code === focusCode) ?? null;
   const outros = data?.tickets.filter((t) => t.code !== focusCode) ?? [];
@@ -45,7 +49,8 @@ export function EmployeeTickets({
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto px-5 pt-6 pb-5">
-        {error && (
+        {aberto && <TicketDetail key={aberto} employeeId={employeeId} code={aberto} onBack={() => setAberto(null)} />}
+        {!aberto && error && (
           <div data-testid="tickets-error" className="flex flex-col items-start gap-2 rounded-bubble bg-warning-soft p-4 text-body text-warning-text">
             <span className="flex items-center gap-2">
               <TriangleAlert size={15} /> Não foi possível carregar
@@ -55,9 +60,9 @@ export function EmployeeTickets({
             </button>
           </div>
         )}
-        {!data && !error && <div className="h-28 rounded-bubble bg-desk" style={{ animation: 'nexo-pulse 1.4s ease-in-out infinite' }} />}
+        {!aberto && !data && !error && <div className="h-28 rounded-bubble bg-desk" style={{ animation: 'nexo-pulse 1.4s ease-in-out infinite' }} />}
 
-        {foco && (
+        {!aberto && foco && (
           <section className="flex flex-col gap-3">
             <h3 className="text-label font-semibold text-ink-3">Desta conversa</h3>
             <div data-testid="focus-ticket" className="flex flex-col gap-3.5 rounded-bubble bg-desk p-4">
@@ -86,11 +91,17 @@ export function EmployeeTickets({
           </section>
         )}
 
-        {data && (
+        {!aberto && data && (
           <section data-testid="other-tickets" className="flex flex-col gap-1">
             <h3 className="text-label font-semibold text-ink-3">{foco ? 'Outros chamados' : 'Chamados'}</h3>
             {visiveis.map((t, i) => (
-              <div key={t.code} className={`flex items-center gap-3 py-3 ${i < visiveis.length - 1 ? 'border-b border-rule' : ''}`}>
+              <button
+                type="button"
+                key={t.code}
+                data-testid={`employee-ticket-${t.code}`}
+                onClick={() => setAberto(t.code)}
+                className={`-mx-2 flex items-center gap-3 rounded-btn px-2 py-3 text-left hover:bg-desk ${i < visiveis.length - 1 ? 'border-b border-rule' : ''}`}
+              >
                 <Dot tone={STATUS_TONE[t.status]} />
                 <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
                   <span className="truncate text-value font-medium text-ink">{t.title}</span>
@@ -103,14 +114,14 @@ export function EmployeeTickets({
                   </span>
                 </div>
                 <ChevronRight size={16} className="text-ink-3" />
-              </div>
+              </button>
             ))}
             {outros.length === 0 && <span className="py-3 text-body text-ink-3">Nenhum outro chamado</span>}
           </section>
         )}
       </div>
 
-      {data && outros.length > 4 && (
+      {!aberto && data && outros.length > 4 && (
         <footer className="px-4 pt-3 pb-4">
           <button
             type="button"

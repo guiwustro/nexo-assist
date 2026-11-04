@@ -143,6 +143,38 @@ describe('serviço de chamados', () => {
     expect(eventos.some((e) => e.kind === 'comment' && e.body.includes('acesso negado'))).toBe(true);
   });
 
+  it('histórico do chamado: do mais antigo ao mais recente, com o comentário novo', async () => {
+    const { req, clock } = setup();
+    clock.now = new Date(t.agora.getTime() + 30 * 60_000);
+    await req('/tickets/INC-20298', {
+      method: 'PATCH',
+      key: 'h-1',
+      body: JSON.stringify({ requester_id: t.seed.users.ana.id, comment: 'continua lento' }),
+    });
+    const res = await req(`/tickets/INC-20298/events?requester_id=${t.seed.users.ana.id}`);
+    expect(res.status).toBe(200);
+    const { data } = (await res.json()) as { data: Array<{ kind: string; body: string; actor: string; created_at: string }> };
+    expect(data.map((e) => e.kind)).toEqual(['created', 'comment']);
+    expect(data[1]).toMatchObject({ body: 'continua lento', actor: 'funcionário', created_at: clock.now.toISOString() });
+  });
+
+  it('busca de chamados por código ou título, sem acento, de todos os solicitantes', async () => {
+    const { req } = setup();
+    const hits = async (q: string) =>
+      ((await (await req(`/tickets/search?q=${encodeURIComponent(q)}`)).json()) as { data: Array<{ code: string; requester_id: string; title: string }> }).data;
+    expect((await hits('REQ-10460')).map((h) => h.code)).toEqual(['REQ-10460']);
+    expect((await hits('REQ-10460'))[0]?.requester_id).toBe(t.seed.users.carla.id);
+    expect((await hits('diretoria')).map((h) => h.code)).toEqual(['INC-20388']);
+    expect((await hits('licenca')).map((h) => h.code)).toContain('REQ-10460');
+    expect(await hits('')).toEqual([]);
+  });
+
+  it('histórico de chamado alheio → 404', async () => {
+    const { req } = setup();
+    const res = await req(`/tickets/INC-20388/events?requester_id=${t.seed.users.ana.id}`);
+    expect(res.status).toBe(404);
+  });
+
   it('PATCH em chamado alheio → 404', async () => {
     const { req } = setup();
     const res = await req('/tickets/INC-20388', {

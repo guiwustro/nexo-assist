@@ -101,6 +101,20 @@ describe('rascunhos', () => {
     expect(ok.status).toBe(200);
   });
 
+  it('confirmar atualização de chamado que sumiu do legado → 404, não 500', async () => {
+    const conv = await getOrCreateCurrent(t.seed.users.ana.id, 'sid');
+    const d = await createDraft({
+      conversation_id: conv.id,
+      agent_run_id: null,
+      kind: 'update',
+      target_ticket_code: 'INC-99999',
+      payload: { ...payload(), comment: 'continua sem VPN' },
+    });
+    const res = await call(confirm, { session: ana(), method: 'POST', params: { id: d.id } });
+    expect(res.status).toBe(404);
+    expect((await json(res)).error?.code).toBe('ticket_not_found');
+  });
+
   it('Ana não confirma rascunho da Carla', async () => {
     const d = await draftDa(t.seed.users.carla.id);
     expect((await call(confirm, { session: ana(), method: 'POST', params: { id: d.id } })).status).toBe(404);

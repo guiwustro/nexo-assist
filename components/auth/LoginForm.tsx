@@ -30,7 +30,7 @@ export function LoginForm() {
       const res = await fetch('/api/v1/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, remember }),
       });
       const json = (await res.json()) as ApiResult;
       if (!res.ok || !json.data) {

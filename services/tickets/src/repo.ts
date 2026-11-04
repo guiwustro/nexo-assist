@@ -1,7 +1,8 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { padraoDeBusca, semAcento, termoCurto } from '@/lib/db/busca';
 import type { DbOrTx } from '@/lib/db/client';
 import { ticketEvents, tickets } from '@/lib/db/schema';
-import type { CreateTicketInput, Ticket } from '@/lib/contracts/tickets';
+import type { CreateTicketInput, Ticket, TicketEvent, TicketHit } from '@/lib/contracts/tickets';
 import { TYPE_PREFIX } from '@/lib/contracts/enums';
 import { calcularPrazo } from '@/lib/regras/prazo';
 import type { Priority, TicketStatus } from '@/lib/contracts/enums';
@@ -52,6 +53,34 @@ export async function findOwned(
     .where(and(eq(tickets.code, code), eq(tickets.requester_id, requesterId)));
   const [row] = opts.lock ? await q.for('update') : await q;
   return row ?? null;
+}
+
+/** Chamados de qualquer solicitante cujo código ou título começa com o termo (busca do console). */
+export async function searchTickets(db: DbOrTx, termo: string, limit = 50): Promise<TicketHit[]> {
+  const codigo = padraoDeBusca(termo);
+  const titulo = padraoDeBusca(termo, { inteira: termoCurto(termo) });
+  if (!codigo || !titulo) return [];
+  return db
+    .select({ requester_id: tickets.requester_id, code: tickets.code, title: tickets.title })
+    .from(tickets)
+    .where(or(sql`${semAcento(tickets.code)} ~ ${codigo}`, sql`${semAcento(tickets.title)} ~ ${titulo}`))
+    .orderBy(desc(tickets.last_update_at))
+    .limit(limit);
+}
+
+/** Histórico do chamado, do mais antigo ao mais recente. */
+export async function listEvents(db: DbOrTx, ticketId: string): Promise<TicketEvent[]> {
+  const rows = await db
+    .select()
+    .from(ticketEvents)
+    .where(eq(ticketEvents.ticket_id, ticketId))
+    .orderBy(asc(ticketEvents.created_at), asc(ticketEvents.id));
+  return rows.map((e) => ({
+    kind: e.kind as TicketEvent['kind'],
+    body: e.body,
+    actor: e.actor,
+    created_at: e.created_at.toISOString(),
+  }));
 }
 
 export async function createTicket(db: DbOrTx, input: CreateTicketInput, now: Date): Promise<Ticket> {

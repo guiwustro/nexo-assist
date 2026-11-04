@@ -29,6 +29,22 @@ export const TicketSchema = z.object({
 });
 export type Ticket = z.infer<typeof TicketSchema>;
 
+export const TicketEventKindSchema = z.enum(['created', 'comment', 'status_changed', 'transferred', 'reopened']);
+export type TicketEventKind = z.infer<typeof TicketEventKindSchema>;
+
+/** Uma linha do histórico do chamado no sistema legado. */
+export const TicketEventSchema = z.object({
+  kind: TicketEventKindSchema,
+  body: z.string(),
+  actor: z.string(),
+  created_at: z.string(),
+});
+export type TicketEvent = z.infer<typeof TicketEventSchema>;
+
+/** Resultado da busca de chamados (console): de quem é o chamado que casou com o termo. */
+export const TicketHitSchema = z.object({ requester_id: z.string().uuid(), code: TicketCodeSchema, title: z.string() });
+export type TicketHit = z.infer<typeof TicketHitSchema>;
+
 export const CreateTicketInputSchema = z.object({
   requester_id: z.string().uuid(),
   type: TicketTypeSchema,

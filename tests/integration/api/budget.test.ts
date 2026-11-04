@@ -86,7 +86,7 @@ describe('teto diário de gasto com o modelo', () => {
     const out = await t.db.select().from(messages).where(eq(messages.conversation_id, conv.id));
     expect(out.some((m) => m.direction === 'outbound' && /limite de uso de hoje/.test(m.body))).toBe(true);
     expect(chunks.some((x) => x.type === 'data-system' && (x.data as { kind: string }).kind === 'budget')).toBe(true);
-    const fila = await listForAnalyst(t.seed.users.rafael.id, 'all', undefined, t.agora, conv.id);
+    const fila = await listForAnalyst(t.seed.users.rafael.id, { agora: t.agora, onlyId: conv.id });
     expect(fila[0]?.tag.label).toBe('Transferida · limite de uso do assistente');
   });
 

@@ -11,6 +11,7 @@ import { POST as release } from '@/app/api/v1/conversations/[id]/release/route';
 import { POST as close } from '@/app/api/v1/conversations/[id]/close/route';
 import { GET as handoffsRoute } from '@/app/api/v1/conversations/[id]/handoffs/route';
 import { GET as employeeTickets } from '@/app/api/v1/employees/[id]/tickets/route';
+import { GET as employeeTicket } from '@/app/api/v1/employees/[id]/tickets/[code]/route';
 import { POST as postMessage } from '@/app/api/v1/conversations/[id]/messages/route';
 import { createHandoff } from '@/lib/conversations/handoff';
 import { getOrCreateCurrent } from '@/lib/conversations/service';
@@ -127,6 +128,41 @@ describe('console do analista', () => {
     fake.down = true;
     const res = await call(employeeTickets, { session: rafael(), params: { id: t.seed.users.ana.id } });
     expect(res.status).toBe(503);
+  });
+
+  it('detalhe de um chamado da Ana: dados, vencido e histórico', async () => {
+    const res = await call(employeeTicket, { session: rafael(), params: { id: t.seed.users.ana.id, code: 'INC-20311' } });
+    expect(res.status).toBe(200);
+    const { data } = await json<{
+      data: { ticket: { code: string; description: string; overdue: boolean }; events: Array<{ kind: string }> };
+    }>(res);
+    expect(data.ticket).toMatchObject({ code: 'INC-20311', overdue: true });
+    expect(data.ticket.description.length).toBeGreaterThan(0);
+    expect(data.events[0]?.kind).toBe('created');
+  });
+
+  it('detalhe de chamado de outra pessoa → 404', async () => {
+    const res = await call(employeeTicket, { session: rafael(), params: { id: t.seed.users.ana.id, code: 'INC-20388' } });
+    expect(res.status).toBe(404);
+  });
+
+  it('funcionário não abre detalhe de chamado pelo console', async () => {
+    const res = await call(employeeTicket, { session: ana(), params: { id: t.seed.users.ana.id, code: 'INC-20311' } });
+    expect(res.status).toBe(403);
+  });
+
+  it('busca da fila pela API acha a Carla pelo título de um chamado dela', async () => {
+    const res = await call(list, { session: rafael(), url: 'http://localhost/api/v1/conversations?filter=all&q=Diretoria' });
+    const { data } = await json<{ data: QueueItem[] }>(res);
+    expect(data.map((c) => c.employee.name)).toEqual(['Carla Mendes']);
+    expect(data[0]?.match).toEqual({ kind: 'ticket', text: 'INC-20388 · Acesso à pasta da Diretoria' });
+  });
+
+  it('busca com o sistema de chamados fora ainda acha por nome', async () => {
+    fake.down = true;
+    const res = await call(list, { session: rafael(), url: 'http://localhost/api/v1/conversations?filter=all&q=carla' });
+    expect(res.status).toBe(200);
+    expect((await json<{ data: QueueItem[] }>(res)).data.map((c) => c.employee.name)).toEqual(['Carla Mendes']);
   });
 
   it('funcionário não lista chamados de ninguém pelo console', async () => {

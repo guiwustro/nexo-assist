@@ -11,6 +11,8 @@ export const dynamic = 'force-dynamic';
 const Body = z.object({
   email: z.string().trim().min(3).max(200),
   password: z.string().min(1, 'Informe a senha').max(200),
+  /** "Manter conectado neste computador". */
+  remember: z.boolean().default(true),
 });
 
 /** Login de demonstração: e-mail do seed + qualquer senha não vazia. */
@@ -34,5 +36,5 @@ export const POST = withRoute({ role: 'public', body: Body }, async ({ req, body
     sid,
   });
   audit('auth.login', { request_id: requestId, user_id: user.id, method: 'POST', path: '/api/v1/auth/login', status: 200 });
-  return ok(publicUser(user), { requestId, headers: { 'set-cookie': sessionCookie(token) } });
+  return ok(publicUser(user), { requestId, headers: { 'set-cookie': sessionCookie(token, { persistent: body.remember }) } });
 });

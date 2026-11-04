@@ -1,9 +1,12 @@
-import { and, desc, eq, ilike, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getDb } from '@/lib/db/client';
 import { aiAgentRuns, conversations, handoffs, messages as messagesTable, users } from '@/lib/db/schema';
 import { toApiMessage, type ApiMessage } from './serialize';
 import { serverNow } from '@/lib/env';
+import type { TicketHit } from '@/lib/contracts/tickets';
+import { padraoDeBusca, semAcento, termoCurto } from '@/lib/db/busca';
+import { acharTrechos } from '@/lib/text/trechos';
 
 export type QueueFilter = 'all' | 'for_you' | 'with_agent' | 'mine';
 
@@ -27,7 +30,30 @@ export type QueueItem = {
   unread: number;
   focus_ticket_code: string | null;
   handoff: { reason_code: string; support_level: string; due_at: string; confidence: number | null } | null;
+  /** Com busca: por que a conversa apareceu (nome, chamado ou trecho de mensagem). Sem busca: null. */
+  match: { kind: 'name' | 'ticket' | 'message'; text: string } | null;
 };
+
+export type ListOptions = {
+  filter?: QueueFilter;
+  q?: string;
+  agora?: Date;
+  onlyId?: string;
+  /** Chamados que casaram com `q` no serviço de chamados (a fila não lê o schema do legado). */
+  ticketHits?: TicketHit[];
+};
+
+const ORDEM_DO_MOTIVO = { name: 0, ticket: 1, message: 2 } as const;
+
+/** Janela do texto em volta da primeira ocorrência do termo no começo de uma palavra. */
+export function trechoEmVolta(texto: string, termo: string, antes = 30, depois = 70): string {
+  const limpo = texto.replace(/\s+/g, ' ').trim();
+  const trechos = acharTrechos(limpo, termo);
+  const [a, b] = trechos.find(([i]) => i === 0 || !/[\p{L}\p{N}]/u.test(limpo[i - 1]!)) ?? trechos[0] ?? [0, 0];
+  const de = Math.max(0, a - antes);
+  const ate = Math.min(limpo.length, b + depois);
+  return `${de > 0 ? '…' : ''}${limpo.slice(de, ate).trim()}${ate < limpo.length ? '…' : ''}`;
+}
 
 const assignee = alias(users, 'assignee');
 
@@ -92,13 +118,9 @@ export function tagFor(
   return { kind: 'agent_handling', label: 'Agent atendendo' };
 }
 
-export async function listForAnalyst(
-  analystId: string,
-  filter: QueueFilter = 'all',
-  q?: string,
-  agora: Date = serverNow(),
-  onlyId?: string,
-): Promise<QueueItem[]> {
+export async function listForAnalyst(analystId: string, opts: ListOptions = {}): Promise<QueueItem[]> {
+  const { filter = 'all', q, onlyId, ticketHits = [] } = opts;
+  const agora = opts.agora ?? serverNow();
   const db = getDb();
   const latest = db
     .selectDistinctOn([handoffs.conversation_id], {
@@ -113,14 +135,19 @@ export async function listForAnalyst(
     .orderBy(handoffs.conversation_id, desc(handoffs.created_at))
     .as('latest');
 
-  const termo = q?.trim();
-  const busca = termo
-    ? or(
-        ilike(users.name, `%${termo}%`),
-        ilike(conversations.last_message_preview, `%${termo}%`),
-        ilike(conversations.focus_ticket_code, `%${termo}%`),
-      )
-    : undefined;
+  const termo = q?.trim() ?? '';
+  const pNome = padraoDeBusca(termo);
+  const pTexto = padraoDeBusca(termo, { inteira: termoCurto(termo) });
+  const donos = [...new Set(ticketHits.map((h) => h.requester_id))];
+  const casaNome = pNome ? sql`${semAcento(users.name)} ~ ${pNome}` : null;
+  const casaFoco = pNome ? sql`coalesce(${semAcento(conversations.focus_ticket_code)} ~ ${pNome}, false)` : null;
+  const casaMensagem = pTexto
+    ? sql`(select m.body from messages m where m.conversation_id = ${conversations.id} and ${semAcento(sql`m.body`)} ~ ${pTexto} order by m.created_at desc limit 1)`
+    : null;
+  const busca =
+    casaNome && casaFoco && casaMensagem
+      ? or(casaNome, casaFoco, sql`${casaMensagem} is not null`, donos.length ? inArray(users.id, donos) : undefined)
+      : undefined;
 
   const rows = await db
     .select({
@@ -140,6 +167,9 @@ export async function listForAnalyst(
       h_due: latest.due_at,
       h_conf: latest.confidence,
       had_analyst: sql<boolean>`exists (select 1 from messages m where m.conversation_id = ${conversations.id} and m.metadata->>'event' = 'claim')`,
+      por_nome: casaNome ? sql<boolean>`${casaNome}` : sql<boolean>`false`,
+      por_foco: casaFoco ? sql<boolean>`${casaFoco}` : sql<boolean>`false`,
+      mensagem: casaMensagem ? sql<string | null>`${casaMensagem}` : sql<string | null>`null`,
     })
     .from(conversations)
     .innerJoin(users, eq(users.id, conversations.employee_id))
@@ -148,7 +178,19 @@ export async function listForAnalyst(
     .where(and(filtro(analystId, filter), busca, onlyId ? eq(conversations.id, onlyId) : undefined))
     .orderBy(sql`${conversations.last_message_at} desc nulls last`);
 
-  return rows.map((r) => {
+  const itens = rows.map((r) => {
+    const hit = ticketHits.find((h) => h.requester_id === r.employee_id);
+    const match: QueueItem['match'] = !termo
+      ? null
+      : r.por_nome
+        ? { kind: 'name', text: r.employee_name }
+        : r.por_foco && r.focus_ticket_code
+          ? { kind: 'ticket', text: `${r.focus_ticket_code} · chamado desta conversa` }
+          : hit
+            ? { kind: 'ticket', text: `${hit.code} · ${hit.title}` }
+            : r.mensagem
+              ? { kind: 'message', text: trechoEmVolta(r.mensagem, termo) }
+              : null;
     const handoff = r.h_reason
       ? {
           reason_code: r.h_reason,
@@ -179,8 +221,11 @@ export async function listForAnalyst(
       unread: r.assigned_to_user_id === analystId || r.status === 'pending' ? r.unread : 0,
       focus_ticket_code: r.focus_ticket_code,
       handoff,
+      match,
     };
   });
+  // Com busca, o nome vem antes de chamado e de conteúdo; dentro de cada grupo, a ordem da fila (sort é estável).
+  return termo ? itens.sort((a, b) => ORDEM_DO_MOTIVO[a.match?.kind ?? 'message'] - ORDEM_DO_MOTIVO[b.match?.kind ?? 'message']) : itens;
 }
 
 export async function countsForAnalyst(analystId: string): Promise<Record<QueueFilter, number>> {

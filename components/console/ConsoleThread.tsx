@@ -6,20 +6,29 @@ import { CATEGORY_LABEL, PRIORITY_LABEL, STATUS_LABEL } from '@/lib/contracts/en
 import type { MessagePart } from '@/lib/contracts/parts';
 import { hora } from '@/lib/format';
 import { mesmoDiaSp } from '@/lib/regras/prazo';
+import { Realce } from './ConversationSearch';
 import { HandoffCard, type HandoffView } from './HandoffCard';
 
-function Sistema({ m }: { m: ApiMessage }) {
+/** Busca aberta na conversa: o termo e qual resultado está ativo (mensagem e índice dentro dela). */
+export type Destaque = { termo: string; ativo: { id: string; k: number } | null };
+
+function Sistema({ m, destaque }: { m: ApiMessage; destaque?: Destaque }) {
   const Icon = /^Transferida/.test(m.body) ? ArrowRightLeft : /assumiu/.test(m.body) ? Headset : /criado|atualizado|reaberto/.test(m.body) ? CircleCheck : Info;
   return (
     <div data-testid="console-system" className="flex items-center gap-3 pt-[18px] pb-1">
       <span className="h-px flex-1 bg-[#1B243114]" />
       <span className="flex items-center gap-1.5 text-xs font-medium text-ink-3">
         <Icon size={13} />
-        {m.body}
+        <Corpo m={m} destaque={destaque} />
       </span>
       <span className="h-px flex-1 bg-[#1B243114]" />
     </div>
   );
+}
+
+function Corpo({ m, destaque }: { m: ApiMessage; destaque?: Destaque }) {
+  if (!destaque?.termo.trim()) return <>{m.body}</>;
+  return <Realce texto={m.body} termo={destaque.termo} ativa={destaque.ativo?.id === m.id ? destaque.ativo.k : null} />;
 }
 
 function resumoDasPartes(parts: MessagePart[]): string[] {
@@ -37,11 +46,13 @@ export function ConsoleThread({
   handoffs,
   employeeName,
   onWhy,
+  destaque,
 }: {
   messages: ApiMessage[];
   handoffs: HandoffView[];
   employeeName: string;
   onWhy: (runId: string) => void;
+  destaque?: Destaque;
 }) {
   const hoje = messages.length > 0 && mesmoDiaSp(new Date(messages[0]!.created_at), new Date());
   return (
@@ -58,7 +69,7 @@ export function ConsoleThread({
           const handoff = m.handoff_id ? handoffs.find((h) => h.id === m.handoff_id) : undefined;
           return (
             <div key={m.id}>
-              <Sistema m={m} />
+              <Sistema m={m} destaque={destaque} />
               {handoff && <HandoffCard h={handoff} employeeName={employeeName} />}
             </div>
           );
@@ -67,7 +78,9 @@ export function ConsoleThread({
           return (
             <div key={m.id} className={`flex flex-col ${colada ? 'pt-[3px]' : 'pt-4'}`}>
               <div className="flex w-fit max-w-[520px] items-end gap-2.5 rounded-[4px_12px_12px_12px] bg-paper px-3 pt-2 pb-1.5">
-                <span className="text-value whitespace-pre-wrap text-ink">{m.body}</span>
+                <span className="text-value whitespace-pre-wrap text-ink">
+                  <Corpo m={m} destaque={destaque} />
+                </span>
                 <span className="pb-px text-tag text-ink-3">{hora(m.created_at)}</span>
               </div>
             </div>
@@ -92,7 +105,9 @@ export function ConsoleThread({
             <div
               className={`flex max-w-[420px] flex-col gap-0.5 rounded-[12px_4px_12px_12px] px-3 pt-2 pb-1.5 ${ia ? 'bg-bubble-ai' : 'bg-bubble-human'}`}
             >
-              <span className="text-value whitespace-pre-wrap text-ink">{m.body}</span>
+              <span className="text-value whitespace-pre-wrap text-ink">
+                  <Corpo m={m} destaque={destaque} />
+                </span>
               {extras.map((x) => (
                 <span key={x} className="text-label text-ink-3">
                   {x}

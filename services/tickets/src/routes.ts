@@ -9,7 +9,7 @@ import {
 } from '@/lib/contracts/tickets';
 import { podeReabrir } from '@/lib/regras/reabertura';
 import { withIdempotency, type Reply } from './idempotency';
-import { createTicket, findOwned, listByRequester, toTicket, touch } from './repo';
+import { createTicket, findOwned, listByRequester, listEvents, searchTickets, toTicket, touch } from './repo';
 
 export type RouteDeps = { db: Db; now: () => Date };
 
@@ -52,11 +52,24 @@ export function ticketRoutes(deps: RouteDeps): Hono {
     return c.json({ data: await listByRequester(db, requester, status) });
   });
 
+  // Antes de /tickets/:code, senão "search" vira um código.
+  r.get('/tickets/search', async (c) => {
+    const q = (c.req.query('q') ?? '').slice(0, 100);
+    return c.json({ data: await searchTickets(db, q) });
+  });
+
   r.get('/tickets/:code', async (c) => {
     const requester = c.req.query('requester_id') ?? '';
     if (!z.string().uuid().safeParse(requester).success) return send(c, notFound());
     const row = await findOwned(db, c.req.param('code'), requester, { lock: false });
     return row ? c.json({ data: toTicket(row) }) : send(c, notFound());
+  });
+
+  r.get('/tickets/:code/events', async (c) => {
+    const requester = c.req.query('requester_id') ?? '';
+    if (!z.string().uuid().safeParse(requester).success) return send(c, notFound());
+    const row = await findOwned(db, c.req.param('code'), requester, { lock: false });
+    return row ? c.json({ data: await listEvents(db, row.id) }) : send(c, notFound());
   });
 
   r.post('/tickets', async (c) => {

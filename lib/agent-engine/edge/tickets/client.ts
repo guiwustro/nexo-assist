@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import {
+  TicketEventSchema,
+  TicketHitSchema,
   TicketSchema,
   type CreateTicketInput,
   type Ticket,
+  type TicketEvent,
+  type TicketHit,
   type TransferInput,
   type UpdateTicketInput,
 } from '@/lib/contracts/tickets';
@@ -13,6 +17,8 @@ import { TicketsNotFoundError, TicketsRejectedError, TicketsTransportError } fro
 export type TicketsClient = {
   listByRequester(requesterId: string, status?: 'open' | 'all'): Promise<Ticket[]>;
   get(code: string, requesterId: string): Promise<Ticket>;
+  events(code: string, requesterId: string): Promise<TicketEvent[]>;
+  search(q: string): Promise<TicketHit[]>;
   create(input: CreateTicketInput, idempotencyKey: string): Promise<Ticket>;
   update(code: string, input: UpdateTicketInput, idempotencyKey: string): Promise<Ticket>;
   reopen(code: string, requesterId: string, idempotencyKey: string, comment?: string): Promise<Ticket>;
@@ -108,6 +114,9 @@ export function createTicketsClient(opts: TicketsClientOptions): TicketsClient {
     listByRequester: (requesterId, status = 'all') =>
       call('GET', `/tickets?requester_id=${q(requesterId)}&status=${status}`, z.array(TicketSchema)),
     get: (code, requesterId) => call('GET', `/tickets/${q(code)}?requester_id=${q(requesterId)}`, TicketSchema),
+    events: (code, requesterId) =>
+      call('GET', `/tickets/${q(code)}/events?requester_id=${q(requesterId)}`, z.array(TicketEventSchema)),
+    search: (term) => call('GET', `/tickets/search?q=${q(term)}`, z.array(TicketHitSchema)),
     create: (input, key) => call('POST', '/tickets', TicketSchema, input, key),
     update: (code, input, key) => call('PATCH', `/tickets/${q(code)}`, TicketSchema, input, key),
     reopen: (code, requesterId, key, comment) =>

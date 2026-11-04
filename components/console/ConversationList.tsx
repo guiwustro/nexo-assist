@@ -1,11 +1,12 @@
 'use client';
 
-import { CheckCheck, Inbox, Search } from 'lucide-react';
+import { CheckCheck, Inbox, MessageSquareText, Search, Ticket } from 'lucide-react';
 import Link from 'next/link';
 import type { QueueFilter, QueueItem } from '@/lib/conversations/queries';
 import { quandoCurto } from '@/lib/format';
 import { Avatar } from './avatar';
 import { ConversationFilters } from './ConversationFilters';
+import { Realce } from './ConversationSearch';
 
 const TAG: Record<QueueItem['tag']['kind'], { dot: string; text: string }> = {
   transferred: { dot: 'bg-danger', text: 'text-danger-text' },
@@ -49,7 +50,12 @@ export function ConversationList({
               Atualizando a cada 3 s
             </span>
           )}
-          <span className="flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-[5px] text-label font-semibold text-success-text">
+          {/* Selo, não botão: disponibilidade não muda a fila (todos os analistas veem todas as transferências). */}
+          <span
+            data-testid="analyst-status"
+            title="Você aparece como disponível para receber transferências"
+            className="flex items-center gap-1.5 text-label font-semibold text-success-text"
+          >
             <span className="size-[7px] rounded-full bg-success" />
             Disponível
           </span>
@@ -74,7 +80,7 @@ export function ConversationList({
         {items?.length === 0 && (
           <div className="flex flex-col items-center gap-2 py-16 text-body text-ink-3">
             <Inbox size={22} />
-            Nenhuma conversa aqui
+            {q.trim() ? `Nada encontrado para “${q.trim()}”` : 'Nenhuma conversa aqui'}
           </div>
         )}
         {items?.map((c) => {
@@ -82,6 +88,8 @@ export function ConversationList({
           const tag = TAG[c.tag.kind];
           const doAgent = c.last_message_preview?.startsWith('Nexo: ');
           const forte = c.unread > 0 || c.status === 'pending';
+          const motivo = q.trim() && c.match && c.match.kind !== 'name' ? c.match : null;
+          const MotivoIcon = motivo?.kind === 'ticket' ? Ticket : MessageSquareText;
           return (
             <Link
               key={c.id}
@@ -94,15 +102,26 @@ export function ConversationList({
               <div className={`flex min-w-0 flex-1 flex-col gap-[3px] pb-2.5 ${sel ? '' : 'border-b border-rule'}`}>
                 <div className="flex items-center gap-2">
                   <span className={`flex-1 truncate text-[15.5px] text-ink ${forte ? 'font-semibold' : 'font-medium'}`}>
-                    {c.employee.name}
+                    {c.match?.kind === 'name' ? <Realce texto={c.employee.name} termo={q} ativa={null} /> : c.employee.name}
                   </span>
                   <span className={`text-label ${forte ? 'font-semibold text-cta' : 'text-ink-3'}`}>
                     {quandoCurto(c.last_message_at, now)}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {doAgent && <CheckCheck size={15} className="shrink-0 text-primary" />}
-                  <span className="flex-1 truncate text-body text-ink-3">{c.last_message_preview ?? '—'}</span>
+                  {motivo ? (
+                    <span data-testid="conversation-match" className="flex min-w-0 flex-1 items-center gap-1.5 text-body text-ink-2">
+                      <MotivoIcon size={14} className="shrink-0 text-ink-3" />
+                      <span className="truncate">
+                        <Realce texto={motivo.text} termo={q} ativa={null} />
+                      </span>
+                    </span>
+                  ) : (
+                    <>
+                      {doAgent && <CheckCheck size={15} className="shrink-0 text-primary" />}
+                      <span className="flex-1 truncate text-body text-ink-3">{c.last_message_preview ?? '—'}</span>
+                    </>
+                  )}
                   {c.unread > 0 && (
                     <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-cta px-1.5 text-tag-list font-bold text-white">
                       {c.unread}

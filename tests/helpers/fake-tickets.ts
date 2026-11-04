@@ -1,12 +1,15 @@
 import type { TicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import { TicketsNotFoundError, TicketsRejectedError, TicketsTransportError } from '@/lib/agent-engine/edge/tickets/errors';
-import type { Ticket } from '@/lib/contracts/tickets';
+import type { Ticket, TicketEvent } from '@/lib/contracts/tickets';
 import { SEED_TICKETS, userByKey } from '@/lib/db/seed-data';
 import { calcularPrazo } from '@/lib/regras/prazo';
 import { podeReabrir } from '@/lib/regras/reabertura';
+import { dobrar } from '@/lib/text/trechos';
 
 export type FakeTickets = TicketsClient & {
   tickets: Ticket[];
+  /** Histórico por código, como a tabela `ticket_events` do legado. */
+  history: Map<string, TicketEvent[]>;
   down: boolean;
   calls: string[];
 };
@@ -34,6 +37,11 @@ export function createFakeTickets(agora: Date): FakeTickets {
       created_at: new Date(t0 - s.created_ago).toISOString(),
     };
   });
+  const history = new Map<string, TicketEvent[]>(
+    tickets.map((t) => [t.code, [{ kind: 'created', body: 'Chamado aberto', actor: 'funcionário', created_at: t.created_at }]]),
+  );
+  const registrar = (code: string, kind: TicketEvent['kind'], body: string) =>
+    history.set(code, [...(history.get(code) ?? []), { kind, body, actor: 'funcionário', created_at: agora.toISOString() }]);
   let seq = 20520;
   const recibos = new Map<string, Ticket>();
   const once = async (key: string, fn: () => Promise<Ticket>) => {
@@ -45,6 +53,7 @@ export function createFakeTickets(agora: Date): FakeTickets {
   };
   const fake: FakeTickets = {
     tickets,
+    history,
     down: false,
     calls: [],
     async listByRequester(requesterId, status = 'all') {
@@ -59,6 +68,19 @@ export function createFakeTickets(agora: Date): FakeTickets {
       const t = tickets.find((x) => x.code === code && x.requester_id === requesterId);
       if (!t) throw new TicketsNotFoundError(code);
       return t;
+    },
+    async events(code, requesterId) {
+      guard('events');
+      await fake.get(code, requesterId);
+      return history.get(code) ?? [];
+    },
+    async search(q) {
+      guard('search');
+      const alvo = dobrar(q.trim());
+      if (!alvo) return [];
+      return tickets
+        .filter((t) => dobrar(`${t.code} ${t.title}`).includes(alvo))
+        .map((t) => ({ requester_id: t.requester_id, code: t.code, title: t.title }));
     },
     async create(input, key) {
       guard('create');
@@ -75,6 +97,7 @@ export function createFakeTickets(agora: Date): FakeTickets {
         created_at: agora.toISOString(),
       };
       tickets.push(t);
+      registrar(t.code, 'created', 'Chamado aberto');
       return t;
       });
     },
@@ -83,6 +106,7 @@ export function createFakeTickets(agora: Date): FakeTickets {
       return once(key, async () => {
         const t = await fake.get(code, input.requester_id);
         t.last_update_at = agora.toISOString();
+        registrar(code, 'comment', input.comment);
         return t;
       });
     },
@@ -93,6 +117,7 @@ export function createFakeTickets(agora: Date): FakeTickets {
         if (!podeReabrir(t, agora).ok) throw new TicketsRejectedError('reopen_window_expired', 'Fora da janela', 422);
         t.status = 'open';
         t.resolved_at = null;
+        registrar(code, 'reopened', 'Reaberto pelo funcionário');
         return t;
       });
     },
@@ -100,6 +125,7 @@ export function createFakeTickets(agora: Date): FakeTickets {
       guard('transfer');
       const t = await fake.get(code, input.requester_id);
       t.status = 'awaiting_analyst';
+      registrar(code, 'transferred', input.summary);
       return t;
     },
     breakerState: () => 'closed',

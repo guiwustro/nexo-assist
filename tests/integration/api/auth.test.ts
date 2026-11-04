@@ -7,12 +7,12 @@ import { GET as me } from '@/app/api/v1/me/route';
 useTestDb();
 const noParams = { params: Promise.resolve({}) };
 
-const doLogin = (email: string, password = 'qualquer') =>
+const doLogin = (email: string, password = 'qualquer', extra: Record<string, unknown> = {}) =>
   login(
     new Request('http://x/api/v1/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, ...extra }),
     }),
     noParams,
   );
@@ -52,6 +52,13 @@ describe('login', () => {
     const a = cookieFrom(await doLogin('ana.souza@nexo.com.br'));
     const b = cookieFrom(await doLogin('ana.souza@nexo.com.br'));
     expect(a).not.toBe(b);
+  });
+  it('"Manter conectado" (padrão) grava cookie persistente; desmarcado, cookie da sessão do navegador', async () => {
+    expect((await doLogin('ana.souza@nexo.com.br')).headers.get('set-cookie')).toMatch(/Max-Age=43200/);
+    expect((await doLogin('ana.souza@nexo.com.br', 'x', { remember: true })).headers.get('set-cookie')).toMatch(/Max-Age=43200/);
+    const sc = (await doLogin('ana.souza@nexo.com.br', 'x', { remember: false })).headers.get('set-cookie') ?? '';
+    expect(sc).toMatch(/nexo_session=/);
+    expect(sc).not.toMatch(/Max-Age|Expires/i);
   });
   it('logout limpa o cookie', async () => {
     const cookie = cookieFrom(await doLogin('ana.souza@nexo.com.br'));

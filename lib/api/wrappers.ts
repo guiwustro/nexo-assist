@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { z, ZodError, type ZodType } from 'zod';
-import { TicketsTransportError } from '@/lib/agent-engine/edge/tickets/errors';
+import { TicketsNotFoundError, TicketsTransportError } from '@/lib/agent-engine/edge/tickets/errors';
 import { requireRole, type RoleRequirement } from '@/lib/auth/require';
 import { readSession, type Session } from '@/lib/auth/session';
 import { AppError } from './errors';
@@ -86,6 +86,9 @@ export function toFailResponse(e: unknown, requestId: string): Response {
   if (e instanceof AppError) return fail(e.code, e.message, e.status, e.details, { requestId });
   if (e instanceof ZodError) {
     return fail('invalid_input', 'Dados inválidos', 400, e.issues, { requestId });
+  }
+  if (e instanceof TicketsNotFoundError) {
+    return fail('ticket_not_found', 'Chamado não encontrado', 404, undefined, { requestId });
   }
   if (e instanceof TicketsTransportError) {
     return fail('tickets_unavailable', 'O sistema de chamados está fora do ar agora', 503, undefined, {

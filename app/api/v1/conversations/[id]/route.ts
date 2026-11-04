@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export const GET = withRoute(
   { role: 'analyst', params: z.object({ id: z.string().uuid() }) },
   async ({ session, params, requestId }) => {
-    const [item] = await listForAnalyst(session.user_id, 'all', undefined, serverNow(), params.id);
+    const [item] = await listForAnalyst(session.user_id, { agora: serverNow(), onlyId: params.id });
     if (!item) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
     return ok(item, { requestId });
   },

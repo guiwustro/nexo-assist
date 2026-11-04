@@ -136,9 +136,9 @@ Duas perguntas diferentes, dois instrumentos:
 | Camada | Comando | O que cobre | Resultado |
 |---|---|---|---|
 | Typecheck + lint | `pnpm typecheck && pnpm lint` | TS estrito, React hooks | 0 erros, 0 avisos |
-| Unitários | `pnpm test` | Anexo A, prazos em horário útil, reabertura, máquina de estados, gatilhos, guardrails, busca, contratos, componentes | **230/230** (26 arquivos) |
-| Integração | `pnpm test:int` (Postgres) | `runTurn` com memória e banco reais, API com sessão e papéis, serviço de chamados, idempotência, SSE | **96/96** (11 arquivos) |
-| E2E | `pnpm test:e2e` (Playwright) | As histórias do PRD de ponta a ponta: abrir, consultar, complementar, transparência, privacidade, fora de escopo, transferência e console, instabilidade do legado, limite da sessão, continuidade | **28/28** (~2 min) |
+| Unitários | `pnpm test` | Anexo A, prazos em horário útil, reabertura, máquina de estados, gatilhos, guardrails, busca, contratos, componentes | **245/245** (30 arquivos) |
+| Integração | `pnpm test:int` (Postgres) | `runTurn` com memória e banco reais, API com sessão e papéis, serviço de chamados, idempotência, SSE | **112/112** (11 arquivos) |
+| E2E | `pnpm test:e2e` (Playwright) | As histórias do PRD de ponta a ponta: abrir, consultar, complementar, transparência, privacidade, fora de escopo, transferência e console, instabilidade do legado, limite da sessão, continuidade, conta e controles do console | **38/38** (~1,5 min) |
 | Evals | `pnpm eval` (DeepSeek) | Julgamento do modelo nas 13 histórias | **39/39 (100%)** |
 
 `pnpm check` roda typecheck, lint e unitários juntos. Números da última rodada completa, em 04/11/2026.
@@ -223,6 +223,20 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
 - **Adição:** no protótipo o avatar do analista, no rail do console, não faz nada. Aqui ele abre um menu com nome,
   e-mail, nível (N1/N2), "Meu perfil" (`/console/perfil`, o mesmo perfil do funcionário mais o nível de suporte) e
   "Sair".
+- **Adição:** controles do protótipo que não tinham comportamento definido passaram a funcionar no console:
+  - a lupa do topo busca nas mensagens da conversa aberta ("1 de 3", Enter/Shift+Enter, Esc fecha);
+  - as linhas de "Outros chamados" abrem o detalhe do chamado (dados e histórico do legado, via
+    `GET /tickets/:code/events`).
+  - "Disponível" ficou como selo, sem cara de botão: a disponibilidade não muda a fila, porque todos os analistas
+    veem todas as transferências.
+- **Adição:** a busca da lista ("Pesquisar conversa ou chamado"):
+  - ignora acento e caixa;
+  - casa nome no começo da palavra;
+  - procura em todas as mensagens e nos códigos e títulos dos chamados do funcionário (pelo serviço de chamados,
+    `GET /tickets/search`; se ele cair, a busca segue só com nome e mensagens);
+  - termos de até 3 letras só valem como palavra inteira no texto (`ana` não acha "analista");
+  - resultados por nome vêm primeiro, e cada resultado mostra por que apareceu (o chamado ou o trecho da mensagem).
+- "Manter conectado neste computador" agora vale: desmarcado, o cookie é da sessão do navegador.
 
 ### Telas (capturas do E2E, `e2e/visual.spec.ts`)
 
@@ -236,6 +250,8 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
 | 6 — Meu perfil | ![Meu perfil](docs/telas/perfil.png) |
 | Adição — menu do analista | ![Console, menu da conta](docs/telas/console-menu-conta.png) |
 | Adição — perfil do analista | ![Console, perfil](docs/telas/console-perfil.png) |
+| Adição — busca na lista e na conversa | ![Console, busca](docs/telas/console-busca.png) |
+| Adição — detalhe do chamado | ![Console, detalhe do chamado](docs/telas/console-detalhe-chamado.png) |
 
 ---
 
@@ -244,7 +260,7 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
 - Busca semântica na central, com avaliação de recall.
 - Feriados no cálculo de prazo; SLA pausado fora do horário visível na UI.
 - Rate limit e disjuntor compartilhados (Redis) para rodar mais de uma réplica.
-- Paginação e busca melhor na fila do console; "digitando…"; o `EventSource` voltar para SSE depois de cair para
+- Paginação na fila do console e busca com índice (trigram) quando houver muitas conversas; "digitando…"; o `EventSource` voltar para SSE depois de cair para
   polling.
 - Evals rodando no CI em PRs que mexem no prompt, com orçamento fixo.
 - Login real (SSO da empresa) no lugar do login de demonstração.
