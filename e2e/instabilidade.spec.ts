@@ -33,8 +33,11 @@ test('sistema de chamados fora: aviso honesto, rascunho guardado e confirmação
 
   const falta = 21_000 - (Date.now() - inicio);
   if (falta > 0) await page.waitForTimeout(falta);
-  await card.getByTestId('draft-confirm').click();
-  await expect(card).toContainText(/Criado como INC-205\d\d/, { timeout: 15_000 });
+  // O sistema voltou, mas o disjuntor pode seguir aberto até 15 s depois da última falha: a pessoa tenta de novo.
+  await expect(async () => {
+    await card.getByTestId('draft-confirm').click();
+    await expect(card).toContainText(/Criado como INC-205\d\d/, { timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
   expect(await db.$count(tickets, eq(tickets.requester_id, seed.users.ana.id))).toBe(antes + 1);
 });
 

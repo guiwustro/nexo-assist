@@ -33,7 +33,11 @@ test('Ana abre um chamado de VPN conversando e confirma o rascunho', async ({ pa
   await expect(page.getByTestId('ticket-card').last()).toBeVisible();
   await expect(card).toContainText(/Criado como INC-205\d\d/);
 
-  // Segundo rascunho: clique duplo rápido em Confirmar cria um único chamado.
+  // Segundo rascunho: clique duplo rápido em Confirmar cria um único chamado. O de VPN recém-criado é dado como
+  // resolvido, senão a checagem de duplicidade (chamado aberto na mesma categoria) recusaria o rascunho novo.
+  await db.update(tickets).set({ status: 'resolved', resolved_at: new Date() }).where(
+    and(eq(tickets.requester_id, seed.users.ana.id), eq(tickets.category, 'network_vpn')),
+  );
   const antes = await db.$count(tickets, eq(tickets.requester_id, seed.users.ana.id));
   await enviar(page, 'Só eu, preciso disso hoje');
   const card2 = page.getByTestId('draft-card').last();
