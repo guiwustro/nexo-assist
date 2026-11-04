@@ -14,7 +14,7 @@ const NAV = [
 
 export function Sidebar({ name, email, initials }: { name: string; email: string; initials: string }) {
   const path = usePathname();
-  const sair = useLogout();
+  const logout = useLogout();
 
   return (
     <aside className="flex h-screen w-[232px] shrink-0 flex-col border-r border-rule px-3.5 pt-5 pb-3.5">
@@ -54,7 +54,7 @@ export function Sidebar({ name, email, initials }: { name: string; email: string
       <button
         type="button"
         data-testid="sidebar-logout"
-        onClick={sair}
+        onClick={logout}
         className="mt-1 flex h-[34px] items-center gap-2.5 rounded-btn px-2.5 text-body font-medium text-ink-2 hover:bg-desk"
       >
         <LogOut size={16} className="text-ink-3" />

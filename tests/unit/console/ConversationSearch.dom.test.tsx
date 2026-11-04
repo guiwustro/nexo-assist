@@ -2,17 +2,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { ConversationSearch, Realce } from '@/components/console/ConversationSearch';
+import { ConversationSearch, Highlighted } from '@/components/console/ConversationSearch';
 
 afterEach(cleanup);
 
 function Harness({ total, onClose = () => {} }: { total: number; onClose?: () => void }) {
-  const [termo, setTermo] = useState('');
-  const [atual, setAtual] = useState(0);
+  const [term, setTerm] = useState('');
+  const [current, setCurrent] = useState(0);
   return (
     <>
-      <ConversationSearch termo={termo} onTermo={setTermo} total={total} atual={atual} onAtual={setAtual} onClose={onClose} />
-      <span data-testid="atual">{atual}</span>
+      <ConversationSearch term={term} onTermChange={setTerm} total={total} current={current} onIndexChange={setCurrent} onClose={onClose} />
+      <span data-testid="atual">{current}</span>
     </>
   );
 }
@@ -43,7 +43,7 @@ describe('ConversationSearch', () => {
 
 describe('Realce', () => {
   it('marca as ocorrências sem acento/caixa e destaca a ativa', () => {
-    const { container } = render(<Realce texto="A VPN caiu. Reiniciei a vpn." termo="vpn" ativa={1} />);
+    const { container } = render(<Highlighted text="A VPN caiu. Reiniciei a vpn." term="vpn" activeIndex={1} />);
     const marks = container.querySelectorAll('mark');
     expect([...marks].map((m) => m.textContent)).toEqual(['VPN', 'vpn']);
     expect(marks[1]?.hasAttribute('data-busca-ativa')).toBe(true);
@@ -52,7 +52,7 @@ describe('Realce', () => {
   });
 
   it('sem termo devolve o texto puro', () => {
-    const { container } = render(<Realce texto="Olá" termo="" ativa={null} />);
+    const { container } = render(<Highlighted text="Olá" term="" activeIndex={null} />);
     expect(container.querySelector('mark')).toBeNull();
     expect(container.textContent).toBe('Olá');
   });

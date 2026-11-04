@@ -14,7 +14,7 @@ export type RunDetail = {
   cost: { model: string | null; tokens_in: number; tokens_out: number; cost_cents: number | null; latency_ms: number | null };
 };
 
-function Secao({ label, testId, children }: { label: string; testId: string; children: React.ReactNode }) {
+function Section({ label, testId, children }: { label: string; testId: string; children: React.ReactNode }) {
   return (
     <section data-testid={testId} className="flex flex-col gap-2 border-b border-rule px-6 py-5 last:border-b-0">
       <h3 className="text-label text-ink-3">{label}</h3>
@@ -23,11 +23,11 @@ function Secao({ label, testId, children }: { label: string; testId: string; chi
   );
 }
 
-function custo(c: RunDetail['cost']): string {
-  const partes = [c.model ?? 'sem modelo (regra)', `${c.tokens_in + c.tokens_out} tokens`];
-  partes.push(c.cost_cents === null ? 'custo não medido' : `US$ ${(c.cost_cents / 100).toFixed(4)}`);
-  if (c.latency_ms !== null) partes.push(`${(c.latency_ms / 1000).toFixed(1)} s`);
-  return partes.join(' · ');
+function cost(c: RunDetail['cost']): string {
+  const parts = [c.model ?? 'sem modelo (regra)', `${c.tokens_in + c.tokens_out} tokens`];
+  parts.push(c.cost_cents === null ? 'custo não medido' : `US$ ${(c.cost_cents / 100).toFixed(4)}`);
+  if (c.latency_ms !== null) parts.push(`${(c.latency_ms / 1000).toFixed(1)} s`);
+  return parts.join(' · ');
 }
 
 /** "Por que o Nexo fez isso?": o que entendeu, o que fez, com que confiança, por quê, o que consultou, quanto custou. */
@@ -35,12 +35,12 @@ export function DecisionPanel({ runId, onClose }: { runId: string; onClose: () =
   const [state, setState] = useState<{ id: string; data: RunDetail | null; error: boolean } | null>(null);
 
   useEffect(() => {
-    let vivo = true;
+    let alive = true;
     api<RunDetail>(`/api/v1/ai/runs/${runId}`)
-      .then((data) => vivo && setState({ id: runId, data, error: false }))
-      .catch(() => vivo && setState({ id: runId, data: null, error: true }));
+      .then((data) => alive && setState({ id: runId, data, error: false }))
+      .catch(() => alive && setState({ id: runId, data: null, error: true }));
     return () => {
-      vivo = false;
+      alive = false;
     };
   }, [runId]);
 
@@ -50,9 +50,9 @@ export function DecisionPanel({ runId, onClose }: { runId: string; onClose: () =
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const atual = state?.id === runId ? state : null;
-  const d = atual?.data?.decision ?? null;
-  const acoes = atual?.data?.tool_calls ?? [];
+  const current = state?.id === runId ? state : null;
+  const d = current?.data?.decision ?? null;
+  const actionsText = current?.data?.tool_calls ?? [];
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label="Por que o Nexo fez isso?">
@@ -68,35 +68,35 @@ export function DecisionPanel({ runId, onClose }: { runId: string; onClose: () =
           </button>
         </header>
 
-        {!atual && (
+        {!current && (
           <div className="flex items-center gap-2 px-6 py-6 text-body text-ink-3">
             <Spinner size={14} /> carregando…
           </div>
         )}
-        {atual?.error && <p className="px-6 py-6 text-body text-danger-text">Não foi possível carregar o registro deste turno.</p>}
+        {current?.error && <p className="px-6 py-6 text-body text-danger-text">Não foi possível carregar o registro deste turno.</p>}
 
-        {atual?.data && !d && (
+        {current?.data && !d && (
           <p data-testid="decision-missing" className="px-6 pt-5 text-body text-ink-2">
             O agent não registrou a decisão deste turno.
           </p>
         )}
 
-        {atual?.data && d && (
+        {current?.data && d && (
           <>
-            <Secao label="Entendi que…" testId="decision-understood">
+            <Section label="Entendi que…" testId="decision-understood">
               <p>{d.understanding.summary}</p>
               <blockquote className="border-l-2 border-rule pl-3 text-body text-ink-2 italic">
                 Palavras suas: “{d.understanding.evidence}”
               </blockquote>
-            </Secao>
-            <Secao label="Então eu…" testId="decision-action">
+            </Section>
+            <Section label="Então eu…" testId="decision-action">
               <p className="font-medium">{ACTION_LABEL[d.decision.action]}</p>
               <div className="flex flex-col gap-1">
                 <span className="text-label text-ink-3">Confiança</span>
                 <ConfidenceBar value={d.decision.confidence} />
               </div>
-            </Secao>
-            <Secao label="Porque…" testId="decision-why">
+            </Section>
+            <Section label="Porque…" testId="decision-why">
               <p>{d.decision.why}</p>
               {d.decision.rules_applied.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
@@ -107,16 +107,16 @@ export function DecisionPanel({ runId, onClose }: { runId: string; onClose: () =
                   ))}
                 </div>
               )}
-            </Secao>
+            </Section>
           </>
         )}
 
-        {atual?.data && (
+        {current?.data && (
           <>
-            <Secao label="Consultei" testId="decision-sources">
-              {acoes.length === 0 && <p className="text-body text-ink-3">Nenhuma ferramenta neste turno.</p>}
+            <Section label="Consultei" testId="decision-sources">
+              {actionsText.length === 0 && <p className="text-body text-ink-3">Nenhuma ferramenta neste turno.</p>}
               <ul className="flex flex-col gap-2">
-                {acoes.map((a) => (
+                {actionsText.map((a) => (
                   <li key={a.id} className="flex items-start gap-2 text-body">
                     {a.result === 'error' ? (
                       <TriangleAlert size={14} className="mt-0.5 shrink-0 text-warning" />
@@ -142,9 +142,9 @@ export function DecisionPanel({ runId, onClose }: { runId: string; onClose: () =
                   ))}
                 </ul>
               )}
-            </Secao>
+            </Section>
             <footer data-testid="decision-cost" className="mt-auto border-t border-rule px-6 py-4 text-label text-ink-3">
-              {custo(atual.data.cost)}
+              {cost(current.data.cost)}
             </footer>
           </>
         )}

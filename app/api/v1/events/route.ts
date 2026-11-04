@@ -17,16 +17,16 @@ export async function GET(req: Request): Promise<Response> {
 
   const enc = new TextEncoder();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let fechado = false;
+  let closed = false;
   const stream = new ReadableStream<Uint8Array>({
     start(ctrl) {
-      let ultimoPing = Date.now();
+      let lastPing = Date.now();
       const send = (s: string) => {
-        if (!fechado) ctrl.enqueue(enc.encode(s));
+        if (!closed) ctrl.enqueue(enc.encode(s));
       };
       send(`retry: 3000\n: conectado\n\n`);
       const tick = async () => {
-        if (fechado) return;
+        if (closed) return;
         try {
           const rows = await readEventsAfter(cursor, { role: session.role, user_id: session.user_id });
           for (const r of rows) {
@@ -34,18 +34,18 @@ export async function GET(req: Request): Promise<Response> {
             const data = { id: r.id, type: r.event_type, conversation_id: r.conversation_id, payload: r.payload, created_at: r.created_at };
             send(`id: ${formatCursor(cursor)}\nevent: ${r.event_type}\ndata: ${JSON.stringify(data)}\n\n`);
           }
-          if (Date.now() - ultimoPing >= HEARTBEAT_MS) {
+          if (Date.now() - lastPing >= HEARTBEAT_MS) {
             send(`: ping\n\n`);
-            ultimoPing = Date.now();
+            lastPing = Date.now();
           }
         } catch (e) {
-          console.warn('[events] leitura falhou', e);
+          console.warn('[events] read failed', e);
         }
-        if (!fechado) timer = setTimeout(tick, POLL_MS);
+        if (!closed) timer = setTimeout(tick, POLL_MS);
       };
       void tick();
       req.signal.addEventListener('abort', () => {
-        fechado = true;
+        closed = true;
         clearTimeout(timer);
         try {
           ctrl.close();
@@ -55,7 +55,7 @@ export async function GET(req: Request): Promise<Response> {
       });
     },
     cancel() {
-      fechado = true;
+      closed = true;
       clearTimeout(timer);
     },
   });

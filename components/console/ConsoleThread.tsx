@@ -5,29 +5,29 @@ import type { ApiMessage } from '@/lib/conversations/serialize';
 import { summarizeParts } from '@/lib/conversations/parts-summary';
 import { time } from '@/lib/format';
 import { isSameDayInSaoPaulo } from '@/lib/rules/deadline';
-import { Realce } from './ConversationSearch';
+import { Highlighted } from './ConversationSearch';
 import { HandoffCard, type HandoffView } from './HandoffCard';
 
 /** Busca aberta na conversa: o termo e qual resultado está ativo (mensagem e índice dentro dela). */
-export type Destaque = { termo: string; ativo: { id: string; k: number } | null };
+export type SearchHighlight = { term: string; active: { id: string; k: number } | null };
 
-function Sistema({ m, destaque }: { m: ApiMessage; destaque?: Destaque }) {
+function SystemLine({ m, highlight: highlight }: { m: ApiMessage; highlight?: SearchHighlight }) {
   const Icon = /^Transferida/.test(m.body) ? ArrowRightLeft : /assumiu/.test(m.body) ? Headset : /criado|atualizado|reaberto/.test(m.body) ? CircleCheck : Info;
   return (
     <div data-testid="console-system" className="flex items-center gap-3 pt-[18px] pb-1">
       <span className="h-px flex-1 bg-[#1B243114]" />
       <span className="flex items-center gap-1.5 text-xs font-medium text-ink-3">
         <Icon size={13} />
-        <Corpo m={m} destaque={destaque} />
+        <MessageBody m={m} highlight={highlight} />
       </span>
       <span className="h-px flex-1 bg-[#1B243114]" />
     </div>
   );
 }
 
-function Corpo({ m, destaque }: { m: ApiMessage; destaque?: Destaque }) {
-  if (!destaque?.termo.trim()) return <>{m.body}</>;
-  return <Realce texto={m.body} termo={destaque.termo} ativa={destaque.ativo?.id === m.id ? destaque.ativo.k : null} />;
+function MessageBody({ m, highlight: highlight }: { m: ApiMessage; highlight?: SearchHighlight }) {
+  if (!highlight?.term.trim()) return <>{m.body}</>;
+  return <Highlighted text={m.body} term={highlight.term} activeIndex={highlight.active?.id === m.id ? highlight.active.k : null} />;
 }
 
 export function ConsoleThread({
@@ -35,67 +35,67 @@ export function ConsoleThread({
   handoffs,
   employeeName,
   onWhy,
-  destaque,
+  highlight: highlight,
 }: {
   messages: ApiMessage[];
   handoffs: HandoffView[];
   employeeName: string;
   onWhy: (runId: string) => void;
-  destaque?: Destaque;
+  highlight?: SearchHighlight;
 }) {
-  const hoje = messages.length > 0 && isSameDayInSaoPaulo(new Date(messages[0]!.created_at), new Date());
+  const today = messages.length > 0 && isSameDayInSaoPaulo(new Date(messages[0]!.created_at), new Date());
   return (
     <div data-testid="console-thread" className="flex flex-col">
       {messages.length > 0 && (
         <div className="flex justify-center pb-1">
-          <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium text-ink-3">{hoje ? 'Hoje' : 'Histórico'}</span>
+          <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium text-ink-3">{today ? 'Hoje' : 'Histórico'}</span>
         </div>
       )}
       {messages.map((m, i) => {
-        const anterior = messages[i - 1];
-        const colada = anterior && anterior.direction === m.direction && anterior.sent_via === m.sent_via && m.type !== 'system';
+        const previous = messages[i - 1];
+        const isGrouped = previous && previous.direction === m.direction && previous.sent_via === m.sent_via && m.type !== 'system';
         if (m.type === 'system') {
           const handoff = m.handoff_id ? handoffs.find((h) => h.id === m.handoff_id) : undefined;
           return (
             <div key={m.id}>
-              <Sistema m={m} destaque={destaque} />
+              <SystemLine m={m} highlight={highlight} />
               {handoff && <HandoffCard h={handoff} employeeName={employeeName} />}
             </div>
           );
         }
         if (m.direction === 'inbound') {
           return (
-            <div key={m.id} className={`flex flex-col ${colada ? 'pt-[3px]' : 'pt-4'}`}>
+            <div key={m.id} className={`flex flex-col ${isGrouped ? 'pt-[3px]' : 'pt-4'}`}>
               <div className="flex w-fit max-w-[520px] items-end gap-2.5 rounded-[4px_12px_12px_12px] bg-paper px-3 pt-2 pb-1.5">
                 <span className="text-value whitespace-pre-wrap text-ink">
-                  <Corpo m={m} destaque={destaque} />
+                  <MessageBody m={m} highlight={highlight} />
                 </span>
                 <span className="pb-px text-tag text-ink-3">{time(m.created_at)}</span>
               </div>
             </div>
           );
         }
-        const ia = m.sent_via === 'ai';
-        const extras = ia ? summarizeParts(m.parts) : [];
+        const isAi = m.sent_via === 'ai';
+        const extras = isAi ? summarizeParts(m.parts) : [];
         return (
-          <div key={m.id} data-testid={ia ? 'ai-message' : 'human-message'} className={`flex flex-col items-end gap-1 ${colada ? 'pt-[3px]' : 'pt-4'}`}>
-            {!colada && (
+          <div key={m.id} data-testid={isAi ? 'ai-message' : 'human-message'} className={`flex flex-col items-end gap-1 ${isGrouped ? 'pt-[3px]' : 'pt-4'}`}>
+            {!isGrouped && (
               <span className="flex items-center gap-1.5 px-1 text-xs font-semibold text-ink-2">
-                {ia ? 'Nexo Assist' : (m.sender_name ?? 'Analista')}
+                {isAi ? 'Nexo Assist' : (m.sender_name ?? 'Analista')}
                 <span
                   className={`rounded-tag px-1.5 py-px text-tag font-semibold ${
-                    ia ? 'bg-primary-soft text-primary-text' : 'bg-success-soft text-success-text'
+                    isAi ? 'bg-primary-soft text-primary-text' : 'bg-success-soft text-success-text'
                   }`}
                 >
-                  {ia ? 'IA' : `Suporte ${m.sender_level ?? 'N1'}`}
+                  {isAi ? 'IA' : `Suporte ${m.sender_level ?? 'N1'}`}
                 </span>
               </span>
             )}
             <div
-              className={`flex max-w-[420px] flex-col gap-0.5 rounded-[12px_4px_12px_12px] px-3 pt-2 pb-1.5 ${ia ? 'bg-bubble-ai' : 'bg-bubble-human'}`}
+              className={`flex max-w-[420px] flex-col gap-0.5 rounded-[12px_4px_12px_12px] px-3 pt-2 pb-1.5 ${isAi ? 'bg-bubble-ai' : 'bg-bubble-human'}`}
             >
               <span className="text-value whitespace-pre-wrap text-ink">
-                  <Corpo m={m} destaque={destaque} />
+                  <MessageBody m={m} highlight={highlight} />
                 </span>
               {extras.map((x) => (
                 <span key={x} className="text-label text-ink-3">
@@ -103,7 +103,7 @@ export function ConsoleThread({
                 </span>
               ))}
               <span className="flex items-center justify-end gap-[3px] pb-px">
-                {ia && m.agent_run_id && (
+                {isAi && m.agent_run_id && (
                   <button type="button" onClick={() => onWhy(m.agent_run_id!)} className="mr-auto text-tag font-semibold text-primary-text hover:underline">
                     Por quê?
                   </button>

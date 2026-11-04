@@ -3,7 +3,7 @@ import { requirePageUser } from '@/lib/server/session';
 
 export const metadata = { title: 'Meu perfil · Console · Nexo Assist' };
 
-export default async function ConsolePerfilPage() {
+export default async function ConsoleProfilePage() {
   const { user } = await requirePageUser('analyst');
   return (
     <div className="flex flex-1 bg-thread">

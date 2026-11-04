@@ -12,13 +12,13 @@ import { ConversationList } from './ConversationList';
 import { UserMenu, type ConsoleMe } from './UserMenu';
 
 /** Seções do console que não são conversa: o segundo pedaço da URL não é um id. */
-const SECOES = new Set(['perfil']);
+const NON_CONVERSATION_SEGMENTS = new Set(['perfil']);
 
 export function ConsoleFrame({ me, children }: { me: ConsoleMe; children: React.ReactNode }) {
   const path = usePathname();
-  const segmento = path.split('/')[2] ?? null;
-  const selectedId = segmento && !SECOES.has(segmento) ? segmento : null;
-  const emConversas = !segmento || !SECOES.has(segmento);
+  const segment = path.split('/')[2] ?? null;
+  const selectedId = segment && !NON_CONVERSATION_SEGMENTS.has(segment) ? segment : null;
+  const onConversations = !segment || !NON_CONVERSATION_SEGMENTS.has(segment);
   const [filter, setFilter] = useState<QueueFilter>('all');
   const [q, setQ] = useState('');
   const [items, setItems] = useState<QueueItem[] | null>(null);
@@ -26,15 +26,15 @@ export function ConsoleFrame({ me, children }: { me: ConsoleMe; children: React.
   const [now, setNow] = useState(() => new Date());
   const seq = useRef(0);
 
-  const load = useCallback(async (f: QueueFilter, termo: string) => {
-    const meu = ++seq.current;
-    const qs = new URLSearchParams({ filter: f, ...(termo.trim() ? { q: termo.trim() } : {}) });
-    const [lista, c] = await Promise.all([
+  const load = useCallback(async (f: QueueFilter, term: string) => {
+    const requestSeq = ++seq.current;
+    const qs = new URLSearchParams({ filter: f, ...(term.trim() ? { q: term.trim() } : {}) });
+    const [list, c] = await Promise.all([
       api<QueueItem[]>(`/api/v1/conversations?${qs}`).catch(() => null),
       api<Record<QueueFilter, number>>('/api/v1/conversations/counts').catch(() => null),
     ]);
-    if (meu !== seq.current) return;
-    if (lista) setItems(lista);
+    if (requestSeq !== seq.current) return;
+    if (list) setItems(list);
     if (c) setCounts(c);
     setNow(new Date());
   }, []);
@@ -61,12 +61,12 @@ export function ConsoleFrame({ me, children }: { me: ConsoleMe; children: React.
           href="/console"
           title="Conversas"
           aria-label="Conversas"
-          aria-current={emConversas ? 'page' : undefined}
+          aria-current={onConversations ? 'page' : undefined}
           className={`relative flex size-10 items-center justify-center rounded-bubble ${
-            emConversas ? 'bg-paper' : 'hover:bg-paper/60'
+            onConversations ? 'bg-paper' : 'hover:bg-paper/60'
           }`}
         >
-          <MessageCircle size={19} className={emConversas ? 'text-ink' : 'text-ink-3'} />
+          <MessageCircle size={19} className={onConversations ? 'text-ink' : 'text-ink-3'} />
           {counts && counts.for_you > 0 && (
             <span
               data-testid="rail-badge"

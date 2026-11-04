@@ -28,22 +28,22 @@ const cursorOf = (meta: Record<string, unknown>) => (typeof meta.next_cursor ===
 export function ConsoleConversation({ id, me }: { id: string; me: { id: string; name: string } }) {
   const [state, setState] = useState<State | null>(null);
   const [tickets, setTickets] = useState<EmployeeTicketsData | null>(null);
-  const [ticketsErro, setTicketsErro] = useState(false);
-  const [painel, setPainel] = useState(true);
+  const [ticketsError, setTicketsError] = useState(false);
+  const [panel, setPanel] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [why, setWhy] = useState<string | null>(null);
-  const [busca, setBusca] = useState<string | null>(null);
-  const [buscaAtual, setBuscaAtual] = useState(0);
+  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  const [searchIndex, setSearchIndex] = useState(0);
   const { scroller, keepScroll, scrollToBottom } = useConversationScroller(state?.messages[0]?.id);
-  const fecharToast = useCallback(() => setToast(null), []);
-  const fecharWhy = useCallback(() => setWhy(null), []);
+  const closeToast = useCallback(() => setToast(null), []);
+  const closeWhy = useCallback(() => setWhy(null), []);
 
   const loadTickets = useCallback(async (employeeId: string) => {
     try {
       setTickets(await api<EmployeeTicketsData>(`/api/v1/employees/${employeeId}/tickets`));
-      setTicketsErro(false);
+      setTicketsError(false);
     } catch {
-      setTicketsErro(true);
+      setTicketsError(true);
     }
   }, []);
 
@@ -71,13 +71,13 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
   };
 
   useEffect(() => {
-    let vivo = true;
+    let alive = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- o setState acontece depois da busca (assíncrono)
     load()
-      .then((item) => vivo && void loadTickets(item.employee.id))
+      .then((item) => alive && void loadTickets(item.employee.id))
       .catch(() => null);
     return () => {
-      vivo = false;
+      alive = false;
     };
   }, [load, loadTickets]);
 
@@ -94,21 +94,21 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
   }, [lastId]); // eslint-disable-line react-hooks/exhaustive-deps -- scrollToBottom só lê o ref
 
   /** Resultados da busca, da mensagem mais recente para a mais antiga (o primeiro é o que está mais perto do fim). */
-  const resultados = useMemo(() => {
-    if (!busca?.trim() || !state) return [];
+  const results = useMemo(() => {
+    if (!searchQuery?.trim() || !state) return [];
     return [...state.messages]
       .reverse()
-      .flatMap((m) => findMatches(m.body, busca).map((_, k) => ({ id: m.id, k })).reverse());
-  }, [busca, state]);
-  const ativo = resultados.length > 0 ? (resultados[Math.min(buscaAtual, resultados.length - 1)] ?? null) : null;
+      .flatMap((m) => findMatches(m.body, searchQuery).map((_, k) => ({ id: m.id, k })).reverse());
+  }, [searchQuery, state]);
+  const active = results.length > 0 ? (results[Math.min(searchIndex, results.length - 1)] ?? null) : null;
 
   useEffect(() => {
     scroller.current?.querySelector('[data-busca-ativa]')?.scrollIntoView?.({ block: 'center' });
-  }, [ativo?.id, ativo?.k]); // eslint-disable-line react-hooks/exhaustive-deps -- o ref é estável
+  }, [active?.id, active?.k]); // eslint-disable-line react-hooks/exhaustive-deps -- o ref é estável
 
-  const fecharBusca = useCallback(() => {
-    setBusca(null);
-    setBuscaAtual(0);
+  const closeSearch = useCallback(() => {
+    setSearchQuery(null);
+    setSearchIndex(0);
   }, []);
 
   if (!state) {
@@ -116,7 +116,7 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
   }
 
   const { item } = state;
-  const primeiro = item.employee.name.split(' ')[0] ?? item.employee.name;
+  const firstName = item.employee.name.split(' ')[0] ?? item.employee.name;
   const mode: TakeoverMode =
     item.status === 'pending'
       ? 'waiting'
@@ -128,7 +128,7 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
             ? 'mine'
             : 'other';
 
-  const acao = async (event: 'claim' | 'release' | 'close') => {
+  const action = async (event: 'claim' | 'release' | 'close') => {
     try {
       await api(`/api/v1/conversations/${id}/${event}`, { method: 'POST' });
     } catch (e) {
@@ -138,20 +138,20 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
     window.dispatchEvent(new Event('nexo:queue-changed'));
   };
 
-  const enviar = async (text: string) => {
+  const send = async (text: string) => {
     await api(`/api/v1/conversations/${id}/messages`, { method: 'POST', body: JSON.stringify({ text }) }).catch((e: unknown) =>
       setToast(e instanceof Error ? e.message : 'Não foi possível enviar'),
     );
     await load().catch(() => null);
   };
 
-  const ultimoClaim = [...state.messages].reverse().find((m) => m.type === 'system' && /assumiu/.test(m.body));
-  const ultimaPassagem = [...state.messages].reverse().find((m) => m.type === 'system' && /^Transferida/.test(m.body));
+  const lastClaim = [...state.messages].reverse().find((m) => m.type === 'system' && /assumiu/.test(m.body));
+  const lastHandoff = [...state.messages].reverse().find((m) => m.type === 'system' && /^Transferida/.test(m.body));
   const lastEvent =
-    item.status === 'claimed' && ultimoClaim
-      ? { kind: 'claim' as const, text: `Assumido por ${item.assigned_to?.name ?? ''}`, time: time(ultimoClaim.created_at) }
-      : ultimaPassagem
-        ? { kind: 'transfer' as const, text: 'Transferido para um analista', time: time(ultimaPassagem.created_at) }
+    item.status === 'claimed' && lastClaim
+      ? { kind: 'claim' as const, text: `Assumido por ${item.assigned_to?.name ?? ''}`, time: time(lastClaim.created_at) }
+      : lastHandoff
+        ? { kind: 'transfer' as const, text: 'Transferido para um analista', time: time(lastHandoff.created_at) }
         : null;
   const meta = ['online', item.employee.department, item.focus_ticket_code].filter(Boolean).join(' · ');
 
@@ -159,7 +159,7 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
     <>
       <section className="flex min-w-0 flex-1 flex-col bg-thread">
         <header className="flex h-16 shrink-0 items-center gap-3 border-b border-rule bg-paper pr-4 pl-5">
-          <Avatar nome={item.employee.name} size={40} />
+          <Avatar name={item.employee.name} size={40} />
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-[15.5px] font-semibold whitespace-nowrap text-ink">{item.employee.name}</span>
             <span className="truncate text-label text-ink-3">{meta}</span>
@@ -169,7 +169,7 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
               <button
                 type="button"
                 data-testid="header-release"
-                onClick={() => void acao('release')}
+                onClick={() => void action('release')}
                 className="flex h-9 shrink-0 items-center gap-1.5 rounded-btn border border-input-border pr-3 pl-2.5 text-body font-medium whitespace-nowrap text-ink-2 hover:bg-desk"
               >
                 <Bot size={14} />
@@ -178,7 +178,7 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
               <button
                 type="button"
                 data-testid="header-close"
-                onClick={() => void acao('close')}
+                onClick={() => void action('close')}
                 className="flex h-9 shrink-0 items-center gap-1.5 rounded-btn bg-danger-soft pr-3 pl-2.5 text-body font-semibold whitespace-nowrap text-danger-text hover:brightness-95"
               >
                 <CircleCheckBig size={14} />
@@ -205,64 +205,64 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
           <button
             type="button"
             data-testid="header-search"
-            onClick={() => (busca === null ? setBusca('') : fecharBusca())}
-            aria-pressed={busca !== null}
-            className={`flex size-9 items-center justify-center rounded-full text-ink-2 hover:bg-desk ${busca !== null ? 'bg-desk' : ''}`}
+            onClick={() => (searchQuery === null ? setSearchQuery('') : closeSearch())}
+            aria-pressed={searchQuery !== null}
+            className={`flex size-9 items-center justify-center rounded-full text-ink-2 hover:bg-desk ${searchQuery !== null ? 'bg-desk' : ''}`}
             aria-label="Buscar na conversa"
           >
             <Search size={18} />
           </button>
           <button
             type="button"
-            onClick={() => setPainel((v) => !v)}
+            onClick={() => setPanel((v) => !v)}
             className="flex size-9 items-center justify-center rounded-full text-ink-2 hover:bg-desk"
             aria-label="Chamados do funcionário"
           >
             <EllipsisVertical size={18} />
           </button>
         </header>
-        {busca !== null && (
+        {searchQuery !== null && (
           <ConversationSearch
-            termo={busca}
-            onTermo={setBusca}
-            total={resultados.length}
-            atual={Math.min(buscaAtual, Math.max(resultados.length - 1, 0))}
-            onAtual={setBuscaAtual}
-            onClose={fecharBusca}
+            term={searchQuery}
+            onTermChange={setSearchQuery}
+            total={results.length}
+            current={Math.min(searchIndex, Math.max(results.length - 1, 0))}
+            onIndexChange={setSearchIndex}
+            onClose={closeSearch}
           />
         )}
         <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto px-10 pt-5 pb-4">
           <div className="mt-auto">
             {state.nextCursor && <LoadOlderButton onLoad={loadOlder} />}
             <ConsoleThread messages={state.messages} handoffs={state.handoffs} employeeName={item.employee.name} onWhy={setWhy}
-              destaque={busca ? { termo: busca, ativo } : undefined}
+              highlight={searchQuery ? { term: searchQuery, active: active } : undefined}
             />
           </div>
         </div>
         <TakeoverBar
           mode={mode}
-          firstName={primeiro}
+          firstName={firstName}
           dueLabel={item.handoff ? formatShortDeadline(new Date(item.handoff.due_at), new Date()).replace('resposta até', 'até') : null}
           otherName={item.assigned_to?.name ?? null}
-          onClaim={() => acao('claim')}
-          onRelease={() => acao('release')}
-          onSend={enviar}
+          onClaim={() => action('claim')}
+          onRelease={() => action('release')}
+          onSend={send}
         />
       </section>
-      {painel && (
+      {panel && (
         <EmployeeTickets
           employeeId={item.employee.id}
           employeeName={item.employee.name}
           data={tickets}
-          error={ticketsErro}
+          error={ticketsError}
           focusCode={item.focus_ticket_code}
           lastEvent={lastEvent}
           onRetry={() => void loadTickets(item.employee.id)}
-          onClose={() => setPainel(false)}
+          onClose={() => setPanel(false)}
         />
       )}
-      {why && <DecisionPanel runId={why} onClose={fecharWhy} />}
-      {toast && <Toast text={toast} onDone={fecharToast} />}
+      {why && <DecisionPanel runId={why} onClose={closeWhy} />}
+      {toast && <Toast text={toast} onDone={closeToast} />}
     </>
   );
 }

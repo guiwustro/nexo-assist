@@ -18,11 +18,11 @@ const Body = z.object({
 
 /** E-mail + senha conferida contra o hash scrypt. E-mail ou senha errados dão a mesma resposta. */
 export const POST = withRoute({ role: 'public', body: Body }, async ({ req, body, requestId }) => {
-  const vez = loginLimiter().take(clientIp(req));
-  if (!vez.ok) {
-    return fail('rate_limited', `Muitas tentativas de entrar, aguarde ${vez.retry_after_s}s`, 429, undefined, {
+  const slot = loginLimiter().take(clientIp(req));
+  if (!slot.ok) {
+    return fail('rate_limited', `Muitas tentativas de entrar, aguarde ${slot.retry_after_s}s`, 429, undefined, {
       requestId,
-      headers: { 'retry-after': String(vez.retry_after_s) },
+      headers: { 'retry-after': String(slot.retry_after_s) },
     });
   }
   const user = await findUserByEmail(body.email);

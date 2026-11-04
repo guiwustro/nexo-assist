@@ -10,36 +10,36 @@ import { dateTime } from '@/lib/format';
 import { TicketHistory } from '@/components/tickets/TicketHistory';
 
 
-const ENCERRADOS = new Set(['resolved', 'closed']);
+const CLOSED_STATUSES = new Set(['resolved', 'closed']);
 
 /** Detalhe de um chamado dentro do painel "Chamados da Ana" do console. */
 export function TicketDetail({ employeeId, code, onBack }: { employeeId: string; code: string; onBack: () => void }) {
   const [data, setData] = useState<Detalhe | null>(null);
-  const [erro, setErro] = useState(false);
+  const [error, setError] = useState(false);
 
-  const buscar = useCallback(
+  const fetchDetail = useCallback(
     () =>
       api<Detalhe>(`/api/v1/employees/${employeeId}/tickets/${encodeURIComponent(code)}`).then(
         (d) => setData(d),
-        () => setErro(true),
+        () => setError(true),
       ),
     [employeeId, code],
   );
 
   useEffect(() => {
-    void buscar();
-  }, [buscar]);
+    void fetchDetail();
+  }, [fetchDetail]);
 
-  const tentarDeNovo = () => {
-    setErro(false);
-    void buscar();
+  const retry = () => {
+    setError(false);
+    void fetchDetail();
   };
 
   const t = data?.ticket;
-  const campo = (rotulo: string, valor: string) => (
+  const field = (label: string, value: string) => (
     <div className="flex gap-3 py-1.5">
-      <span className="w-[88px] shrink-0 text-label text-ink-3">{rotulo}</span>
-      <span className="text-body text-ink">{valor}</span>
+      <span className="w-[88px] shrink-0 text-label text-ink-3">{label}</span>
+      <span className="text-body text-ink">{value}</span>
     </div>
   );
 
@@ -54,17 +54,17 @@ export function TicketDetail({ employeeId, code, onBack }: { employeeId: string;
         Voltar aos chamados
       </button>
 
-      {erro && (
+      {error && (
         <div data-testid="ticket-detail-error" className="flex flex-col items-start gap-2 rounded-bubble bg-warning-soft p-4 text-body text-warning-text">
           <span className="flex items-center gap-2">
             <TriangleAlert size={15} /> Não foi possível carregar o chamado
           </span>
-          <button type="button" onClick={tentarDeNovo} className="font-semibold underline">
+          <button type="button" onClick={retry} className="font-semibold underline">
             Tentar de novo
           </button>
         </div>
       )}
-      {!data && !erro && <div className="h-40 rounded-bubble bg-desk" style={{ animation: 'nexo-pulse 1.4s ease-in-out infinite' }} />}
+      {!data && !error && <div className="h-40 rounded-bubble bg-desk" style={{ animation: 'nexo-pulse 1.4s ease-in-out infinite' }} />}
 
       {t && data && (
         <>
@@ -83,14 +83,14 @@ export function TicketDetail({ employeeId, code, onBack }: { employeeId: string;
           </section>
 
           <section className="flex flex-col border-y border-rule py-2">
-            {campo('Categoria', CATEGORY_LABEL[t.category] + (t.subcategory ? ` · ${t.subcategory}` : ''))}
-            {campo('Prioridade', PRIORITY_LABEL[t.priority])}
-            {campo('Afeta', AFFECTED_LABEL[t.affected])}
-            {campo('Responsável', t.assignee_name ?? 'Ainda sem analista')}
-            {campo('Aberto em', dateTime(t.created_at))}
-            {ENCERRADOS.has(t.status)
-              ? campo('Resolvido em', dateTime(t.resolved_at ?? t.last_update_at))
-              : campo('Prazo', dateTime(t.due_at) + (t.overdue ? ` · ${t.overdue_label ?? 'vencido'}` : ''))}
+            {field('Categoria', CATEGORY_LABEL[t.category] + (t.subcategory ? ` · ${t.subcategory}` : ''))}
+            {field('Prioridade', PRIORITY_LABEL[t.priority])}
+            {field('Afeta', AFFECTED_LABEL[t.affected])}
+            {field('Responsável', t.assignee_name ?? 'Ainda sem analista')}
+            {field('Aberto em', dateTime(t.created_at))}
+            {CLOSED_STATUSES.has(t.status)
+              ? field('Resolvido em', dateTime(t.resolved_at ?? t.last_update_at))
+              : field('Prazo', dateTime(t.due_at) + (t.overdue ? ` · ${t.overdue_label ?? 'vencido'}` : ''))}
           </section>
 
           <TicketHistory events={data.events} />

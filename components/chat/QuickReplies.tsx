@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 
-function campoDeTexto(el: EventTarget | null): el is HTMLElement {
+function isTextField(el: EventTarget | null): el is HTMLElement {
   if (!(el instanceof HTMLElement)) return false;
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable;
 }
@@ -11,8 +11,8 @@ function campoDeTexto(el: EventTarget | null): el is HTMLElement {
  * Atalhos 1–4 só com o foco fora de campos de texto. No composer, mesmo vazio, um número é o começo de uma resposta
  * ("11", "3 pessoas"), não uma escolha.
  */
-function teclaLiberada(target: EventTarget | null): boolean {
-  return !campoDeTexto(target);
+function isShortcutAllowed(target: EventTarget | null): boolean {
+  return !isTextField(target);
 }
 
 export function QuickReplies({
@@ -36,7 +36,7 @@ export function QuickReplies({
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const n = Number(e.key);
       if (!Number.isInteger(n) || n < 1 || n > options.length) return;
-      if (!teclaLiberada(e.target)) return;
+      if (!isShortcutAllowed(e.target)) return;
       e.preventDefault();
       onSelect(options[n - 1]!);
     };

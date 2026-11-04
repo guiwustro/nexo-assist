@@ -17,7 +17,9 @@ export type DraftHandlers = {
   errors: Record<string, string>;
 };
 
-const OFERTA_VENCIDO = ['Falar com um analista', 'Adicionar informação', 'Não, obrigado'];
+/** Respostas à oferta de chamado vencido. "Adicionar informação" só preenche o composer; as outras viram mensagem. */
+export const OVERDUE_OFFER = { analyst: 'Falar com um analista', addInfo: 'Adicionar informação', decline: 'Não, obrigado' } as const;
+const OVERDUE_OFFER_OPTIONS = Object.values(OVERDUE_OFFER);
 
 /** Uma resposta do agent: status line, cards e bolha na ordem do protótipo. */
 export function AgentMessage({
@@ -49,22 +51,22 @@ export function AgentMessage({
 }) {
   const ticketCards = parts.filter((p) => p.kind === 'ticket_card');
   const quick = parts.find((p) => p.kind === 'quick_replies');
-  const outros = parts.filter((p) => p.kind === 'ticket_selector' || p.kind === 'draft_card');
-  const vencido = ticketCards.find((p) => p.overdue);
-  const interativo = isLast && !streaming;
+  const others = parts.filter((p) => p.kind === 'ticket_selector' || p.kind === 'draft_card');
+  const overdue = ticketCards.find((p) => p.overdue);
+  const interactive = isLast && !streaming;
 
-  const bolha = (text || quick || vencido) && (
+  const bubble = (text || quick || overdue) && (
     <AgentBubble testId="agent-bubble">
       {text && <p className="whitespace-pre-wrap">{text}</p>}
       {quick && (
-        <QuickReplies question={quick.question} options={quick.options} onSelect={onSend} keyboard={interativo} disabled={!interativo} />
+        <QuickReplies question={quick.question} options={quick.options} onSelect={onSend} keyboard={interactive} disabled={!interactive} />
       )}
-      {vencido && (
+      {overdue && (
         <QuickReplies
-          options={OFERTA_VENCIDO}
+          options={OVERDUE_OFFER_OPTIONS}
           numbered={false}
-          disabled={!interativo}
-          onSelect={(o) => onOverdueAction?.(o, vencido.ticket.code)}
+          disabled={!interactive}
+          onSelect={(o) => onOverdueAction?.(o, overdue.ticket.code)}
         />
       )}
     </AgentBubble>
@@ -80,16 +82,16 @@ export function AgentMessage({
       {ticketCards.map((p, i) => (
         <TicketCard key={`t${i}`} ticket={p.ticket} overdue={p.overdue} overdueLabel={p.overdue_label} now={now} />
       ))}
-      {bolha}
-      {outros.map((p, i) =>
+      {bubble}
+      {others.map((p, i) =>
         p.kind === 'ticket_selector' ? (
-          <TicketSelector key={`s${i}`} tickets={p.tickets} disabled={!interativo} onPick={(t) => onSend(`${t.code} · ${t.title}`)} />
+          <TicketSelector key={`s${i}`} tickets={p.tickets} disabled={!interactive} onPick={(t) => onSend(`${t.code} · ${t.title}`)} />
         ) : p.kind === 'draft_card' ? (
           <DraftCard
             key={p.draft_id}
             part={p}
             now={now}
-            keyboard={interativo}
+            keyboard={interactive}
             error={drafts.errors[p.draft_id] ?? null}
             onConfirm={() => drafts.confirm(p.draft_id)}
             onCancel={() => drafts.cancel(p.draft_id)}

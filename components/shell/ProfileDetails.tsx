@@ -1,11 +1,11 @@
 import { KeyRound, Lock, Mail } from 'lucide-react';
 import { ResetPasswordButton } from '@/components/shell/ResetPasswordButton';
 
-type Perfil = { name: string; email: string; support_level?: 'N1' | 'N2' | null };
+type Profile = { name: string; email: string; support_level?: 'N1' | 'N2' | null };
 
 /** Conteúdo do "Meu perfil", comum ao funcionário e ao analista (este também vê o nível de suporte). */
-export function ProfileDetails({ user }: { user: Perfil }) {
-  const linha = 'flex items-center gap-4 px-6 py-5';
+export function ProfileDetails({ user }: { user: Profile }) {
+  const rowClass = 'flex items-center gap-4 px-6 py-5';
   return (
     <div className="flex h-full w-full justify-center overflow-y-auto px-10 py-12">
       <div className="flex w-[600px] flex-col gap-8">
@@ -15,11 +15,11 @@ export function ProfileDetails({ user }: { user: Perfil }) {
         </div>
 
         <section className="flex flex-col divide-y divide-rule rounded-card border border-card-border bg-paper">
-          <div className={linha}>
+          <div className={rowClass}>
             <span className="w-40 text-body text-ink-3">Nome</span>
             <span className="text-value font-medium text-ink">{user.name}</span>
           </div>
-          <div className={linha}>
+          <div className={rowClass}>
             <span className="w-40 text-body text-ink-3">E-mail corporativo</span>
             <span data-testid="perfil-email" className="flex-1 text-value font-medium text-ink">
               {user.email}
@@ -30,7 +30,7 @@ export function ProfileDetails({ user }: { user: Perfil }) {
             </span>
           </div>
           {user.support_level && (
-            <div className={linha}>
+            <div className={rowClass}>
               <span className="w-40 text-body text-ink-3">Nível de suporte</span>
               <span data-testid="perfil-nivel" className="text-value font-medium text-ink">
                 Analista {user.support_level}

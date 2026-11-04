@@ -14,14 +14,14 @@ import type { DraftEdit } from '@/lib/contracts/drafts';
 import type { MessagePart } from '@/lib/contracts/parts';
 import type { NexoDataParts, NexoUIMessage } from '@/lib/contracts/ui';
 import type { ApiMessage } from '@/lib/conversations/serialize';
-import { AgentMessage, type DraftHandlers } from './AgentMessage';
+import { AgentMessage, OVERDUE_OFFER, type DraftHandlers } from './AgentMessage';
 import { Composer } from './Composer';
 import { DecisionPanel } from './DecisionPanel';
 import { UserBubble } from './MessageBubble';
 import { SystemEvent } from './SystemEvent';
 import { TicketCard } from './TicketCard';
 
-const FORA_DO_AR = 'O sistema de chamados está fora do ar agora. Seu rascunho está guardado.';
+const TICKETS_DOWN_MESSAGE = 'O sistema de chamados está fora do ar agora. Seu rascunho está guardado.';
 
 function Skeleton() {
   return (
@@ -35,7 +35,7 @@ function Skeleton() {
 
 export function ChatView({ aboutTicket }: { aboutTicket?: string } = {}) {
   const [data, setData] = useState<CurrentData | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -47,28 +47,28 @@ export function ChatView({ aboutTicket }: { aboutTicket?: string } = {}) {
         const keptOlder = messages.length > fresh.messages.length;
         return { ...fresh, messages, next_cursor: keptOlder ? prev.next_cursor : fresh.next_cursor };
       });
-      setErro(null);
+      setError(null);
     } catch (e) {
-      setErro(e instanceof ApiFailure ? e.message : 'Não foi possível carregar a conversa');
+      setError(e instanceof ApiFailure ? e.message : 'Não foi possível carregar a conversa');
     }
   }, []);
 
   useEffect(() => {
-    let vivo = true;
+    let alive = true;
     api<CurrentData>('/api/v1/conversations/current')
-      .then((d) => vivo && setData(d))
-      .catch((e: unknown) => vivo && setErro(e instanceof ApiFailure ? e.message : 'Não foi possível carregar a conversa'));
+      .then((d) => alive && setData(d))
+      .catch((e: unknown) => alive && setError(e instanceof ApiFailure ? e.message : 'Não foi possível carregar a conversa'));
     return () => {
-      vivo = false;
+      alive = false;
     };
   }, []);
 
   if (!data) {
     return (
       <div className="flex h-full flex-col">
-        {erro ? (
+        {error ? (
           <div className="px-[200px] py-7">
-            <Banner action={<button onClick={() => void reload()} className="font-semibold">Tentar de novo</button>}>{erro}</Banner>
+            <Banner action={<button onClick={() => void reload()} className="font-semibold">Tentar de novo</button>}>{error}</Banner>
           </div>
         ) : (
           <Skeleton />
@@ -210,7 +210,7 @@ function ChatSession({
         setDraftErrors(({ [id]: _, ...rest }) => rest);
         await reload();
       } catch (e) {
-        const msg = e instanceof ApiFailure && e.status === 503 ? FORA_DO_AR : e instanceof Error ? e.message : 'Erro';
+        const msg = e instanceof ApiFailure && e.status === 503 ? TICKETS_DOWN_MESSAGE : e instanceof Error ? e.message : 'Erro';
         setDraftErrors((d) => ({ ...d, [id]: msg }));
         if (e instanceof ApiFailure && e.status !== 503) await reload();
       }
@@ -230,16 +230,16 @@ function ChatSession({
   };
 
   const onOverdueAction = (action: string, code: string) => {
-    if (action === 'Adicionar informação') setPrefill({ text: `Sobre o ${code}: `, n: Date.now() });
+    if (action === OVERDUE_OFFER.addInfo) setPrefill({ text: `Sobre o ${code}: `, n: Date.now() });
     else send(action);
   };
 
-  const comAnalista = data.conversation.status === 'pending' || data.conversation.status === 'claimed';
+  const isWithAnalyst = data.conversation.status === 'pending' || data.conversation.status === 'claimed';
   const historico = data.messages;
   const live = chat.messages;
-  const ultimoAgentId = [...historico].reverse().find((m) => m.sent_via === 'ai')?.id;
-  const temLive = live.length > 0;
-  const enviadas = live.filter((m) => m.role === 'user').length;
+  const lastAgentId = [...historico].reverse().find((m) => m.sent_via === 'ai')?.id;
+  const hasLive = live.length > 0;
+  const sentCount = live.filter((m) => m.role === 'user').length;
 
   return (
     <div className="flex h-full flex-col">
@@ -258,7 +258,7 @@ function ChatSession({
               key={m.id}
               m={m}
               now={now}
-              isLast={!temLive && !failed && m.id === ultimoAgentId && historico[historico.length - 1]?.sent_via !== 'user'}
+              isLast={!hasLive && !failed && m.id === lastAgentId && historico[historico.length - 1]?.sent_via !== 'user'}
               onSend={send}
               onOverdueAction={onOverdueAction}
               drafts={drafts}
@@ -281,7 +281,7 @@ function ChatSession({
               />
             ),
           )}
-          {busy && !comAnalista && live[live.length - 1]?.role === 'user' && (
+          {busy && !isWithAnalyst && live[live.length - 1]?.role === 'user' && (
             <AgentMessage text="" parts={[]} actions={[]} streaming isLast={false} now={now} onSend={send} drafts={drafts} />
           )}
           {failed && (
@@ -292,9 +292,9 @@ function ChatSession({
         </div>
       </div>
 
-      {(comAnalista || banner) && (
+      {(isWithAnalyst || banner) && (
         <div className="flex flex-col gap-2 px-[200px] pt-2">
-          {comAnalista && (
+          {isWithAnalyst && (
             <Banner tone="primary" testId="analyst-banner">
               Um analista vai continuar este atendimento
             </Banner>
@@ -303,10 +303,10 @@ function ChatSession({
         </div>
       )}
       <Composer
-        count={data.session.count + enviadas}
+        count={data.session.count + sentCount}
         limit={data.session.limit}
         onSend={send}
-        mode={comAnalista ? 'analyst' : 'agent'}
+        mode={isWithAnalyst ? 'analyst' : 'agent'}
         disabled={busy}
         prefill={prefill}
       />
@@ -333,8 +333,8 @@ function LiveAgent({
   onOpenRun: (id: string) => void;
 }) {
   const l = fromUI(m);
-  const semAgent = !l.runId && !l.text && l.actions.length === 0 && l.parts.length === 0;
-  if (semAgent) {
+  const hasNoAgentContent = !l.runId && !l.text && l.actions.length === 0 && l.parts.length === 0;
+  if (hasNoAgentContent) {
     return (
       <>
         {l.systems.map((s, i) => (

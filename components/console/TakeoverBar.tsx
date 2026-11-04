@@ -36,7 +36,7 @@ export function TakeoverBar({
   };
 
   if (mode === 'mine') {
-    const enviar = () =>
+    const send = () =>
       run(async () => {
         const t = text.trim();
         if (!t) return;
@@ -52,14 +52,14 @@ export function TakeoverBar({
             disabled={busy}
             placeholder={`Responder para ${firstName}…`}
             onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void enviar()}
+            onKeyDown={(e) => e.key === 'Enter' && void send()}
             className="h-11 flex-1 rounded-bubble border border-input-border bg-paper px-3.5 text-value text-ink outline-none focus:border-cta"
           />
           <button
             type="button"
             data-testid="console-send"
             disabled={busy || !text.trim()}
-            onClick={() => void enviar()}
+            onClick={() => void send()}
             className="flex size-11 items-center justify-center rounded-bubble bg-cta text-white disabled:opacity-50"
             aria-label="Enviar"
           >
@@ -70,7 +70,7 @@ export function TakeoverBar({
     );
   }
 
-  const titulo =
+  const title =
     mode === 'waiting'
       ? `${firstName} espera um atendente`
       : mode === 'with_agent'
@@ -78,7 +78,7 @@ export function TakeoverBar({
         : mode === 'other'
           ? `Em atendimento por ${otherName ?? 'outro analista'}`
           : 'Atendimento encerrado';
-  const corpo =
+  const body =
     mode === 'waiting'
       ? `Agent pausado · ${dueLabel ?? 'aguardando'}`
       : mode === 'with_agent'
@@ -94,8 +94,8 @@ export function TakeoverBar({
           <Hand size={17} />
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-value font-semibold whitespace-nowrap text-ink">{titulo}</span>
-          <span className="truncate text-label whitespace-nowrap text-ink-3">{corpo}</span>
+          <span className="truncate text-value font-semibold whitespace-nowrap text-ink">{title}</span>
+          <span className="truncate text-label whitespace-nowrap text-ink-3">{body}</span>
         </div>
         {mode === 'waiting' && (
           <button

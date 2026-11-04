@@ -2,7 +2,7 @@
 
 import type { QueueFilter } from '@/lib/conversations/queries';
 
-const FILTROS: Array<{ id: QueueFilter; label: string }> = [
+const FILTERS: Array<{ id: QueueFilter; label: string }> = [
   { id: 'all', label: 'Todas' },
   { id: 'for_you', label: 'Para você' },
   { id: 'with_agent', label: 'Com o agent' },
@@ -20,7 +20,7 @@ export function ConversationFilters({
 }) {
   return (
     <div className="flex gap-1">
-      {FILTROS.map((f) => {
+      {FILTERS.map((f) => {
         const on = f.id === value;
         return (
           <button

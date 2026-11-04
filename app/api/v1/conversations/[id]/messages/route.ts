@@ -19,7 +19,7 @@ export const maxDuration = 60;
 const Params = z.object({ id: z.string().uuid() });
 const Body = z.object({ text: z.string().trim().min(1).max(2000) });
 
-async function conversaVisivel(id: string, session: Session) {
+async function getVisibleConversation(id: string, session: Session) {
   const conv = await getConversation(getDb(), id);
   if (!conv || (session.role === 'employee' && conv.employee_id !== session.user_id)) {
     throw new NotFound('conversation_not_found', 'Conversa não encontrada');
@@ -28,7 +28,7 @@ async function conversaVisivel(id: string, session: Session) {
 }
 
 export const GET = withRoute({ role: 'any', params: Params }, async ({ req, session, params, requestId }) => {
-  await conversaVisivel(params.id, session);
+  await getVisibleConversation(params.id, session);
   const cursor = new URL(req.url).searchParams.get('cursor') ?? undefined;
   const page = await listMessages(params.id, { cursor, limit: 50 });
   return ok(page.messages, { requestId, meta: { next_cursor: page.next_cursor } });
@@ -36,7 +36,7 @@ export const GET = withRoute({ role: 'any', params: Params }, async ({ req, sess
 
 export const POST = withRoute({ role: 'any', params: Params, body: Body }, async ({ session, params, body, requestId }) => {
   if (session.role === 'analyst') {
-    const conv = await conversaVisivel(params.id, session);
+    const conv = await getVisibleConversation(params.id, session);
     if (conv.status !== 'claimed' || conv.assigned_to_user_id !== session.user_id) {
       throw new Conflict('not_claimed', 'Assuma o atendimento para responder');
     }
@@ -51,11 +51,11 @@ export const POST = withRoute({ role: 'any', params: Params, body: Body }, async
   }
 
   // Rate limit por funcionário, antes de abrir o stream (o chat mostra um banner com a espera).
-  const vez = chatLimiter().take(session.user_id);
-  if (!vez.ok) {
-    return fail('rate_limited', `Muitas mensagens em pouco tempo, aguarde ${vez.retry_after_s}s`, 429, undefined, {
+  const slot = chatLimiter().take(session.user_id);
+  if (!slot.ok) {
+    return fail('rate_limited', `Muitas mensagens em pouco tempo, aguarde ${slot.retry_after_s}s`, 429, undefined, {
       requestId,
-      headers: { 'retry-after': String(vez.retry_after_s) },
+      headers: { 'retry-after': String(slot.retry_after_s) },
     });
   }
 
@@ -71,7 +71,7 @@ export const POST = withRoute({ role: 'any', params: Params, body: Body }, async
       await runTurn({ conversation_id: conv.id, employee: session, text: body.text, writer });
     },
     onError: (e) => {
-      console.error(`[chat] turno falhou request_id=${requestId}`, e);
+      console.error(`[chat] turn failed request_id=${requestId}`, e);
       return e instanceof Conflict ? e.code : 'turn_failed';
     },
   });

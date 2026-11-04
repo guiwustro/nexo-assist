@@ -19,25 +19,25 @@ export function Composer({
   prefill?: { text: string; n: number };
 }) {
   const [text, setText] = useState('');
-  const [prefillVisto, setPrefillVisto] = useState<number | undefined>();
+  const [prefillSeen, setPrefillSeen] = useState<number | undefined>();
   const ref = useRef<HTMLTextAreaElement>(null);
 
-  if (prefill && prefill.n !== prefillVisto) {
-    setPrefillVisto(prefill.n);
+  if (prefill && prefill.n !== prefillSeen) {
+    setPrefillSeen(prefill.n);
     setText(prefill.text);
   }
   useEffect(() => {
     if (prefill) ref.current?.focus();
   }, [prefill]);
 
-  function enviar() {
+  function send() {
     const t = text.trim();
     if (!t || disabled) return;
     onSend(t);
     setText('');
   }
 
-  const noLimite = count >= limit;
+  const atLimit = count >= limit;
   return (
     <div className="flex flex-col gap-1.5 px-[200px] pt-2.5 pb-[18px]">
       <div className="flex min-h-12 items-center gap-2 rounded-bubble border border-input-border bg-paper py-1.5 pr-1.5 pl-4 focus-within:border-cta">
@@ -52,7 +52,7 @@ export function Composer({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
               e.preventDefault();
-              enviar();
+              send();
             }
           }}
           className="max-h-32 flex-1 resize-none bg-transparent py-1.5 text-value text-ink outline-none placeholder:text-ink-3 disabled:cursor-not-allowed"
@@ -61,7 +61,7 @@ export function Composer({
           type="button"
           data-testid="composer-send"
           disabled={disabled || !text.trim()}
-          onClick={enviar}
+          onClick={send}
           className="flex h-9 items-center gap-1.5 rounded-tag bg-cta px-3 text-body font-semibold text-white transition hover:brightness-110 disabled:opacity-50"
         >
           <ArrowUp size={14} />
@@ -69,7 +69,7 @@ export function Composer({
         </button>
       </div>
       <div className="flex justify-end">
-        <span data-testid="session-counter" className={`text-label ${noLimite ? 'font-semibold text-danger-text' : 'text-ink-3'}`}>
+        <span data-testid="session-counter" className={`text-label ${atLimit ? 'font-semibold text-danger-text' : 'text-ink-3'}`}>
           {`${Math.min(count, limit)}/${limit} mensagens nesta sessão`}
         </span>
       </div>

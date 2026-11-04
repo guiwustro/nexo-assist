@@ -48,7 +48,7 @@ export function LoginForm() {
     }
   }
 
-  const credErro = error === CRED_ERROR;
+  const credentialsError = error === CRED_ERROR;
 
   return (
     <form onSubmit={onSubmit} className="flex w-[380px] flex-col gap-7" noValidate>
@@ -62,7 +62,7 @@ export function LoginForm() {
           <span className="text-body font-medium text-ink">E-mail corporativo</span>
           <span
             className={`flex h-11 items-center gap-2.5 rounded-btn border bg-paper pr-2 pl-3.5 focus-within:border-cta ${
-              credErro ? 'border-danger' : 'border-input-border'
+              credentialsError ? 'border-danger' : 'border-input-border'
             }`}
           >
             <Mail size={16} className="text-ink-3" />
@@ -89,7 +89,7 @@ export function LoginForm() {
           </div>
           <span
             className={`group flex h-11 items-center gap-2.5 rounded-btn border bg-paper pr-2 pl-3.5 focus-within:border-cta ${
-              credErro ? 'border-danger' : 'border-input-border'
+              credentialsError ? 'border-danger' : 'border-input-border'
             }`}
           >
             <LockKeyhole size={16} className="text-ink-3 group-focus-within:text-primary-text" />

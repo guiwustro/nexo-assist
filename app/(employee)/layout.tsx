@@ -4,7 +4,7 @@ import { initials, requirePageUser } from '@/lib/server/session';
 
 export const dynamic = 'force-dynamic';
 
-export default async function FuncionarioLayout({ children }: { children: React.ReactNode }) {
+export default async function EmployeeLayout({ children }: { children: React.ReactNode }) {
   const { user } = await requirePageUser('employee');
   return (
     <div className="flex h-screen overflow-hidden bg-paper">

@@ -29,18 +29,18 @@ export function EmployeeTickets({
   onRetry: () => void;
   onClose: () => void;
 }) {
-  const [todos, setTodos] = useState(false);
-  const [aberto, setAberto] = useState<string | null>(null);
-  const primeiro = employeeName.split(' ')[0];
-  const foco = data?.tickets.find((t) => t.code === focusCode) ?? null;
-  const outros = data?.tickets.filter((t) => t.code !== focusCode) ?? [];
-  const visiveis = todos ? outros : outros.slice(0, 4);
+  const [showAll, setShowAll] = useState(false);
+  const [openCode, setOpenCode] = useState<string | null>(null);
+  const firstName = employeeName.split(' ')[0];
+  const focusTicket = data?.tickets.find((t) => t.code === focusCode) ?? null;
+  const others = data?.tickets.filter((t) => t.code !== focusCode) ?? [];
+  const visible = showAll ? others : others.slice(0, 4);
 
   return (
     <aside data-testid="employee-tickets" className="flex h-full w-[340px] shrink-0 flex-col border-l border-rule bg-paper">
       <header className="flex h-16 items-center gap-2 border-b border-rule pr-3.5 pl-5">
         <div className="flex flex-1 flex-col gap-0.5">
-          <span className="text-[15.5px] font-semibold text-ink">Chamados d{primeiro?.endsWith('a') ? 'a' : 'o'} {primeiro}</span>
+          <span className="text-[15.5px] font-semibold text-ink">Chamados d{firstName?.endsWith('a') ? 'a' : 'o'} {firstName}</span>
           {data && <span className="text-label text-ink-3">{`${data.open} abertos · ${data.closed} encerrados`}</span>}
         </div>
         <button type="button" onClick={onClose} aria-label="Fechar painel" className="flex size-9 items-center justify-center rounded-full text-ink-2 hover:bg-desk">
@@ -49,8 +49,8 @@ export function EmployeeTickets({
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto px-5 pt-6 pb-5">
-        {aberto && <TicketDetail key={aberto} employeeId={employeeId} code={aberto} onBack={() => setAberto(null)} />}
-        {!aberto && error && (
+        {openCode && <TicketDetail key={openCode} employeeId={employeeId} code={openCode} onBack={() => setOpenCode(null)} />}
+        {!openCode && error && (
           <div data-testid="tickets-error" className="flex flex-col items-start gap-2 rounded-bubble bg-warning-soft p-4 text-body text-warning-text">
             <span className="flex items-center gap-2">
               <TriangleAlert size={15} /> Não foi possível carregar
@@ -60,24 +60,24 @@ export function EmployeeTickets({
             </button>
           </div>
         )}
-        {!aberto && !data && !error && <div className="h-28 rounded-bubble bg-desk" style={{ animation: 'nexo-pulse 1.4s ease-in-out infinite' }} />}
+        {!openCode && !data && !error && <div className="h-28 rounded-bubble bg-desk" style={{ animation: 'nexo-pulse 1.4s ease-in-out infinite' }} />}
 
-        {!aberto && foco && (
+        {!openCode && focusTicket && (
           <section className="flex flex-col gap-3">
             <h3 className="text-label font-semibold text-ink-3">Desta conversa</h3>
             <div data-testid="focus-ticket" className="flex flex-col gap-3.5 rounded-bubble bg-desk p-4">
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center">
-                  <span className="flex-1 text-label font-medium text-ink-3">{foco.code}</span>
-                  <span className={`flex items-center gap-1.5 text-label font-semibold ${TONE_TEXT[STATUS_TONE[foco.status]]}`}>
-                    <Dot tone={STATUS_TONE[foco.status]} />
-                    {STATUS_LABEL[foco.status]}
+                  <span className="flex-1 text-label font-medium text-ink-3">{focusTicket.code}</span>
+                  <span className={`flex items-center gap-1.5 text-label font-semibold ${TONE_TEXT[STATUS_TONE[focusTicket.status]]}`}>
+                    <Dot tone={STATUS_TONE[focusTicket.status]} />
+                    {STATUS_LABEL[focusTicket.status]}
                   </span>
                 </div>
-                <span className="text-[15.5px] font-semibold text-ink">{foco.title}</span>
+                <span className="text-[15.5px] font-semibold text-ink">{focusTicket.title}</span>
                 <span className="text-body text-ink-3">
-                  {CATEGORY_LABEL[foco.category]} · prioridade {PRIORITY_LABEL[foco.priority].toLowerCase()}
-                  {foco.overdue ? ' · prazo vencido' : ''}
+                  {CATEGORY_LABEL[focusTicket.category]} · prioridade {PRIORITY_LABEL[focusTicket.priority].toLowerCase()}
+                  {focusTicket.overdue ? ' · prazo vencido' : ''}
                 </span>
               </div>
               {lastEvent && (
@@ -91,16 +91,16 @@ export function EmployeeTickets({
           </section>
         )}
 
-        {!aberto && data && (
+        {!openCode && data && (
           <section data-testid="other-tickets" className="flex flex-col gap-1">
-            <h3 className="text-label font-semibold text-ink-3">{foco ? 'Outros chamados' : 'Chamados'}</h3>
-            {visiveis.map((t, i) => (
+            <h3 className="text-label font-semibold text-ink-3">{focusTicket ? 'Outros chamados' : 'Chamados'}</h3>
+            {visible.map((t, i) => (
               <button
                 type="button"
                 key={t.code}
                 data-testid={`employee-ticket-${t.code}`}
-                onClick={() => setAberto(t.code)}
-                className={`-mx-2 flex items-center gap-3 rounded-btn px-2 py-3 text-left hover:bg-desk ${i < visiveis.length - 1 ? 'border-b border-rule' : ''}`}
+                onClick={() => setOpenCode(t.code)}
+                className={`-mx-2 flex items-center gap-3 rounded-btn px-2 py-3 text-left hover:bg-desk ${i < visible.length - 1 ? 'border-b border-rule' : ''}`}
               >
                 <Dot tone={STATUS_TONE[t.status]} />
                 <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
@@ -116,19 +116,19 @@ export function EmployeeTickets({
                 <ChevronRight size={16} className="text-ink-3" />
               </button>
             ))}
-            {outros.length === 0 && <span className="py-3 text-body text-ink-3">Nenhum outro chamado</span>}
+            {others.length === 0 && <span className="py-3 text-body text-ink-3">Nenhum outro chamado</span>}
           </section>
         )}
       </div>
 
-      {!aberto && data && outros.length > 4 && (
+      {!openCode && data && others.length > 4 && (
         <footer className="px-4 pt-3 pb-4">
           <button
             type="button"
-            onClick={() => setTodos((v) => !v)}
+            onClick={() => setShowAll((v) => !v)}
             className="flex h-9 w-full items-center justify-center gap-[7px] rounded-btn border border-input-border text-body font-medium text-ink-2 hover:bg-desk"
           >
-            {todos ? 'Mostrar menos' : `Ver todos os chamados d${primeiro?.endsWith('a') ? 'a' : 'o'} ${primeiro}`}
+            {showAll ? 'Mostrar menos' : `Ver todos os chamados d${firstName?.endsWith('a') ? 'a' : 'o'} ${firstName}`}
             <ArrowUpRight size={14} className="text-ink-3" />
           </button>
         </footer>

@@ -17,7 +17,7 @@ export type HandoffView = {
 
 /** Briefing da passagem: a fala literal separada da leitura do agent. */
 export function HandoffCard({ h, employeeName }: { h: HandoffView; employeeName: string }) {
-  const primeiro = employeeName.split(' ')[0];
+  const firstName = employeeName.split(' ')[0];
   return (
     <section data-testid="handoff-card" className="mx-auto my-2 flex w-full max-w-[560px] flex-col gap-3 rounded-card border border-card-border bg-paper p-4">
       <div className="flex items-start gap-2.5">
@@ -34,7 +34,7 @@ export function HandoffCard({ h, employeeName }: { h: HandoffView; employeeName:
         </div>
       </div>
       <div className="flex flex-col gap-1">
-        <span className="text-label text-ink-3">Palavras d{primeiro?.endsWith('a') ? 'a funcionária' : 'o funcionário'}</span>
+        <span className="text-label text-ink-3">Palavras d{firstName?.endsWith('a') ? 'a funcionária' : 'o funcionário'}</span>
         <blockquote className="border-l-2 border-rule pl-3 text-value text-ink">&quot;{h.employee_words}&quot;</blockquote>
       </div>
       <div className="flex flex-col gap-1">

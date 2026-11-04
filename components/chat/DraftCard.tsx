@@ -26,7 +26,7 @@ const EYEBROW: Record<DraftCardPart['draft_kind'], (c?: string | null) => string
   reopen: (c) => `Reabrir chamado · ${c ?? ''}`,
 };
 
-function Estado({ part, error }: { part: DraftCardPart; error?: string | null }) {
+function DraftStatus({ part, error }: { part: DraftCardPart; error?: string | null }) {
   if (part.status === 'confirmed') {
     return (
       <span className="flex items-center gap-1.5 font-medium text-success-text">
@@ -59,7 +59,7 @@ function Estado({ part, error }: { part: DraftCardPart; error?: string | null })
   );
 }
 
-function Campo({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
+function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1">
       {htmlFor ? (
@@ -102,7 +102,7 @@ export function DraftCard({
   const p = part.payload;
   const pending = part.status === 'pending';
 
-  async function confirmar() {
+  async function confirm() {
     if (busyRef.current || !pending || editing) return;
     busyRef.current = true;
     setBusy(true);
@@ -119,14 +119,14 @@ export function DraftCard({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        void confirmar();
+        void confirm();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  function abrirEdicao() {
+  function openEdit() {
     setForm({
       title: p.title,
       description: p.description,
@@ -139,7 +139,7 @@ export function DraftCard({
     setEditing(true);
   }
 
-  async function salvar() {
+  async function save() {
     setBusy(true);
     try {
       await onSave(form);
@@ -163,7 +163,7 @@ export function DraftCard({
           <span className="size-[3px] rounded-full bg-rule" />
           <span className="text-ink-3">Rascunho {part.code}</span>
           <span className="flex-1" />
-          <Estado part={part} error={error} />
+          <DraftStatus part={part} error={error} />
         </div>
         {editing ? (
           <div className="flex flex-col gap-2 pt-1">
@@ -189,7 +189,7 @@ export function DraftCard({
       </div>
       <div className="px-[18px] pb-4">
         <div className="flex gap-6 border-t border-rule pt-3">
-          <Campo label="Categoria" htmlFor={editing ? `${ids}-category` : undefined}>
+          <Field label="Categoria" htmlFor={editing ? `${ids}-category` : undefined}>
             {editing ? (
               <select
                 id={`${ids}-category`}
@@ -207,8 +207,8 @@ export function DraftCard({
             ) : (
               CATEGORY_LABEL[p.category]
             )}
-          </Campo>
-          <Campo label={editing ? 'Tipo' : 'Prioridade'} htmlFor={editing ? `${ids}-type` : undefined}>
+          </Field>
+          <Field label={editing ? 'Tipo' : 'Prioridade'} htmlFor={editing ? `${ids}-type` : undefined}>
             {editing ? (
               <select
                 id={`${ids}-type`}
@@ -227,8 +227,8 @@ export function DraftCard({
                 <span className="text-body font-normal text-ink-3">{`· ${formatShortDeadline(new Date(p.due_at), now)}`}</span>
               </>
             )}
-          </Campo>
-          <Campo label="Afetados" htmlFor={editing ? `${ids}-affected` : undefined}>
+          </Field>
+          <Field label="Afetados" htmlFor={editing ? `${ids}-affected` : undefined}>
             {editing ? (
               <select
                 id={`${ids}-affected`}
@@ -246,7 +246,7 @@ export function DraftCard({
             ) : (
               AFFECTED_LABEL[p.affected]
             )}
-          </Campo>
+          </Field>
         </div>
         {editing && (
           <div className="flex flex-wrap gap-x-6 gap-y-2 pt-3 text-body text-ink-2">
@@ -283,7 +283,7 @@ export function DraftCard({
                 type="button"
                 data-testid="draft-save"
                 disabled={busy}
-                onClick={salvar}
+                onClick={save}
                 className="flex h-9 items-center gap-2 rounded-btn bg-cta px-3.5 text-body font-semibold text-white disabled:opacity-70"
               >
                 {busy && <Spinner size={13} />}
@@ -303,7 +303,7 @@ export function DraftCard({
                 type="button"
                 data-testid="draft-confirm"
                 disabled={busy}
-                onClick={confirmar}
+                onClick={confirm}
                 className="flex h-9 items-center gap-2 rounded-btn bg-cta pr-2.5 pl-3.5 text-body font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70"
               >
                 {busy && <Spinner size={13} />}
@@ -316,7 +316,7 @@ export function DraftCard({
                   type="button"
                   data-testid="draft-edit"
                   disabled={busy}
-                  onClick={abrirEdicao}
+                  onClick={openEdit}
                   className="flex h-9 items-center rounded-btn border border-input-border bg-paper px-3.5 text-body font-medium text-ink hover:bg-desk"
                 >
                   Editar

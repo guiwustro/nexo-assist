@@ -6,7 +6,7 @@ import type { QueueFilter, QueueItem } from '@/lib/conversations/queries';
 import { shortWhen } from '@/lib/format';
 import { Avatar } from './avatar';
 import { ConversationFilters } from './ConversationFilters';
-import { Realce } from './ConversationSearch';
+import { Highlighted } from './ConversationSearch';
 
 const TAG: Record<QueueItem['tag']['kind'], { dot: string; text: string }> = {
   transferred: { dot: 'bg-danger', text: 'text-danger-text' },
@@ -86,10 +86,10 @@ export function ConversationList({
         {items?.map((c) => {
           const sel = c.id === selectedId;
           const tag = TAG[c.tag.kind];
-          const doAgent = c.last_message_preview?.startsWith('Nexo: ');
-          const forte = c.unread > 0 || c.status === 'pending';
-          const motivo = q.trim() && c.match && c.match.kind !== 'name' ? c.match : null;
-          const MotivoIcon = motivo?.kind === 'ticket' ? Ticket : MessageSquareText;
+          const fromAgent = c.last_message_preview?.startsWith('Nexo: ');
+          const emphasized = c.unread > 0 || c.status === 'pending';
+          const matchReason = q.trim() && c.match && c.match.kind !== 'name' ? c.match : null;
+          const MatchReasonIcon = matchReason?.kind === 'ticket' ? Ticket : MessageSquareText;
           return (
             <Link
               key={c.id}
@@ -98,27 +98,27 @@ export function ConversationList({
               data-conversation-id={c.id}
               className={`flex items-center gap-3 rounded-bubble p-2.5 ${sel ? 'bg-desk' : 'hover:bg-desk/60'}`}
             >
-              <Avatar nome={c.employee.name} online={c.status !== 'closed'} ring={sel ? '#F6F7F9' : '#FFFFFF'} />
+              <Avatar name={c.employee.name} online={c.status !== 'closed'} ring={sel ? '#F6F7F9' : '#FFFFFF'} />
               <div className={`flex min-w-0 flex-1 flex-col gap-[3px] pb-2.5 ${sel ? '' : 'border-b border-rule'}`}>
                 <div className="flex items-center gap-2">
-                  <span className={`flex-1 truncate text-[15.5px] text-ink ${forte ? 'font-semibold' : 'font-medium'}`}>
-                    {c.match?.kind === 'name' ? <Realce texto={c.employee.name} termo={q} ativa={null} /> : c.employee.name}
+                  <span className={`flex-1 truncate text-[15.5px] text-ink ${emphasized ? 'font-semibold' : 'font-medium'}`}>
+                    {c.match?.kind === 'name' ? <Highlighted text={c.employee.name} term={q} activeIndex={null} /> : c.employee.name}
                   </span>
-                  <span className={`text-label ${forte ? 'font-semibold text-cta' : 'text-ink-3'}`}>
+                  <span className={`text-label ${emphasized ? 'font-semibold text-cta' : 'text-ink-3'}`}>
                     {shortWhen(c.last_message_at, now)}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {motivo ? (
+                  {matchReason ? (
                     <span data-testid="conversation-match" className="flex min-w-0 flex-1 items-center gap-1.5 text-body text-ink-2">
-                      <MotivoIcon size={14} className="shrink-0 text-ink-3" />
+                      <MatchReasonIcon size={14} className="shrink-0 text-ink-3" />
                       <span className="truncate">
-                        <Realce texto={motivo.text} termo={q} ativa={null} />
+                        <Highlighted text={matchReason.text} term={q} activeIndex={null} />
                       </span>
                     </span>
                   ) : (
                     <>
-                      {doAgent && <CheckCheck size={15} className="shrink-0 text-primary" />}
+                      {fromAgent && <CheckCheck size={15} className="shrink-0 text-primary" />}
                       <span className="flex-1 truncate text-body text-ink-3">{c.last_message_preview ?? '—'}</span>
                     </>
                   )}

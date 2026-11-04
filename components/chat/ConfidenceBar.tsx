@@ -1,6 +1,6 @@
 import type { Tone } from '@/lib/contracts/enums';
 
-export function toneDaConfianca(v: number): Extract<Tone, 'success' | 'warning' | 'danger'> {
+export function confidenceTone(v: number): Extract<Tone, 'success' | 'warning' | 'danger'> {
   if (v >= 0.8) return 'success';
   if (v >= 0.6) return 'warning';
   return 'danger';
@@ -19,7 +19,7 @@ const TXT: Record<'success' | 'warning' | 'danger', string> = {
 
 /** Confiança declarada: verde ≥ 80%, amarelo 60–80%, vermelho < 60%. */
 export function ConfidenceBar({ value }: { value: number }) {
-  const tone = toneDaConfianca(value);
+  const tone = confidenceTone(value);
   const pct = Math.round(value * 100);
   return (
     <div data-testid="confidence-bar" data-tone={tone} className="flex items-center gap-2.5">
