@@ -5,6 +5,20 @@
 
 ---
 
+## 0. Atualização de 2026-11-04 (leia primeiro)
+
+- **Tasks 23, 24 e 27 completas** (ledger). Evals 39/39 com `deepseek-flash`; README pronto; revisão final do branch
+  feita por um revisor novo (6 Important + README corrigidos com teste antes; Minor adiados no ledger como
+  `Final: minor (deferred)`).
+- **Task 25 pendente só do Step 3:** criar o repo público no GitHub, push e CI verde. Smoke e E2E já passam
+  (o E2E quebrado era a rota de reset em pasta privada `_test` → agora `/api/v1/e2e/reset`).
+- **Task 26 pendente:** deploy na VPS, todo passo confirmado com o Gui. Antes: gerar `SESSION_SECRET` novo,
+  preencher `LLM_PRICE_*` se usar `LLM_DAILY_BUDGET_CENTS` (sem eles o app não sobe) e decidir se a URL pública
+  precisa de alguma barreira (qualquer senha entra como analista).
+- Testes no HEAD: unit 230/230, integração 96/96, E2E 28/28, typecheck/lint limpos.
+- Workspace `.superpowers/sdd/2026-11-03-nexo-assist/` **não foi apagado** (plano ainda aberto). Depois da Task 26:
+  apagar e usar superpowers:finishing-a-development-branch.
+
 ## 1. Como retomar (copie isto na nova sessão)
 
 ```
