@@ -324,8 +324,13 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
     const ajustada = ajustarConfianca(declarada, { intent: decision.understanding.intent, sources_count: sources.length }) ?? declarada;
     const rules = [...decision.decision.rules_applied];
     if (ajustada < declarada) rules.push('Confiança ajustada: dúvida respondida sem fonte na central (máximo 50%)');
-    // A ação também sai do que a tool fez: um rascunho montado define se foi criação, atualização ou reabertura.
-    const action = turn.draft_kind ? ACAO_DO_RASCUNHO[turn.draft_kind] : decision.decision.action;
+    // A ação também sai do que a tool fez: transferir vence (o agent fica pausado); senão, um rascunho montado
+    // define se foi criação, atualização ou reabertura.
+    const action = turn.handoff_created
+      ? 'transfer'
+      : turn.draft_kind
+        ? ACAO_DO_RASCUNHO[turn.draft_kind]
+        : decision.decision.action;
     decision = { ...decision, decision: { ...decision.decision, action, confidence: ajustada, sources, rules_applied: rules } };
   }
 

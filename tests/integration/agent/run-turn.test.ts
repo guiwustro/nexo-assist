@@ -232,6 +232,47 @@ describe('runTurn', () => {
     expect(run?.decision?.decision.action).toBe('draft_update');
   });
 
+  it('turno que montou rascunho e transferiu fica com a ação transfer', async () => {
+    setModelForTests(undefined, undefined, [
+      {
+        id: 'rascunho-e-transfere',
+        match: /vendas está fora do ar/i,
+        steps: [
+          {
+            tool_calls: [
+              {
+                name: 'montar_rascunho',
+                args: {
+                  kind: 'create',
+                  title: 'Sistema de vendas fora do ar',
+                  description: 'Sistema de vendas parado para a equipe toda',
+                  type: 'incident',
+                  category: 'software',
+                  affected: 'company',
+                  blocks_work: true,
+                  deadline_today: true,
+                },
+              },
+              {
+                name: 'transferir_para_analista',
+                args: { reason: 'critical_priority', reading: 'Sistema de vendas parado para a equipe toda' },
+              },
+            ],
+          },
+          { text: 'É crítico: transferi para um analista, que vai continuar com você.' },
+        ],
+        decision: {
+          understanding: { intent: 'open_ticket', summary: 'Vendas fora do ar', evidence: 'fora do ar' },
+          decision: { action: 'transfer', confidence: 0.9, why: 'x', rules_applied: [], sources: [] },
+        },
+      },
+    ]);
+    const r = await turno('O sistema de vendas está fora do ar para a equipe toda');
+    expect(r.outcome).toBe('transferred');
+    const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, r.run_id));
+    expect(run?.decision?.decision.action).toBe('transfer');
+  });
+
   it('texto de passos diferentes não sai grudado', async () => {
     setModelForTests(undefined, undefined, [
       {
