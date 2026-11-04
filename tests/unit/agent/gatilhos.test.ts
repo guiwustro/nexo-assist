@@ -16,6 +16,10 @@ describe('pediuAnalista', () => {
     'o analista disse para reiniciar',
     'como falo com o RH?',
     'meu notebook não liga',
+    'não quero falar com um analista, só quero resolver',
+    'Quero o pessoal da minha equipe com acesso à pasta do SharePoint',
+    'Preciso de uma pessoa nova adicionada no grupo de e-mail',
+    'quero falar com a pessoa do RH sobre minhas férias',
   ])('"%s" → não pediu', (t) => expect(pediuAnalista(t)).toBe(false));
 });
 

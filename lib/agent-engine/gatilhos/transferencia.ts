@@ -1,20 +1,29 @@
 import type { Priority, ReasonCode, SupportLevel } from '@/lib/contracts/enums';
 import { normalizar } from '@/lib/text/normalizar';
 
-const HUMANO = '(analista|atendente|pessoa|humano|tecnico|alguem do suporte|suporte humano)';
+// Pessoa de outro setor ("a pessoa do RH") é redirecionamento, não pedido de analista de TI.
+const OUTRO_SETOR = '(?! (do|da|de) (rh|recursos humanos|financeiro|facilities|dp|departamento pessoal|juridico)\\b)';
+const HUMANO = `(analista|atendente|pessoa|humano|tecnico|alguem do suporte|suporte humano)\\b${OUTRO_SETOR}`;
+// "quero/preciso de uma pessoa" aparece em pedidos de acesso ("preciso de uma pessoa nova no grupo"): só papéis de suporte.
+const SUPORTE = `(analista|atendente|humano|alguem do suporte|suporte humano)\\b${OUTRO_SETOR}`;
 const ART = '(um |uma |o |a )?';
 
 const PEDIDOS = [
   new RegExp(`\\b(falar|conversar|fala|falo) com ${ART}${HUMANO}`),
   new RegExp(`\\b(passa|passe|transfere|transfira|transferir|encaminha|encaminhe|manda|mande) (pra|para) ${ART}${HUMANO}`),
-  new RegExp(`\\b(quero|preciso de|chama|chame|cade) ${ART}${HUMANO}`),
+  new RegExp(`\\b(quero|preciso de|chama|chame|cade) ${ART}${SUPORTE}`),
   new RegExp(`\\bme (transfere|transfira|transferir|passa|passe|encaminha|encaminhe)\\b`),
 ];
 
-/** Pedido explícito de atendimento humano (regex sobre texto normalizado). */
+/** Pedido explícito de atendimento humano (regex sobre texto normalizado). Negado ("não quero falar…") não conta. */
 export function pediuAnalista(texto: string): boolean {
   const t = normalizar(texto);
-  return PEDIDOS.some((re) => re.test(t));
+  return PEDIDOS.some((re) => {
+    const m = re.exec(t);
+    if (!m) return false;
+    const antes = t.slice(Math.max(0, m.index - 20), m.index);
+    return !/\b(nao|nunca|sem)\b[^.,;!?]*$/.test(antes);
+  });
 }
 
 export type EntradaGatilhos = {
