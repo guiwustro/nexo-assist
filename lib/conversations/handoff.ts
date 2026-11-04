@@ -26,7 +26,7 @@ export type HandoffInput = {
   confidence?: number | null;
 };
 
-const TITULO: Record<ReasonCode, string> = {
+const TITLE_BY_REASON: Record<ReasonCode, string> = {
   requested_human: 'Pediu para falar com um analista',
   critical_priority: 'Caso crítico',
   overdue_ticket: 'Chamado vencido',
@@ -53,16 +53,16 @@ export async function createHandoff(input: HandoffInput, now: Date = serverNow()
     if (!conv) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
     const r = transition(conv.status as ConversationStatus, 'transfer');
     if (!r.ok) throw new Conflict('invalid_transition', `Conversa em ${conv.status} não pode ser transferida`);
-    const agora = new Date();
+    const changedAt = new Date();
     await tx
       .update(conversations)
       .set({
         status: r.next,
-        status_changed_at: agora,
-        last_handoff_at: agora,
+        status_changed_at: changedAt,
+        last_handoff_at: changedAt,
         last_handoff_reason: input.reason_code,
         focus_ticket_code: input.ticket_code ?? conv.focus_ticket_code,
-        updated_at: agora,
+        updated_at: changedAt,
       })
       .where(eq(conversations.id, conv.id));
     const [h] = await tx
@@ -73,7 +73,7 @@ export async function createHandoff(input: HandoffInput, now: Date = serverNow()
         origin: input.origin,
         reason_code: input.reason_code,
         support_level: input.level,
-        title: TITULO[input.reason_code],
+        title: TITLE_BY_REASON[input.reason_code],
         body: briefing(input.employee_words, input.agent_reading),
         employee_words: input.employee_words,
         agent_reading: input.agent_reading,

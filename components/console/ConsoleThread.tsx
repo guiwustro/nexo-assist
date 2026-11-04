@@ -3,7 +3,7 @@
 import { ArrowRightLeft, CheckCheck, CircleCheck, Headset, Info } from 'lucide-react';
 import type { ApiMessage } from '@/lib/conversations/serialize';
 import { summarizeParts } from '@/lib/conversations/parts-summary';
-import { hora } from '@/lib/format';
+import { time } from '@/lib/format';
 import { isSameDayInSaoPaulo } from '@/lib/rules/deadline';
 import { Realce } from './ConversationSearch';
 import { HandoffCard, type HandoffView } from './HandoffCard';
@@ -70,7 +70,7 @@ export function ConsoleThread({
                 <span className="text-value whitespace-pre-wrap text-ink">
                   <Corpo m={m} destaque={destaque} />
                 </span>
-                <span className="pb-px text-tag text-ink-3">{hora(m.created_at)}</span>
+                <span className="pb-px text-tag text-ink-3">{time(m.created_at)}</span>
               </div>
             </div>
           );
@@ -108,7 +108,7 @@ export function ConsoleThread({
                     Por quê?
                   </button>
                 )}
-                <span className="text-tag text-ink-3">{hora(m.created_at)}</span>
+                <span className="text-tag text-ink-3">{time(m.created_at)}</span>
                 <CheckCheck size={14} className="text-primary" />
               </span>
             </div>

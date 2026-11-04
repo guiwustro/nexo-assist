@@ -33,7 +33,7 @@ describe('parseEnv', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       parseEnv({ ...base, NODE_ENV: 'production', SESSION_SECRET: exemplo });
-      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/SESSION_SECRET.*exemplo/));
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/SESSION_SECRET is the example value/));
       warn.mockClear();
       parseEnv({ ...base, NODE_ENV: 'development', SESSION_SECRET: exemplo });
       parseEnv({ ...base, NODE_ENV: 'production' });

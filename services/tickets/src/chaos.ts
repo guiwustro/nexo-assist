@@ -18,8 +18,8 @@ export function createChaos(opts: { failureRate: number; random?: () => number; 
       return opts.failureRate > 0 && random() < opts.failureRate;
     },
     retryAfterSeconds() {
-      const restante = Math.ceil((outageUntil - now().getTime()) / 1000);
-      return Math.max(1, restante);
+      const remaining = Math.ceil((outageUntil - now().getTime()) / 1000);
+      return Math.max(1, remaining);
     },
   };
 }

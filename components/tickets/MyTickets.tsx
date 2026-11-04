@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Dot, TONE_TEXT } from '@/components/ui/Tag';
 import { api } from '@/lib/client/api';
 import { PRIORITY_LABEL, STATUS_LABEL, STATUS_TONE, TYPE_LABEL } from '@/lib/contracts/enums';
-import { dataCurta, haQuanto } from '@/lib/format';
+import { shortDate, daysAgo } from '@/lib/format';
 import type { TicketList } from '@/lib/tickets/views';
 
 export type TicketTab = 'open' | 'closed';
@@ -119,10 +119,10 @@ export function MyTickets({ initialTab }: { initialTab: TicketTab }) {
                       <span className="truncate text-value font-semibold text-ink">{t.title}</span>
                       <span className="text-label text-ink-3">
                         {closed
-                          ? `${STATUS_LABEL[t.status]} em ${dataCurta(t.resolved_at ?? t.last_update_at)}`
+                          ? `${STATUS_LABEL[t.status]} em ${shortDate(t.resolved_at ?? t.last_update_at)}`
                           : t.overdue
                             ? <span className="text-warning-text">{t.overdue_label ?? 'Prazo vencido'}</span>
-                            : `Atualizado ${haQuanto(t.last_update_at, now)}`}
+                            : `Atualizado ${daysAgo(t.last_update_at, now)}`}
                       </span>
                     </div>
                     <span className={`flex items-center gap-1.5 text-label font-semibold ${TONE_TEXT[tone]}`}>

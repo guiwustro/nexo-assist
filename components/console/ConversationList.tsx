@@ -3,7 +3,7 @@
 import { CheckCheck, Inbox, MessageSquareText, Search, Ticket } from 'lucide-react';
 import Link from 'next/link';
 import type { QueueFilter, QueueItem } from '@/lib/conversations/queries';
-import { quandoCurto } from '@/lib/format';
+import { shortWhen } from '@/lib/format';
 import { Avatar } from './avatar';
 import { ConversationFilters } from './ConversationFilters';
 import { Realce } from './ConversationSearch';
@@ -105,7 +105,7 @@ export function ConversationList({
                     {c.match?.kind === 'name' ? <Realce texto={c.employee.name} termo={q} ativa={null} /> : c.employee.name}
                   </span>
                   <span className={`text-label ${forte ? 'font-semibold text-cta' : 'text-ink-3'}`}>
-                    {quandoCurto(c.last_message_at, now)}
+                    {shortWhen(c.last_message_at, now)}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">

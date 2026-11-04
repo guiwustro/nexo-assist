@@ -1,4 +1,4 @@
-import { normalizar } from '@/lib/text/normalizar';
+import { normalize } from '@/lib/text/normalize';
 
 export type Article = { slug: string; title: string; body: string; tags: string[]; applies_to: string | null };
 
@@ -9,7 +9,7 @@ const STOPWORDS = new Set([
 ]);
 
 export function tokenizar(texto: string): string[] {
-  return normalizar(texto)
+  return normalize(texto)
     .split(/[^a-z0-9]+/)
     .filter((t) => t.length > 1 && !STOPWORDS.has(t));
 }

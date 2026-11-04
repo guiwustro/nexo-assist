@@ -6,7 +6,7 @@ import { Dot, TONE_TEXT } from '@/components/ui/Tag';
 import { api } from '@/lib/client/api';
 import { AFFECTED_LABEL, CATEGORY_LABEL, PRIORITY_LABEL, STATUS_LABEL, STATUS_TONE, TYPE_LABEL } from '@/lib/contracts/enums';
 import type { TicketDetail as Detalhe } from '@/lib/tickets/views';
-import { dataHora } from '@/lib/format';
+import { dateTime } from '@/lib/format';
 import { TicketHistory } from '@/components/tickets/TicketHistory';
 
 
@@ -87,10 +87,10 @@ export function TicketDetail({ employeeId, code, onBack }: { employeeId: string;
             {campo('Prioridade', PRIORITY_LABEL[t.priority])}
             {campo('Afeta', AFFECTED_LABEL[t.affected])}
             {campo('Responsável', t.assignee_name ?? 'Ainda sem analista')}
-            {campo('Aberto em', dataHora(t.created_at))}
+            {campo('Aberto em', dateTime(t.created_at))}
             {ENCERRADOS.has(t.status)
-              ? campo('Resolvido em', dataHora(t.resolved_at ?? t.last_update_at))
-              : campo('Prazo', dataHora(t.due_at) + (t.overdue ? ` · ${t.overdue_label ?? 'vencido'}` : ''))}
+              ? campo('Resolvido em', dateTime(t.resolved_at ?? t.last_update_at))
+              : campo('Prazo', dateTime(t.due_at) + (t.overdue ? ` · ${t.overdue_label ?? 'vencido'}` : ''))}
           </section>
 
           <TicketHistory events={data.events} />

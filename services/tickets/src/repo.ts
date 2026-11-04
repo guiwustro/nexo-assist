@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
-import { padraoDeBusca, semAcento, termoCurto } from '@/lib/db/busca';
+import { searchPattern, unaccented, isShortTerm } from '@/lib/db/search';
 import type { DbOrTx } from '@/lib/db/client';
 import { ticketEvents, tickets } from '@/lib/db/schema';
 import type { CreateTicketInput, Ticket, TicketEvent, TicketHit } from '@/lib/contracts/tickets';
@@ -29,12 +29,12 @@ export function toTicket(r: Row): Ticket {
   };
 }
 
-const ABERTOS: TicketStatus[] = ['open', 'in_progress', 'awaiting_analyst', 'approved'];
+const OPEN_STATUSES: TicketStatus[] = ['open', 'in_progress', 'awaiting_analyst', 'approved'];
 
 export async function listByRequester(db: DbOrTx, requesterId: string, status: 'open' | 'all' = 'all') {
   const where =
     status === 'open'
-      ? and(eq(tickets.requester_id, requesterId), inArray(tickets.status, ABERTOS))
+      ? and(eq(tickets.requester_id, requesterId), inArray(tickets.status, OPEN_STATUSES))
       : eq(tickets.requester_id, requesterId);
   const rows = await db.select().from(tickets).where(where).orderBy(desc(tickets.last_update_at));
   return rows.map(toTicket);
@@ -56,14 +56,14 @@ export async function findOwned(
 }
 
 /** Chamados de qualquer solicitante cujo código ou título começa com o termo (busca do console). */
-export async function searchTickets(db: DbOrTx, termo: string, limit = 50): Promise<TicketHit[]> {
-  const codigo = padraoDeBusca(termo);
-  const titulo = padraoDeBusca(termo, { inteira: termoCurto(termo) });
-  if (!codigo || !titulo) return [];
+export async function searchTickets(db: DbOrTx, term: string, limit = 50): Promise<TicketHit[]> {
+  const codePattern = searchPattern(term);
+  const title = searchPattern(term, { wholeWord: isShortTerm(term) });
+  if (!codePattern || !title) return [];
   return db
     .select({ requester_id: tickets.requester_id, code: tickets.code, title: tickets.title })
     .from(tickets)
-    .where(or(sql`${semAcento(tickets.code)} ~ ${codigo}`, sql`${semAcento(tickets.title)} ~ ${titulo}`))
+    .where(or(sql`${unaccented(tickets.code)} ~ ${codePattern}`, sql`${unaccented(tickets.title)} ~ ${title}`))
     .orderBy(desc(tickets.last_update_at))
     .limit(limit);
 }

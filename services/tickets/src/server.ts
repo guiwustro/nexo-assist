@@ -22,5 +22,5 @@ const app = createTicketsApp({
 });
 
 serve({ fetch: app.fetch, port, hostname: process.env.TICKETS_HOST ?? '0.0.0.0' }, (info) => {
-  console.log(`[tickets] ouvindo em :${info.port}`);
+  console.log(`[tickets] listening on :${info.port}`);
 });

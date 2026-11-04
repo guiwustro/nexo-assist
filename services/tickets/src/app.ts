@@ -52,7 +52,7 @@ export function createTicketsApp(deps: TicketsAppDeps): Hono {
 
   app.notFound((c) => c.json({ error: { code: 'not_found', message: 'Rota inexistente' } }, 404));
   app.onError((err, c) => {
-    console.error('[tickets] erro inesperado', err);
+    console.error('[tickets] unexpected error', err);
     return c.json({ error: { code: 'internal_error', message: 'Erro interno' } }, 500);
   });
 

@@ -206,7 +206,7 @@ describe('fila do analista', () => {
     );
     const counts = await countsForAnalyst(t.seed.users.rafael.id);
     expect(counts).toEqual({ all: 7, for_you: 3, with_agent: 2, mine: 0 });
-    const paraVoce = await listForAnalyst(t.seed.users.rafael.id, { filter: 'for_you', agora: t.agora });
+    const paraVoce = await listForAnalyst(t.seed.users.rafael.id, { filter: 'for_you', now: t.agora });
     expect(paraVoce.map((c) => c.employee.name)).toContain('Ana Souza');
     const bruno = paraVoce.find((c) => c.employee.name === 'Bruno Tavares');
     expect(bruno?.tag).toEqual({ kind: 'agent_asked_help', label: 'Agent pediu ajuda · confiança 41%' });

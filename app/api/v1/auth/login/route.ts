@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { fail, ok, withRoute } from '@/lib/api/wrappers';
 import { audit } from '@/lib/audit/audit';
 import { clientIp, loginLimiter } from '@/lib/api/rate-limit';
+import { burnPasswordCheck, verifyPassword } from '@/lib/auth/password';
 import { createSessionToken, sessionCookie } from '@/lib/auth/session';
 import { findUserByEmail, publicUser } from '@/lib/users/queries';
 
@@ -15,7 +16,7 @@ const Body = z.object({
   remember: z.boolean().default(true),
 });
 
-/** Login de demonstração: e-mail do seed + qualquer senha não vazia. */
+/** E-mail + senha conferida contra o hash scrypt. E-mail ou senha errados dão a mesma resposta. */
 export const POST = withRoute({ role: 'public', body: Body }, async ({ req, body, requestId }) => {
   const vez = loginLimiter().take(clientIp(req));
   if (!vez.ok) {
@@ -25,8 +26,10 @@ export const POST = withRoute({ role: 'public', body: Body }, async ({ req, body
     });
   }
   const user = await findUserByEmail(body.email);
-  if (!user) {
-    return fail('invalid_credentials', 'E-mail não encontrado', 401, undefined, { requestId });
+  // E-mail inexistente também paga uma conferência de hash: o tempo de resposta não revela quem existe.
+  const valid = user ? await verifyPassword(body.password, user.password_hash) : (await burnPasswordCheck(body.password), false);
+  if (!user || !valid) {
+    return fail('invalid_credentials', 'E-mail ou senha incorretos', 401, undefined, { requestId });
   }
   const sid = randomUUID();
   const token = await createSessionToken({

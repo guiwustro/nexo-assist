@@ -3,7 +3,7 @@
 import { LogOut, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { useSair } from '@/lib/client/use-sair';
+import { useLogout } from '@/lib/client/use-logout';
 import { iniciaisDe } from './avatar';
 
 export type ConsoleMe = { name: string; email: string; support_level: 'N1' | 'N2' | null };
@@ -12,7 +12,7 @@ export type ConsoleMe = { name: string; email: string; support_level: 'N1' | 'N2
 export function UserMenu({ me }: { me: ConsoleMe }) {
   const [aberto, setAberto] = useState(false);
   const raiz = useRef<HTMLDivElement>(null);
-  const sair = useSair();
+  const sair = useLogout();
 
   useEffect(() => {
     if (!aberto) return;

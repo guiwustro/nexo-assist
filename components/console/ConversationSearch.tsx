@@ -2,7 +2,7 @@
 
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { Fragment } from 'react';
-import { acharTrechos } from '@/lib/text/trechos';
+import { findMatches } from '@/lib/text/matches';
 
 /** Barra "Buscar na conversa" do console: termo, contador e navegação entre os resultados. */
 export function ConversationSearch({
@@ -69,7 +69,7 @@ export function ConversationSearch({
 
 /** Texto com as ocorrências do termo marcadas; `ativa` é o índice (nesta mensagem) do resultado atual. */
 export function Realce({ texto, termo, ativa }: { texto: string; termo: string; ativa: number | null }) {
-  const trechos = acharTrechos(texto, termo);
+  const trechos = findMatches(texto, termo);
   if (trechos.length === 0) return <>{texto}</>;
   return (
     <>

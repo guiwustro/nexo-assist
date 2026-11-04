@@ -13,6 +13,9 @@ export type SeedUser = {
   support_level: 'N1' | 'N2' | null;
 };
 
+/** Senha de todos os usuários do seed (demonstração; documentada no README). */
+export const DEMO_PASSWORD = 'nexo2026';
+
 const uid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
 export const SEED_USERS: SeedUser[] = [

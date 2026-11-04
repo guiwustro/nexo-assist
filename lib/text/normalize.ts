@@ -1,6 +1,6 @@
 /** Minúsculo, sem acento e com espaços simples — base de todas as regex PT-BR. */
-export function normalizar(texto: string): string {
-  return texto
+export function normalize(text: string): string {
+  return text
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()

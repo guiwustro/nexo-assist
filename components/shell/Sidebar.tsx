@@ -4,7 +4,7 @@ import { LogOut, MessageSquare, Ticket, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { NexoMark } from '@/components/ui/NexoMark';
-import { useSair } from '@/lib/client/use-sair';
+import { useLogout } from '@/lib/client/use-logout';
 
 const NAV = [
   { href: '/atendimento', label: 'Atendimento', Icon: MessageSquare },
@@ -14,7 +14,7 @@ const NAV = [
 
 export function Sidebar({ name, email, initials }: { name: string; email: string; initials: string }) {
   const path = usePathname();
-  const sair = useSair();
+  const sair = useLogout();
 
   return (
     <aside className="flex h-screen w-[232px] shrink-0 flex-col border-r border-rule px-3.5 pt-5 pb-3.5">

@@ -32,6 +32,8 @@ export const users = pgTable(
     role: text('role').notNull(),
     department: text('department').notNull(),
     support_level: text('support_level'),
+    /** `scrypt$N$r$p$salt$hash` (lib/auth/password.ts). Sem hash, o usuário não entra. */
+    password_hash: text('password_hash'),
     created_at: createdAt(),
   },
   (t) => [

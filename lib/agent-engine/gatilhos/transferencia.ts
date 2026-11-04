@@ -1,5 +1,5 @@
 import type { Priority, ReasonCode, SupportLevel } from '@/lib/contracts/enums';
-import { normalizar } from '@/lib/text/normalizar';
+import { normalize } from '@/lib/text/normalize';
 
 // Pessoa de outro setor ("a pessoa do RH") é redirecionamento, não pedido de analista de TI.
 const OUTRO_SETOR = '(?! (do|da|de) (rh|recursos humanos|financeiro|facilities|dp|departamento pessoal|juridico)\\b)';
@@ -17,7 +17,7 @@ const PEDIDOS = [
 
 /** Pedido explícito de atendimento humano (regex sobre texto normalizado). Negado ("não quero falar…") não conta. */
 export function pediuAnalista(texto: string): boolean {
-  const t = normalizar(texto);
+  const t = normalize(texto);
   return PEDIDOS.some((re) => {
     const m = re.exec(t);
     if (!m) return false;

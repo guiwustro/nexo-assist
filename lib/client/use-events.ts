@@ -39,15 +39,15 @@ export function useEvents(onEvent: (e: LiveEvent) => void): { mode: 'sse' | 'pol
     let es: EventSource | null = null;
     let poll: ReturnType<typeof setInterval> | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
-    let falhas = 0;
-    let ativo = true;
+    let failures = 0;
+    let active = true;
 
-    const iniciarPolling = () => {
+    const startPolling = () => {
       if (poll) return;
       poll = setInterval(() => handler.current({ type: 'poll' }), POLL_MS);
       setMode('polling');
     };
-    const pararPolling = () => {
+    const stopPolling = () => {
       if (!poll) return;
       clearInterval(poll);
       poll = null;
@@ -55,14 +55,14 @@ export function useEvents(onEvent: (e: LiveEvent) => void): { mode: 'sse' | 'pol
       handler.current({ type: 'poll' });
     };
 
-    const conectar = () => {
-      if (!ativo) return;
+    const connect = () => {
+      if (!active) return;
       if (typeof EventSource === 'undefined') {
-        retry = setTimeout(iniciarPolling, 0);
+        retry = setTimeout(startPolling, 0);
         return;
       }
-      const atual = new EventSource('/api/v1/events');
-      es = atual;
+      const current = new EventSource('/api/v1/events');
+      es = current;
       const listener = (ev: MessageEvent) => {
         try {
           handler.current(JSON.parse(String(ev.data)) as LiveEvent);
@@ -70,25 +70,25 @@ export function useEvents(onEvent: (e: LiveEvent) => void): { mode: 'sse' | 'pol
           // evento malformado: ignora
         }
       };
-      for (const t of EVENT_TYPES) atual.addEventListener(t, listener as EventListener);
-      atual.addEventListener('open', () => {
-        falhas = 0;
-        pararPolling();
+      for (const t of EVENT_TYPES) current.addEventListener(t, listener as EventListener);
+      current.addEventListener('open', () => {
+        failures = 0;
+        stopPolling();
       });
-      atual.addEventListener('error', () => {
-        iniciarPolling();
+      current.addEventListener('error', () => {
+        startPolling();
         // CONNECTING: o navegador tenta de novo sozinho (retry: 3000). CLOSED: ele desistiu; abrimos outro depois.
-        if (atual.readyState === EventSource.CLOSED) {
-          atual.close();
-          retry = setTimeout(conectar, RECONNECT_MS[Math.min(falhas, RECONNECT_MS.length - 1)]);
-          falhas += 1;
+        if (current.readyState === EventSource.CLOSED) {
+          current.close();
+          retry = setTimeout(connect, RECONNECT_MS[Math.min(failures, RECONNECT_MS.length - 1)]);
+          failures += 1;
         }
       });
     };
-    conectar();
+    connect();
 
     return () => {
-      ativo = false;
+      active = false;
       es?.close();
       if (poll) clearInterval(poll);
       if (retry) clearTimeout(retry);

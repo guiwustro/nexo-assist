@@ -2,13 +2,13 @@ import type { Browser, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { enviar } from './helpers';
 import { AGORA_E2E } from './env';
-import { userByKey, type UserKey } from '../lib/db/seed-data';
+import { DEMO_PASSWORD, userByKey, type UserKey } from '../lib/db/seed-data';
 
 async function abrir(browser: Browser, who: UserKey): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' });
   const page = await ctx.newPage();
   await page.clock.setFixedTime(AGORA_E2E);
-  const res = await page.request.post('/api/v1/auth/login', { data: { email: userByKey(who).email, password: 'x' } });
+  const res = await page.request.post('/api/v1/auth/login', { data: { email: userByKey(who).email, password: DEMO_PASSWORD } });
   expect(res.ok()).toBeTruthy();
   return page;
 }

@@ -1,4 +1,4 @@
-import { normalizar } from '@/lib/text/normalizar';
+import { normalize } from '@/lib/text/normalize';
 
 const PROMESSAS = [
   /\b(vou|irei|vamos) (te |lhe |voce )?(transferir|passar|encaminhar)\b/,
@@ -12,7 +12,7 @@ const CONDICIONAL = /\b(se|caso|quer que|prefere|preferir|posso)\b/;
 
 /** O texto afirma (não oferece) que um humano vai assumir. Avalia frase a frase; frase condicional ou pergunta não conta. */
 export function prometeuAnalista(texto: string): boolean {
-  const frases = normalizar(texto).match(/[^.!?]+[.!?]*/g) ?? [];
+  const frases = normalize(texto).match(/[^.!?]+[.!?]*/g) ?? [];
   return frases.some((f) => {
     if (f.trim().endsWith('?') || CONDICIONAL.test(f)) return false;
     return PROMESSAS.some((re) => re.test(f));

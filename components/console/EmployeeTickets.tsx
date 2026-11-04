@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Dot, TONE_TEXT } from '@/components/ui/Tag';
 import { CATEGORY_LABEL, PRIORITY_LABEL, STATUS_LABEL, STATUS_TONE } from '@/lib/contracts/enums';
 import type { Ticket } from '@/lib/contracts/tickets';
-import { dataCurta } from '@/lib/format';
+import { shortDate } from '@/lib/format';
 import { TicketDetail } from './TicketDetail';
 
 export type EmployeeTicketsData = { tickets: Array<Ticket & { overdue: boolean; overdue_label: string | null }>; open: number; closed: number };
@@ -108,7 +108,7 @@ export function EmployeeTickets({
                   <span className="text-label text-ink-3">
                     {t.code} ·{' '}
                     {t.status === 'resolved' || t.status === 'closed'
-                      ? `${STATUS_LABEL[t.status]} em ${dataCurta(t.resolved_at ?? t.last_update_at)}`
+                      ? `${STATUS_LABEL[t.status]} em ${shortDate(t.resolved_at ?? t.last_update_at)}`
                       : STATUS_LABEL[t.status]}
                     {t.overdue ? ' · vencido' : ''}
                   </span>

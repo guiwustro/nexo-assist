@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { Spinner } from '@/components/ui/Spinner';
 
+const CRED_ERROR = 'E-mail ou senha incorretos';
+
 type ApiResult = { data?: { role: 'employee' | 'analyst' }; error?: { code: string; message: string } };
 
 export function LoginForm() {
@@ -34,7 +36,7 @@ export function LoginForm() {
       });
       const json = (await res.json()) as ApiResult;
       if (!res.ok || !json.data) {
-        setError(json.error?.code === 'invalid_credentials' ? 'E-mail não encontrado' : 'Não foi possível entrar agora');
+        setError(json.error?.code === 'invalid_credentials' ? CRED_ERROR : 'Não foi possível entrar agora');
         setSending(false);
         return;
       }
@@ -46,7 +48,7 @@ export function LoginForm() {
     }
   }
 
-  const emailErro = error === 'E-mail não encontrado';
+  const credErro = error === CRED_ERROR;
 
   return (
     <form onSubmit={onSubmit} className="flex w-[380px] flex-col gap-7" noValidate>
@@ -60,7 +62,7 @@ export function LoginForm() {
           <span className="text-body font-medium text-ink">E-mail corporativo</span>
           <span
             className={`flex h-11 items-center gap-2.5 rounded-btn border bg-paper pr-2 pl-3.5 focus-within:border-cta ${
-              emailErro ? 'border-danger' : 'border-input-border'
+              credErro ? 'border-danger' : 'border-input-border'
             }`}
           >
             <Mail size={16} className="text-ink-3" />
@@ -74,11 +76,6 @@ export function LoginForm() {
               className="h-full flex-1 bg-transparent text-value text-ink outline-none placeholder:text-ink-3/60"
             />
           </span>
-          {emailErro && (
-            <span data-testid="login-error" className="text-label text-danger-text">
-              E-mail não encontrado
-            </span>
-          )}
         </label>
 
         <div className="flex flex-col gap-2">
@@ -90,7 +87,11 @@ export function LoginForm() {
               Esqueci minha senha
             </button>
           </div>
-          <span className="group flex h-11 items-center gap-2.5 rounded-btn border border-input-border bg-paper pr-2 pl-3.5 focus-within:border-cta">
+          <span
+            className={`group flex h-11 items-center gap-2.5 rounded-btn border bg-paper pr-2 pl-3.5 focus-within:border-cta ${
+              credErro ? 'border-danger' : 'border-input-border'
+            }`}
+          >
             <LockKeyhole size={16} className="text-ink-3 group-focus-within:text-primary-text" />
             <input
               id="login-password"
@@ -111,7 +112,11 @@ export function LoginForm() {
             </button>
           </span>
           {forgot && <span className="text-label text-ink-3">Ligue no ramal 4000 para redefinir sua senha.</span>}
-          {error && !emailErro && <span className="text-label text-danger-text">{error}</span>}
+          {error && (
+            <span data-testid="login-error" className="text-label text-danger-text">
+              {error}
+            </span>
+          )}
         </div>
 
         <label className="flex cursor-pointer items-center gap-[9px] pt-0.5">

@@ -114,9 +114,9 @@ export function ticketRoutes(deps: RouteDeps): Hono {
     const reply = await withIdempotency(db, { key, scope: `POST /tickets/${code}/reopen`, body: input }, async (tx) => {
       const row = await findOwned(tx, code, input.requester_id);
       if (!row) return notFound();
-      const regra = canReopen(toTicket(row), now());
-      if (!regra.ok) {
-        return { status: 422, body: { error: { code: 'reopen_window_expired', message: regra.rule } } };
+      const rule = canReopen(toTicket(row), now());
+      if (!rule.ok) {
+        return { status: 422, body: { error: { code: 'reopen_window_expired', message: rule.rule } } };
       }
       const ticket = await touch(
         tx,

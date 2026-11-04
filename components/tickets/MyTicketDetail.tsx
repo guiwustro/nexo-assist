@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { TicketCard } from '@/components/chat/TicketCard';
 import { api, ApiFailure } from '@/lib/client/api';
-import { dataHora } from '@/lib/format';
+import { dateTime } from '@/lib/format';
 import type { TicketDetail } from '@/lib/tickets/views';
 import { TicketHistory } from './TicketHistory';
 
@@ -73,7 +73,7 @@ export function MyTicketDetail({ code }: { code: string }) {
               <span className="flex flex-col gap-1">
                 <span className="text-label text-ink-3">{closed ? 'Resolvido em' : 'Prazo'}</span>
                 <span className={`font-medium ${t.overdue && !closed ? 'text-warning-text' : 'text-ink'}`}>
-                  {closed ? dataHora(t.resolved_at ?? t.last_update_at) : dataHora(t.due_at)}
+                  {closed ? dateTime(t.resolved_at ?? t.last_update_at) : dateTime(t.due_at)}
                 </span>
               </span>
               <span className="flex-1" />

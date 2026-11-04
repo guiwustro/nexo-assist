@@ -15,21 +15,21 @@ export type RateLimiter = {
 export function createRateLimiter(opts: { limit: number; windowMs: number; now?: () => number }): RateLimiter {
   const now = opts.now ?? Date.now;
   const hits = new Map<string, number[]>();
-  let ultimaLimpeza = now();
+  let lastPrune = now();
 
-  const limpar = (t: number) => {
+  const prune = (t: number) => {
     // Evita crescer sem limite com chaves que não voltam (ex.: IPs).
-    if (t - ultimaLimpeza < opts.windowMs) return;
-    ultimaLimpeza = t;
+    if (t - lastPrune < opts.windowMs) return;
+    lastPrune = t;
     for (const [k, xs] of hits) if (!xs.length || xs[xs.length - 1]! <= t - opts.windowMs) hits.delete(k);
   };
 
   return {
     take(key) {
       const t = now();
-      limpar(t);
-      const desde = t - opts.windowMs;
-      const xs = (hits.get(key) ?? []).filter((x) => x > desde);
+      prune(t);
+      const since = t - opts.windowMs;
+      const xs = (hits.get(key) ?? []).filter((x) => x > since);
       if (xs.length >= opts.limit) {
         hits.set(key, xs);
         return { ok: false, retry_after_s: Math.max(1, Math.ceil((xs[0]! + opts.windowMs - t) / 1000)) };

@@ -1,5 +1,5 @@
 import type { TicketEvent } from '@/lib/contracts/tickets';
-import { dataHora } from '@/lib/format';
+import { dateTime } from '@/lib/format';
 
 const EVENT_LABEL: Record<TicketEvent['kind'], string> = {
   created: 'Aberto',
@@ -21,7 +21,7 @@ export function TicketHistory({ events }: { events: TicketEvent[] }) {
             <span className="relative mt-[5px] size-[7px] shrink-0 rounded-full bg-ink-3" />
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="text-label text-ink-3">
-                {EVENT_LABEL[e.kind]} · {e.actor} · {dataHora(e.created_at)}
+                {EVENT_LABEL[e.kind]} · {e.actor} · {dateTime(e.created_at)}
               </span>
               {e.body && <span className="text-body whitespace-pre-wrap text-ink">{e.body}</span>}
             </div>

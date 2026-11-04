@@ -1,4 +1,4 @@
-import { normalizar } from '@/lib/text/normalizar';
+import { normalize } from '@/lib/text/normalize';
 
 const AFIRMACOES = [
   /\b(abri|criei|registrei|abrimos|criamos|registramos) (o |um |seu )?(chamado|ticket)/,
@@ -7,7 +7,7 @@ const AFIRMACOES = [
 
 /** O texto afirma que um chamado foi criado (só o clique em Confirmar cria). */
 export function afirmouCriacao(texto: string): boolean {
-  const t = normalizar(texto);
+  const t = normalize(texto);
   return AFIRMACOES.some((re) => {
     const m = re.exec(t);
     if (!m) return false;

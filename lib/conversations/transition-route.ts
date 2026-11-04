@@ -13,7 +13,7 @@ export function transitionRoute(event: 'claim' | 'release' | 'close') {
       const conv = await applyTransition(params.id, event, { user_id: session.user_id, role: 'analyst' });
       if (event === 'release') {
         await writeReleaseNote(conv.id, conv.employee_id, { id: session.user_id, name: session.name }).catch((e: unknown) =>
-          console.warn('[release] nota na memória falhou', e),
+          console.warn('[release] memory note failed', e),
         );
       }
       audit(`conversation.${event}`, { request_id: requestId, user_id: session.user_id, metadata: { conversation_id: conv.id } });

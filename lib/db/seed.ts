@@ -11,7 +11,8 @@ import {
   tickets,
   users,
 } from './schema';
-import { SEED_ARTICLES, SEED_OFFSETS, SEED_TICKETS, SEED_USERS, userByKey, type UserKey } from './seed-data';
+import { DEMO_PASSWORD, SEED_ARTICLES, SEED_OFFSETS, SEED_TICKETS, SEED_USERS, userByKey, type UserKey } from './seed-data';
+import { hashPassword } from '@/lib/auth/password';
 import { computeDeadline, timeInSaoPaulo } from '@/lib/rules/deadline';
 import type { TurnDecision } from '@/lib/contracts/decision';
 import type { MessagePart } from '@/lib/contracts/parts';
@@ -67,7 +68,7 @@ type ConvSeed = {
   decision?: TurnDecision;
 };
 
-function conversasDoSeed(agora: number): ConvSeed[] {
+function seedConversations(now: number): ConvSeed[] {
   return [
     {
       key: 'carla',
@@ -75,16 +76,16 @@ function conversasDoSeed(agora: number): ConvSeed[] {
       unread: 1,
       focus: 'INC-20388',
       msgs: [
-        { at: agora - 12 * MIN, direction: 'inbound', sent_via: 'user', body: 'Quero falar com um analista, por favor.' },
+        { at: now - 12 * MIN, direction: 'inbound', sent_via: 'user', body: 'Quero falar com um analista, por favor.' },
         {
-          at: agora - 12 * MIN + 2000,
+          at: now - 12 * MIN + 2000,
           direction: 'outbound',
           sent_via: 'system',
           type: 'system',
-          body: `Transferida para Suporte N1 · ${timeInSaoPaulo(new Date(agora - 12 * MIN))}`,
+          body: `Transferida para Suporte N1 · ${timeInSaoPaulo(new Date(now - 12 * MIN))}`,
           parts: [{ kind: 'handoff_notice', reason_code: 'requested_human', level: 'N1' }],
         },
-        { at: agora - 5 * MIN, direction: 'inbound', sent_via: 'user', body: 'Preciso de acesso ao SAP ainda hoje' },
+        { at: now - 5 * MIN, direction: 'inbound', sent_via: 'user', body: 'Preciso de acesso ao SAP ainda hoje' },
       ],
       handoff: {
         reason: 'requested_human',
@@ -101,18 +102,18 @@ function conversasDoSeed(agora: number): ConvSeed[] {
       status: 'pending',
       msgs: [
         {
-          at: agora - 40 * MIN,
+          at: now - 40 * MIN,
           direction: 'inbound',
           sent_via: 'user',
           body: 'O sistema de estoque mostra um aviso estranho quando eu fecho o lote, não sei se é problema meu',
         },
-        { at: agora - 39 * MIN, direction: 'outbound', sent_via: 'ai', body: 'Vou chamar um analista para isso.', run: true },
+        { at: now - 39 * MIN, direction: 'outbound', sent_via: 'ai', body: 'Vou chamar um analista para isso.', run: true },
         {
-          at: agora - 39 * MIN + 2000,
+          at: now - 39 * MIN + 2000,
           direction: 'outbound',
           sent_via: 'system',
           type: 'system',
-          body: `Transferida para Suporte N1 · ${timeInSaoPaulo(new Date(agora - 39 * MIN))}`,
+          body: `Transferida para Suporte N1 · ${timeInSaoPaulo(new Date(now - 39 * MIN))}`,
           parts: [{ kind: 'handoff_notice', reason_code: 'low_confidence', level: 'N1' }],
         },
       ],
@@ -144,9 +145,9 @@ function conversasDoSeed(agora: number): ConvSeed[] {
       key: 'diego',
       status: 'ai_handling',
       msgs: [
-        { at: agora - 3 * H, direction: 'inbound', sent_via: 'user', body: 'Como instalo o Figma?' },
+        { at: now - 3 * H, direction: 'inbound', sent_via: 'user', body: 'Como instalo o Figma?' },
         {
-          at: agora - 3 * H + 5000,
+          at: now - 3 * H + 5000,
           direction: 'outbound',
           sent_via: 'ai',
           body: 'O Figma está no portal de softwares: é só instalar por lá, sem precisar de chamado.',
@@ -158,31 +159,31 @@ function conversasDoSeed(agora: number): ConvSeed[] {
       status: 'ai_handling',
       focus: 'INC-20519',
       msgs: [
-        { at: agora - 2 * H - 2 * MIN, direction: 'inbound', sent_via: 'user', body: 'Pode confirmar o chamado do teclado.' },
-        { at: agora - 2 * H, direction: 'outbound', sent_via: 'ai', body: 'Chamado INC-20519 criado.' },
+        { at: now - 2 * H - 2 * MIN, direction: 'inbound', sent_via: 'user', body: 'Pode confirmar o chamado do teclado.' },
+        { at: now - 2 * H, direction: 'outbound', sent_via: 'ai', body: 'Chamado INC-20519 criado.' },
       ],
     },
     {
       key: 'fabio',
       status: 'closed',
       msgs: [
-        { at: agora - 5 * H, direction: 'inbound', sent_via: 'user', body: 'A impressora não imprime nada' },
+        { at: now - 5 * H, direction: 'inbound', sent_via: 'user', body: 'A impressora não imprime nada' },
         {
-          at: agora - 5 * H + 4000,
+          at: now - 5 * H + 4000,
           direction: 'outbound',
           sent_via: 'ai',
           body: 'Cancele os documentos da fila em Configurações > Impressoras e reinicie o computador.',
         },
-        { at: agora - 4 * H, direction: 'inbound', sent_via: 'user', body: 'Isso resolveu, obrigado!' },
+        { at: now - 4 * H, direction: 'inbound', sent_via: 'user', body: 'Isso resolveu, obrigado!' },
       ],
     },
     {
       key: 'gabriela',
       status: 'closed',
       msgs: [
-        { at: agora - D - 2 * H, direction: 'inbound', sent_via: 'user', body: 'Qual a senha do Wi-Fi de visitantes?' },
+        { at: now - D - 2 * H, direction: 'inbound', sent_via: 'user', body: 'Qual a senha do Wi-Fi de visitantes?' },
         {
-          at: agora - D - 2 * H + 4000,
+          at: now - D - 2 * H + 4000,
           direction: 'outbound',
           sent_via: 'ai',
           body: 'A senha do Wi-Fi foi enviada para o seu e-mail e também fica no mural da recepção.',
@@ -192,41 +193,54 @@ function conversasDoSeed(agora: number): ConvSeed[] {
   ];
 }
 
-function previewDe(m: Msg): string {
+/** Um hash (com salt próprio) por usuário, calculado uma vez por processo: o seed roda antes de cada teste. */
+const seedHashes = new Map<UserKey, Promise<string>>();
+export function seedPasswordHash(key: UserKey): Promise<string> {
+  let h = seedHashes.get(key);
+  if (!h) {
+    h = hashPassword(DEMO_PASSWORD);
+    seedHashes.set(key, h);
+  }
+  return h;
+}
+
+function previewOf(m: Msg): string {
   return m.sent_via === 'ai' ? `Nexo: ${m.body}` : m.body;
 }
 
 /** Trunca tudo e recria os dados de exemplo relativos a `agora`. */
-export async function resetAndSeed(url: string, agora: Date = new Date()): Promise<SeedResult> {
+export async function resetAndSeed(url: string, now: Date = new Date()): Promise<SeedResult> {
   const db = createDb(url, { max: 1 });
-  const t0 = agora.getTime();
+  const t0 = now.getTime();
+  const hashes = await Promise.all(SEED_USERS.map((u) => seedPasswordHash(u.key)));
   try {
     await db.transaction(async (tx) => {
       const mastra = await tx.execute<{ table_name: string }>(
         sql`select table_name from information_schema.tables where table_schema = 'mastra' and table_type = 'BASE TABLE'`,
       );
       const extras = mastra.map((r) => `mastra."${r.table_name}"`);
-      const lista = [
+      const list = [
         ...APP_TABLES.map((t) => `public."${t}"`),
         'tickets.ticket_events',
         'tickets.idempotency_keys',
         'tickets.tickets',
         ...extras,
       ].join(', ');
-      await tx.execute(sql.raw(`TRUNCATE ${lista} RESTART IDENTITY CASCADE`));
+      await tx.execute(sql.raw(`TRUNCATE ${list} RESTART IDENTITY CASCADE`));
       // INC-20519 existe no seed: os novos começam depois dele.
       await tx.execute(sql`select setval('tickets.inc_seq', 20520, false)`);
       await tx.execute(sql`select setval('tickets.req_seq', 10500, false)`);
       await tx.execute(sql`select setval('public.draft_seq', 381, false)`);
 
       await tx.insert(users).values(
-        SEED_USERS.map((u) => ({
+        SEED_USERS.map((u, i) => ({
           id: u.id,
           email: u.email,
           name: u.name,
           role: u.role,
           department: u.department,
           support_level: u.support_level,
+          password_hash: hashes[i],
         })),
       );
 
@@ -265,7 +279,7 @@ export async function resetAndSeed(url: string, agora: Date = new Date()): Promi
     });
 
     const convIds: Partial<Record<UserKey, string>> = {};
-    for (const c of conversasDoSeed(t0)) {
+    for (const c of seedConversations(t0)) {
       const employee = userByKey(c.key);
       const last = c.msgs[c.msgs.length - 1]!;
       const lastVisible = [...c.msgs].reverse().find((m) => m.sent_via !== 'system') ?? last;
@@ -277,7 +291,7 @@ export async function resetAndSeed(url: string, agora: Date = new Date()): Promi
           status_changed_at: new Date(last.at),
           focus_ticket_code: c.focus ?? null,
           last_message_at: new Date(last.at),
-          last_message_preview: previewDe(lastVisible),
+          last_message_preview: previewOf(lastVisible),
           unread_count_for_assignee: c.unread ?? 0,
           last_handoff_at: c.handoff ? new Date(c.msgs[1]!.at) : null,
           last_handoff_reason: c.handoff?.reason ?? null,
@@ -371,5 +385,5 @@ if (process.argv[1] && /seed\.[cm]?[tj]s$/.test(process.argv[1]) && import.meta.
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL não definida');
   const r = await resetAndSeed(url);
-  console.log(`seed aplicado: ${Object.keys(r.users).length} usuários, ${Object.keys(r.conversations).length} conversas`);
+  console.log(`seed applied: ${Object.keys(r.users).length} users, ${Object.keys(r.conversations).length} conversations`);
 }

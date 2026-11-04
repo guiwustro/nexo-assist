@@ -96,6 +96,6 @@ export function toFailResponse(e: unknown, requestId: string): Response {
       headers: { 'retry-after': '5' },
     });
   }
-  console.error(`[api] erro inesperado request_id=${requestId}`, e);
+  console.error(`[api] unexpected error request_id=${requestId}`, e);
   return fail('internal_error', 'Erro interno', 500, undefined, { requestId });
 }

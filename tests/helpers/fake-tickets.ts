@@ -4,7 +4,7 @@ import type { Ticket, TicketEvent } from '@/lib/contracts/tickets';
 import { SEED_TICKETS, userByKey } from '@/lib/db/seed-data';
 import { computeDeadline } from '@/lib/rules/deadline';
 import { canReopen } from '@/lib/rules/reopening';
-import { dobrar } from '@/lib/text/trechos';
+import { fold } from '@/lib/text/matches';
 
 export type FakeTickets = TicketsClient & {
   tickets: Ticket[];
@@ -81,10 +81,10 @@ export function createFakeTickets(agora: Date): FakeTickets {
     },
     async search(q) {
       guard('search');
-      const alvo = dobrar(q.trim());
+      const alvo = fold(q.trim());
       if (!alvo) return [];
       return tickets
-        .filter((t) => dobrar(`${t.code} ${t.title}`).includes(alvo))
+        .filter((t) => fold(`${t.code} ${t.title}`).includes(alvo))
         .map((t) => ({ requester_id: t.requester_id, code: t.code, title: t.title }));
     },
     async create(input, key) {

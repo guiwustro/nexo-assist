@@ -21,5 +21,5 @@ if (process.argv[1] && /migrate\.[cm]?[tj]s$/.test(process.argv[1]) && import.me
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL não definida');
   await migrateDb(url);
-  console.log('migrations aplicadas');
+  console.log('migrations applied');
 }

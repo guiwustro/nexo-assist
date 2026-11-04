@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Dot } from '@/components/ui/Tag';
 import { STATUS_LABEL, STATUS_TONE } from '@/lib/contracts/enums';
 import type { TicketSelectorPart } from '@/lib/contracts/parts';
-import { dataCurta } from '@/lib/format';
+import { shortDate } from '@/lib/format';
 
 export function TicketSelector({
   tickets,
@@ -45,7 +45,7 @@ export function TicketSelector({
               <Dot tone={STATUS_TONE[t.status]} className="size-1.5" />
               {STATUS_LABEL[t.status]}
             </span>
-            <span className="w-11 text-label text-ink-3">{dataCurta(t.last_update_at)}</span>
+            <span className="w-11 text-label text-ink-3">{shortDate(t.last_update_at)}</span>
           </button>
         );
       })}

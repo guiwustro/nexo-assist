@@ -11,9 +11,9 @@ import { useConversationScroller } from '@/lib/client/use-keep-scroll';
 import { useEvents } from '@/lib/client/use-events';
 import type { QueueItem } from '@/lib/conversations/queries';
 import type { ApiMessage } from '@/lib/conversations/serialize';
-import { hora } from '@/lib/format';
+import { time } from '@/lib/format';
 import { formatShortDeadline } from '@/lib/rules/deadline';
-import { acharTrechos } from '@/lib/text/trechos';
+import { findMatches } from '@/lib/text/matches';
 import { Avatar } from './avatar';
 import { ConsoleThread } from './ConsoleThread';
 import { ConversationSearch } from './ConversationSearch';
@@ -98,7 +98,7 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
     if (!busca?.trim() || !state) return [];
     return [...state.messages]
       .reverse()
-      .flatMap((m) => acharTrechos(m.body, busca).map((_, k) => ({ id: m.id, k })).reverse());
+      .flatMap((m) => findMatches(m.body, busca).map((_, k) => ({ id: m.id, k })).reverse());
   }, [busca, state]);
   const ativo = resultados.length > 0 ? (resultados[Math.min(buscaAtual, resultados.length - 1)] ?? null) : null;
 
@@ -149,9 +149,9 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
   const ultimaPassagem = [...state.messages].reverse().find((m) => m.type === 'system' && /^Transferida/.test(m.body));
   const lastEvent =
     item.status === 'claimed' && ultimoClaim
-      ? { kind: 'claim' as const, text: `Assumido por ${item.assigned_to?.name ?? ''}`, time: hora(ultimoClaim.created_at) }
+      ? { kind: 'claim' as const, text: `Assumido por ${item.assigned_to?.name ?? ''}`, time: time(ultimoClaim.created_at) }
       : ultimaPassagem
-        ? { kind: 'transfer' as const, text: 'Transferido para um analista', time: hora(ultimaPassagem.created_at) }
+        ? { kind: 'transfer' as const, text: 'Transferido para um analista', time: time(ultimaPassagem.created_at) }
         : null;
   const meta = ['online', item.employee.department, item.focus_ticket_code].filter(Boolean).join(' · ');
 

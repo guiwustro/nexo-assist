@@ -2,7 +2,7 @@ import { test as base, expect, type Page } from '@playwright/test';
 import { createDb, type Db } from '../lib/db/client';
 import { resetAndSeed, type SeedResult } from '../lib/db/seed';
 import type { UserKey } from '../lib/db/seed-data';
-import { userByKey } from '../lib/db/seed-data';
+import { DEMO_PASSWORD, userByKey } from '../lib/db/seed-data';
 import { AGORA_E2E, E2E_DB, E2E_SECRET, E2E_TICKETS_PORT } from './env';
 
 type Fixtures = {
@@ -37,7 +37,7 @@ export const test = base.extend<Fixtures>({
   loginAs: async ({}, use) => {
     await use(async (page, who) => {
       const res = await page.request.post('/api/v1/auth/login', {
-        data: { email: userByKey(who).email, password: 'senha-de-teste' },
+        data: { email: userByKey(who).email, password: DEMO_PASSWORD },
       });
       expect(res.ok(), `login de ${who}: ${res.status()} ${await res.text()}`).toBeTruthy();
       await page.goto(userByKey(who).role === 'analyst' ? '/console' : '/atendimento');

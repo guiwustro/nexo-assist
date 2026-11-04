@@ -37,17 +37,17 @@ export async function withIdempotency(
       .returning({ key: ticketsIdempotencyKeys.key });
 
     if (inserted.length === 0) {
-      const [recibo] = await tx
+      const [receipt] = await tx
         .select()
         .from(ticketsIdempotencyKeys)
         .where(eq(ticketsIdempotencyKeys.key, opts.key));
-      if (!recibo || recibo.request_hash !== request_hash) {
+      if (!receipt || receipt.request_hash !== request_hash) {
         return {
           status: 422,
           body: { error: { code: 'idempotency_key_reused', message: 'Chave já usada com outro conteúdo' } },
         };
       }
-      return { status: recibo.response_status ?? 200, body: recibo.response_body };
+      return { status: receipt.response_status ?? 200, body: receipt.response_body };
     }
 
     const reply = await fn(tx);

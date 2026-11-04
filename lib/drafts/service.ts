@@ -81,7 +81,7 @@ async function syncDraftCard(db: DbOrTx, d: Draft): Promise<void> {
   }
 }
 
-const JA_ENVIADO = () =>
+const ALREADY_SENT = () =>
   new Conflict(
     'draft_already_sent',
     'Este rascunho já foi enviado ao sistema de chamados e não pode mais ser editado. Confirme de novo para ver o resultado, ou cancele.',
@@ -91,14 +91,14 @@ export async function editDraft(id: string, session: Session, edit: DraftEdit): 
   const d = await ownedDraft(id, session);
   if (d.status !== 'pending') throw new Conflict('draft_not_pending', 'Este rascunho não pode mais ser editado');
   // A chave de idempotência já foi usada com este conteúdo: mudar agora faria o legado recusar (ou duplicar).
-  if (d.sent_at) throw JA_ENVIADO();
+  if (d.sent_at) throw ALREADY_SENT();
   const merged = { ...d.payload, ...Object.fromEntries(Object.entries(edit).filter(([, v]) => v !== undefined)) };
-  const prioridade = computePriority(merged);
+  const priority = computePriority(merged);
   const payload: DraftPayload = {
     ...merged,
-    priority: prioridade.priority,
-    priority_rule: prioridade.rule,
-    due_at: computeDeadline(prioridade.priority, serverNow()).due_at.toISOString(),
+    priority: priority.priority,
+    priority_rule: priority.rule,
+    due_at: computeDeadline(priority.priority, serverNow()).due_at.toISOString(),
   };
   return getDb().transaction(async (tx) => {
     const [row] = await tx
@@ -107,8 +107,8 @@ export async function editDraft(id: string, session: Session, edit: DraftEdit): 
       .where(and(eq(ticketDrafts.id, id), eq(ticketDrafts.status, 'pending'), isNull(ticketDrafts.sent_at)))
       .returning();
     if (!row) {
-      const atual = await getDraft(id, tx);
-      throw atual?.status === 'pending' ? JA_ENVIADO() : new Conflict('draft_not_pending', 'Este rascunho não pode mais ser editado');
+      const current = await getDraft(id, tx);
+      throw current?.status === 'pending' ? ALREADY_SENT() : new Conflict('draft_not_pending', 'Este rascunho não pode mais ser editado');
     }
     await syncDraftCard(tx, row);
     return row;
@@ -138,7 +138,7 @@ export async function cancelDraft(id: string, session: Session): Promise<Draft> 
   });
 }
 
-const VERBO: Record<DraftKind, string> = { create: 'criado', update: 'atualizado', reopen: 'reaberto' };
+const VERB_BY_KIND: Record<DraftKind, string> = { create: 'criado', update: 'atualizado', reopen: 'reaberto' };
 
 /**
  * Cria/atualiza/reabre no serviço de chamados com a chave de idempotência do rascunho: clique duplo, retry e
@@ -153,12 +153,12 @@ export async function confirmDraft(id: string, session: Session): Promise<{ draf
   const key = d.idempotency_key;
   // Marca o envio antes de chamar o legado e confirma com o conteúdo gravado nesse momento: uma edição
   // concorrente ou posterior não pode mudar o que vai com esta chave.
-  const [enviado] = await getDb()
+  const [sent] = await getDb()
     .update(ticketDrafts)
     .set({ sent_at: sql`coalesce(${ticketDrafts.sent_at}, now())` })
     .where(and(eq(ticketDrafts.id, id), eq(ticketDrafts.status, 'pending')))
     .returning();
-  const p = (enviado ?? d).payload;
+  const p = (sent ?? d).payload;
   let ticket: Ticket;
   try {
     if (d.kind === 'create') {
@@ -197,7 +197,7 @@ export async function confirmDraft(id: string, session: Session): Promise<{ draf
   }
 
   const now = serverNow();
-  const venceu = await getDb().transaction(async (tx) => {
+  const won = await getDb().transaction(async (tx) => {
     const [row] = await tx
       .update(ticketDrafts)
       .set({ status: 'confirmed', result_ticket_code: ticket.code, decided_at: new Date() })
@@ -205,14 +205,14 @@ export async function confirmDraft(id: string, session: Session): Promise<{ draf
       .returning();
     if (!row) return null;
     await syncDraftCard(tx, row);
-    const atraso = describeOverdue(ticket, now);
+    const delay = describeOverdue(ticket, now);
     await appendMessage(tx, {
       conversation_id: row.conversation_id,
       direction: 'outbound',
       type: 'system',
       sent_via: 'system',
-      body: `${ticket.code} ${VERBO[d.kind as DraftKind]} · prioridade ${PRIORITY_LABEL[ticket.priority]} · ${formatShortDeadline(new Date(ticket.due_at), now)}`,
-      parts: [{ kind: 'ticket_card', ticket, overdue: atraso !== null, ...(atraso ? { overdue_label: atraso } : {}) }],
+      body: `${ticket.code} ${VERB_BY_KIND[d.kind as DraftKind]} · prioridade ${PRIORITY_LABEL[ticket.priority]} · ${formatShortDeadline(new Date(ticket.due_at), now)}`,
+      parts: [{ kind: 'ticket_card', ticket, overdue: delay !== null, ...(delay ? { overdue_label: delay } : {}) }],
       metadata: { draft_id: row.id },
     });
     await tx.update(conversations).set({ focus_ticket_code: ticket.code }).where(eq(conversations.id, row.conversation_id));
@@ -231,16 +231,16 @@ export async function confirmDraft(id: string, session: Session): Promise<{ draf
     return row;
   });
 
-  if (venceu) {
+  if (won) {
     noteToMemory(
-      venceu.conversation_id,
+      won.conversation_id,
       session.user_id,
-      `Funcionário confirmou o rascunho ${venceu.code} → ${ticket.code} (${VERBO[d.kind as DraftKind]}, prioridade ${PRIORITY_LABEL[ticket.priority]}).`,
-    ).catch((e: unknown) => console.warn('[drafts] nota na memória falhou', e));
-    return { draft: venceu, ticket };
+      `Funcionário confirmou o rascunho ${won.code} → ${ticket.code} (${VERB_BY_KIND[d.kind as DraftKind]}, prioridade ${PRIORITY_LABEL[ticket.priority]}).`,
+    ).catch((e: unknown) => console.warn('[drafts] memory note failed', e));
+    return { draft: won, ticket };
   }
-  const atual = await getDraft(id);
-  return { draft: atual!, ticket };
+  const current = await getDraft(id);
+  return { draft: current!, ticket };
 }
 
 export function toApiDraft(d: Draft) {

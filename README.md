@@ -37,7 +37,7 @@ pnpm smoke http://localhost:3000 --restart    # login, conversa, rascunho e pers
 
 ### Usuários do seed
 
-O login é de demonstração: e-mail do seed + qualquer senha não vazia.
+Todos os usuários do seed entram com a senha **`nexo2026`**.
 
 | Pessoa | E-mail | Papel | O que tem no seed |
 |---|---|---|---|
@@ -209,7 +209,13 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
 - **Sessão de 30 mensagens:** o limite existe para o custo do modelo. Ao bater 30, a conversa vai para um analista
   com todo o histórico, e as mensagens para o analista não contam no limite — o funcionário não fica sem
   atendimento.
-- **Login de demonstração:** e-mail do seed + qualquer senha; "Esqueci minha senha" é simulado.
+- **Senhas:** o banco guarda só o hash (scrypt do `node:crypto`, salt de 16 bytes por usuário, formato
+  `scrypt$N$r$p$salt$hash` na coluna `users.password_hash`). O login confere com `timingSafeEqual` e responde
+  igual para e-mail inexistente e senha errada ("E-mail ou senha incorretos"), inclusive no tempo: e-mail
+  inexistente também paga uma conferência de hash. Usuário sem hash não entra. A senha não vai para log nem
+  auditoria. Todos os usuários do seed têm a mesma senha de demonstração; "Esqueci minha senha" e "Redefinir senha"
+  continuam simulados. Num banco anterior à coluna, o start do container define a senha de demonstração para os
+  usuários do seed que estão sem hash.
 
 ### Divergências do protótipo (`referencias/nexo.pen`)
 
@@ -274,7 +280,7 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
 - Paginação na fila do console e busca com índice (trigram) quando houver muitas conversas; "digitando…"; o `EventSource` voltar para SSE depois de cair para
   polling.
 - Evals rodando no CI em PRs que mexem no prompt, com orçamento fixo.
-- Login real (SSO da empresa) no lugar do login de demonstração.
+- Login real (SSO da empresa) no lugar da senha local, ou ao menos troca e redefinição de senha de verdade.
 
 ---
 

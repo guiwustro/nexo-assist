@@ -41,19 +41,19 @@ export async function readEventsAfter(
   limit = 200,
 ): Promise<EventRow[]> {
   const db = getDb();
-  const depois = and(
+  const after = and(
     sql`(${eventLog.tx_id}, ${eventLog.id}) > (${cursor.tx}, ${cursor.id})`,
     sql`${eventLog.tx_id} < ${XMIN}`,
   );
-  const visiveis =
+  const visible =
     filter.role === 'analyst'
-      ? depois
+      ? after
       : and(
-          depois,
+          after,
           inArray(
             eventLog.conversation_id,
             db.select({ id: conversations.id }).from(conversations).where(eq(conversations.employee_id, filter.user_id)),
           ),
         );
-  return db.select().from(eventLog).where(visiveis).orderBy(asc(eventLog.tx_id), asc(eventLog.id)).limit(limit);
+  return db.select().from(eventLog).where(visible).orderBy(asc(eventLog.tx_id), asc(eventLog.id)).limit(limit);
 }

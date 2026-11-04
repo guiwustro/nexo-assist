@@ -34,7 +34,7 @@ esperar_ping || falha "$BASE/api/v1/ping não respondeu"
 
 passo "login da Carla"
 code=$(curl -sS -o /dev/null -w '%{http_code}' -c "$JAR" -H 'content-type: application/json' \
-  -d '{"email":"carla.mendes@nexo.com.br","password":"demo"}' "$BASE/api/v1/auth/login")
+  -d '{"email":"carla.mendes@nexo.com.br","password":"nexo2026"}' "$BASE/api/v1/auth/login")
 [ "$code" = 200 ] || falha "login devolveu $code"
 
 passo "conversa atual"

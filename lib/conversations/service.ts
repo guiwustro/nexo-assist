@@ -25,20 +25,20 @@ export async function getOrCreateCurrent(employeeId: string, sid: string, loginA
     .insert(conversations)
     .values({ employee_id: employeeId, session_id: sid, session_started_at: loginAt, session_message_count: 0 })
     .onConflictDoNothing({ target: conversations.employee_id });
-  const [atual] = await db.select().from(conversations).where(eq(conversations.employee_id, employeeId));
-  if (!atual) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
-  if (atual.session_id === sid) return atual;
-  const [nova] = await db
+  const [current] = await db.select().from(conversations).where(eq(conversations.employee_id, employeeId));
+  if (!current) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
+  if (current.session_id === sid) return current;
+  const [next] = await db
     .update(conversations)
     .set({ session_id: sid, session_started_at: loginAt, session_message_count: 0, updated_at: now })
     .where(
       and(
-        eq(conversations.id, atual.id),
+        eq(conversations.id, current.id),
         or(isNull(conversations.session_started_at), lt(conversations.session_started_at, loginAt)),
       ),
     )
     .returning();
-  return nova ?? atual;
+  return next ?? current;
 }
 
 export async function getConversation(db: DbOrTx, id: string): Promise<Conversation | null> {
@@ -74,13 +74,13 @@ export async function appendMessage(tx: DbOrTx, m: NewMessage): Promise<Message>
       metadata: m.metadata ?? {},
     })
     .returning();
-  const visivel = m.type !== 'system';
+  const isVisible = m.type !== 'system';
   await tx
     .update(conversations)
     .set({
       last_message_at: msg!.created_at,
       updated_at: msg!.created_at,
-      ...(visivel ? { last_message_preview: m.sent_via === 'ai' ? `Nexo: ${m.body}` : m.body } : {}),
+      ...(isVisible ? { last_message_preview: m.sent_via === 'ai' ? `Nexo: ${m.body}` : m.body } : {}),
       ...(m.direction === 'inbound'
         ? {
             unread_count_for_assignee: sql`case when ${conversations.assigned_to_user_id} is not null then ${conversations.unread_count_for_assignee} + 1 else ${conversations.unread_count_for_assignee} end`,
@@ -111,7 +111,7 @@ export async function registerEmployeeMessage(
     const [conv] = await tx.select().from(conversations).where(eq(conversations.id, conversationId)).for('update');
     if (!conv) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
     const count = conv.session_message_count + 1;
-    if (count > limit && !comAnalista(conv.status as ConversationStatus)) {
+    if (count > limit && !isWithAnalyst(conv.status as ConversationStatus)) {
       throw new Conflict('session_limit_reached', `Limite de ${limit} mensagens nesta sessão`, { limit });
     }
     const r = transition(conv.status as ConversationStatus, 'employee_message');
@@ -136,22 +136,22 @@ export async function registerEmployeeMessage(
 }
 
 /** A conversa está com um analista (esperando ou assumida): mensagens não passam pelo agent. */
-export function comAnalista(status: ConversationStatus): boolean {
+export function isWithAnalyst(status: ConversationStatus): boolean {
   return status === 'pending' || status === 'claimed';
 }
 
-async function nomeDe(tx: Tx, userId: string): Promise<string> {
+async function nameOf(tx: Tx, userId: string): Promise<string> {
   const [u] = await tx.select({ name: users.name }).from(users).where(eq(users.id, userId));
   return u?.name ?? 'Analista';
 }
 
-const TEXTO: Partial<Record<ConversationEvent, (nome: string, hora: string) => string>> = {
-  claim: (nome, hora) => `${nome} assumiu · agent pausado · ${hora}`,
-  release: (nome, hora) => `${nome} devolveu ao agent · ${hora}`,
-  close: (nome, hora) => `Atendimento encerrado por ${nome} · ${hora}`,
+const TEXT_BY_TRANSITION: Partial<Record<ConversationEvent, (name: string, time: string) => string>> = {
+  claim: (name, time) => `${name} assumiu · agent pausado · ${time}`,
+  release: (name, time) => `${name} devolveu ao agent · ${time}`,
+  close: (name, time) => `Atendimento encerrado por ${name} · ${time}`,
 };
 
-const EVENTO: Partial<Record<ConversationEvent, `${string}.${string}`>> = {
+const EVENT_BY_TRANSITION: Partial<Record<ConversationEvent, `${string}.${string}`>> = {
   claim: 'conversation.claimed',
   release: 'conversation.released',
   close: 'conversation.closed',
@@ -170,51 +170,51 @@ export async function applyTransition(
   const run = async (tx: Tx): Promise<Conversation> => {
     const conv = await getConversation(tx, conversationId);
     if (!conv) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
-    const lido = conv.status as ConversationStatus;
-    if (opts.expectedStatus && opts.expectedStatus !== lido) throw conflitoPara(conv, event);
-    const r = transition(lido, event);
-    if (!r.ok) throw conflitoPara(conv, event);
+    const read = conv.status as ConversationStatus;
+    if (opts.expectedStatus && opts.expectedStatus !== read) throw conflictFor(conv, event);
+    const r = transition(read, event);
+    if (!r.ok) throw conflictFor(conv, event);
     if (
       (event === 'release' || event === 'close') &&
-      lido === 'claimed' &&
+      read === 'claimed' &&
       conv.assigned_to_user_id !== actor.user_id
     ) {
       throw new Forbidden('not_assignee', 'Só quem assumiu a conversa pode fazer isso');
     }
     const now = opts.now ?? serverNow();
-    const agora = new Date();
+    const changedAt = new Date();
     const set =
       event === 'claim'
-        ? { assigned_to_user_id: actor.user_id, assigned_at: agora, unread_count_for_assignee: 0 }
+        ? { assigned_to_user_id: actor.user_id, assigned_at: changedAt, unread_count_for_assignee: 0 }
         : { assigned_to_user_id: null, assigned_at: null };
     const updated = await tx
       .update(conversations)
-      .set({ status: r.next, status_changed_at: agora, updated_at: agora, ...set })
-      .where(and(eq(conversations.id, conversationId), eq(conversations.status, lido)))
+      .set({ status: r.next, status_changed_at: changedAt, updated_at: changedAt, ...set })
+      .where(and(eq(conversations.id, conversationId), eq(conversations.status, read)))
       .returning();
     if (updated.length === 0) {
-      const relido = await getConversation(tx, conversationId);
-      throw conflitoPara(relido ?? conv, event);
+      const reread = await getConversation(tx, conversationId);
+      throw conflictFor(reread ?? conv, event);
     }
-    const texto = TEXTO[event];
-    if (texto) {
+    const text = TEXT_BY_TRANSITION[event];
+    if (text) {
       await appendMessage(tx, {
         conversation_id: conversationId,
         direction: 'outbound',
         type: 'system',
         sent_via: 'system',
         sent_by_user_id: actor.user_id,
-        body: texto(await nomeDe(tx, actor.user_id), timeInSaoPaulo(now)),
+        body: text(await nameOf(tx, actor.user_id), timeInSaoPaulo(now)),
         metadata: { event },
       });
     }
-    const tipo = EVENTO[event];
-    if (tipo) {
+    const type = EVENT_BY_TRANSITION[event];
+    if (type) {
       await emitEvent(tx, {
-        type: tipo,
+        type: type,
         conversation_id: conversationId,
         actor_user_id: actor.user_id,
-        payload: { status: r.next, from: lido },
+        payload: { status: r.next, from: read },
       });
     }
     return updated[0]!;
@@ -222,23 +222,23 @@ export async function applyTransition(
   try {
     return opts.tx ? await run(opts.tx) : await getDb().transaction(run);
   } catch (e) {
-    if (e instanceof Conflict && e.code === 'conversation_already_claimed') throw await comNomeDeQuemAssumiu(e);
+    if (e instanceof Conflict && e.code === 'conversation_already_claimed') throw await withClaimerName(e);
     // Duas transações concorrentes: a perdedora pode bater no CHECK/serialização; relê e explica.
     if (e instanceof Conflict || e instanceof Forbidden || e instanceof NotFound) throw e;
     const conv = await getConversation(getDb(), conversationId);
-    if (conv) throw conflitoPara(conv, event);
+    if (conv) throw conflictFor(conv, event);
     throw e;
   }
 }
 
-async function comNomeDeQuemAssumiu(e: Conflict): Promise<Conflict> {
+async function withClaimerName(e: Conflict): Promise<Conflict> {
   const id = (e.details as { assigned_to_user_id?: string | null } | undefined)?.assigned_to_user_id;
   if (!id) return e;
   const [u] = await getDb().select({ name: users.name }).from(users).where(eq(users.id, id));
   return u ? new Conflict(e.code, `${u.name} já assumiu esta conversa`, { ...(e.details as object), assigned_to_name: u.name }) : e;
 }
 
-function conflitoPara(conv: Conversation, event: ConversationEvent): Conflict {
+function conflictFor(conv: Conversation, event: ConversationEvent): Conflict {
   if (event === 'claim' && conv.status === 'claimed') {
     return new Conflict('conversation_already_claimed', 'Outro analista já assumiu esta conversa', {
       assigned_to_user_id: conv.assigned_to_user_id,

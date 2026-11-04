@@ -1,10 +1,11 @@
 import { expect, test } from './fixtures';
+import { DEMO_PASSWORD } from '../lib/db/seed-data';
 
 test.describe('login e papéis', () => {
   test('Ana entra e cai no atendimento', async ({ page }) => {
     await page.goto('/login');
     await page.getByTestId('login-email').fill('ana.souza@nexo.com.br');
-    await page.getByTestId('login-password').fill('qualquer');
+    await page.getByTestId('login-password').fill(DEMO_PASSWORD);
     await page.getByTestId('login-submit').click();
     await expect(page).toHaveURL(/\/atendimento$/);
     await expect(page.getByTestId('sidebar-user')).toContainText('Ana Souza');
@@ -13,7 +14,7 @@ test.describe('login e papéis', () => {
   test('Rafael entra e cai no console', async ({ page }) => {
     await page.goto('/login');
     await page.getByTestId('login-email').fill('rafael.lima@nexo.com.br');
-    await page.getByTestId('login-password').fill('qualquer');
+    await page.getByTestId('login-password').fill(DEMO_PASSWORD);
     await page.getByTestId('login-submit').click();
     await expect(page).toHaveURL(/\/console/);
   });
@@ -21,9 +22,18 @@ test.describe('login e papéis', () => {
   test('e-mail desconhecido mostra erro e continua no login', async ({ page }) => {
     await page.goto('/login');
     await page.getByTestId('login-email').fill('ninguem@nexo.com.br');
-    await page.getByTestId('login-password').fill('qualquer');
+    await page.getByTestId('login-password').fill(DEMO_PASSWORD);
     await page.getByTestId('login-submit').click();
-    await expect(page.getByText('E-mail não encontrado')).toBeVisible();
+    await expect(page.getByTestId('login-error')).toHaveText('E-mail ou senha incorretos');
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test('senha errada mostra o mesmo erro e continua no login', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByTestId('login-email').fill('ana.souza@nexo.com.br');
+    await page.getByTestId('login-password').fill('senha-errada');
+    await page.getByTestId('login-submit').click();
+    await expect(page.getByTestId('login-error')).toHaveText('E-mail ou senha incorretos');
     await expect(page).toHaveURL(/\/login$/);
   });
 
@@ -79,7 +89,7 @@ test.describe('login e papéis', () => {
     });
     await page.goto('/login');
     await page.getByTestId('login-email').fill('ana.souza@nexo.com.br');
-    await page.getByTestId('login-password').fill('qualquer');
+    await page.getByTestId('login-password').fill(DEMO_PASSWORD);
     await page.getByTestId('login-submit').click();
     await expect(page.getByTestId('login-submit')).toBeDisabled();
     await expect(page.getByTestId('login-spinner')).toBeVisible();

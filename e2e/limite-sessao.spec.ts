@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { expect, test } from './fixtures';
 import { enviar } from './helpers';
 import { conversations } from '../lib/db/schema';
+import { DEMO_PASSWORD } from '../lib/db/seed-data';
 
 test('a 30ª mensagem da sessão transfere para um analista', async ({ page, loginAs, db, seed, browser }) => {
   await loginAs(page, 'diego');
@@ -16,7 +17,7 @@ test('a 30ª mensagem da sessão transfere para um analista', async ({ page, log
 
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const rafael = await ctx.newPage();
-  await rafael.request.post('/api/v1/auth/login', { data: { email: 'rafael.lima@nexo.com.br', password: 'x' } });
+  await rafael.request.post('/api/v1/auth/login', { data: { email: 'rafael.lima@nexo.com.br', password: DEMO_PASSWORD } });
   await rafael.goto('/console');
   await expect(rafael.getByTestId('conversation-item').filter({ hasText: 'Diego Ramos' })).toContainText('limite da sessão');
 });

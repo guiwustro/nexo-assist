@@ -1,7 +1,7 @@
 import { Dot, TONE_TEXT } from '@/components/ui/Tag';
 import { CATEGORY_LABEL, PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL, STATUS_TONE } from '@/lib/contracts/enums';
 import type { Ticket } from '@/lib/contracts/tickets';
-import { dataHora, haQuanto } from '@/lib/format';
+import { dateTime, daysAgo } from '@/lib/format';
 
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -24,7 +24,7 @@ export function TicketCard({
   now: Date;
 }) {
   const tone = STATUS_TONE[ticket.status];
-  const [quando, nota] = overdue && overdueLabel ? overdueLabel.split(' · ') : [haQuanto(ticket.last_update_at, now), null];
+  const [quando, nota] = overdue && overdueLabel ? overdueLabel.split(' · ') : [daysAgo(ticket.last_update_at, now), null];
   return (
     <section data-testid="ticket-card" className="flex w-full flex-col rounded-card border border-card-border bg-paper">
       <div className="flex flex-col gap-1.5 px-[18px] pt-4 pb-3.5">
@@ -51,7 +51,7 @@ export function TicketCard({
             <Dot tone={PRIORITY_TONE[ticket.priority]} className="size-1.5" />
             {PRIORITY_LABEL[ticket.priority]}
           </Campo>
-          <Campo label="Aberto em">{dataHora(ticket.created_at)}</Campo>
+          <Campo label="Aberto em">{dateTime(ticket.created_at)}</Campo>
           <Campo label="Última atualização">
             <span className={overdue ? 'text-warning-text' : ''}>{quando}</span>
             {nota && <span className="text-body font-normal text-ink-3">· {nota}</span>}

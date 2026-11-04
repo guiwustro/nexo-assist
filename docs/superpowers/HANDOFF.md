@@ -14,7 +14,8 @@
   (o E2E quebrado era a rota de reset em pasta privada `_test` → agora `/api/v1/e2e/reset`).
 - **Task 26 pendente:** deploy na VPS, todo passo confirmado com o Gui. Antes: gerar `SESSION_SECRET` novo,
   preencher `LLM_PRICE_*` se usar `LLM_DAILY_BUDGET_CENTS` (sem eles o app não sobe) e decidir se a URL pública
-  precisa de alguma barreira (qualquer senha entra como analista).
+  precisa de alguma barreira (o login confere senha com hash scrypt, mas a senha do seed, `nexo2026`, está no
+  README público: quem ler entra como analista).
 - Testes no HEAD: unit 230/230, integração 96/96, E2E 28/28, typecheck/lint limpos.
 - Workspace `.superpowers/sdd/2026-11-03-nexo-assist/` **não foi apagado** (plano ainda aberto). Depois da Task 26:
   apagar e usar superpowers:finishing-a-development-branch.

@@ -15,6 +15,7 @@ import { resetEnvCache } from '@/lib/env';
 import { POST as postMessage } from '@/app/api/v1/conversations/[id]/messages/route';
 import { POST as login } from '@/app/api/v1/auth/login/route';
 import type { Session } from '@/lib/auth/session';
+import { DEMO_PASSWORD } from '@/lib/db/seed-data';
 import type { NexoUIMessage } from '@/lib/contracts/ui';
 
 const t = useTestDb();
@@ -86,7 +87,7 @@ describe('teto diário de gasto com o modelo', () => {
     const out = await t.db.select().from(messages).where(eq(messages.conversation_id, conv.id));
     expect(out.some((m) => m.direction === 'outbound' && /limite de uso de hoje/.test(m.body))).toBe(true);
     expect(chunks.some((x) => x.type === 'data-system' && (x.data as { kind: string }).kind === 'budget')).toBe(true);
-    const fila = await listForAnalyst(t.seed.users.rafael.id, { agora: t.agora, onlyId: conv.id });
+    const fila = await listForAnalyst(t.seed.users.rafael.id, { now: t.agora, onlyId: conv.id });
     expect(fila[0]?.tag.label).toBe('Transferida · limite de uso do assistente');
   });
 
@@ -155,7 +156,7 @@ describe('rate limit', () => {
         new Request('http://x/api/v1/auth/login', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-forwarded-for': ip },
-          body: JSON.stringify({ email: 'ana.souza@nexo.com.br', password: 'x' }),
+          body: JSON.stringify({ email: 'ana.souza@nexo.com.br', password: DEMO_PASSWORD }),
         }),
         { params: Promise.resolve({}) },
       );

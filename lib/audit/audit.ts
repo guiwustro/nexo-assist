@@ -15,5 +15,5 @@ export function audit(action: string, ctx: AuditCtx = {}): void {
   void getDb()
     .insert(apiAuditLog)
     .values({ action, ...ctx, user_id: ctx.user_id ?? null, metadata: ctx.metadata ?? {} })
-    .catch((e: unknown) => console.warn('[audit] falhou', action, e));
+    .catch((e: unknown) => console.warn('[audit] failed', action, e));
 }

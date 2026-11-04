@@ -1,13 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { useTestDb } from '@/tests/helpers/db';
 import { POST as login } from '@/app/api/v1/auth/login/route';
 import { POST as logout } from '@/app/api/v1/auth/logout/route';
 import { GET as me } from '@/app/api/v1/me/route';
+import { DEMO_PASSWORD } from '@/lib/db/seed-data';
+import { users } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
+import { loginLimiter } from '@/lib/api/rate-limit';
 
-useTestDb();
+const t = useTestDb();
+// O limite de 10 logins/min por IP não é o assunto aqui.
+beforeEach(() => loginLimiter().reset());
 const noParams = { params: Promise.resolve({}) };
 
-const doLogin = (email: string, password = 'qualquer', extra: Record<string, unknown> = {}) =>
+const doLogin = (email: string, password = DEMO_PASSWORD, extra: Record<string, unknown> = {}) =>
   login(
     new Request('http://x/api/v1/auth/login', {
       method: 'POST',
@@ -36,6 +42,25 @@ describe('login', () => {
     expect(res.status).toBe(401);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('invalid_credentials');
   });
+  it('senha errada → 401, com a mesma mensagem do e-mail desconhecido', async () => {
+    const errada = await doLogin('ana.souza@nexo.com.br', 'outra-senha');
+    expect(errada.status).toBe(401);
+    expect(errada.headers.get('set-cookie')).toBeNull();
+    const semEmail = await doLogin('ninguem@nexo.com.br');
+    const a = ((await errada.json()) as { error: { code: string; message: string } }).error;
+    const b = ((await semEmail.json()) as { error: { code: string; message: string } }).error;
+    expect(a).toEqual(b);
+    expect(a).toMatchObject({ code: 'invalid_credentials', message: 'E-mail ou senha incorretos' });
+  });
+  it('usuário sem senha cadastrada não entra', async () => {
+    await t.db.update(users).set({ password_hash: null }).where(eq(users.email, 'ana.souza@nexo.com.br'));
+    expect((await doLogin('ana.souza@nexo.com.br')).status).toBe(401);
+  });
+  it('o banco guarda só o hash, nunca a senha', async () => {
+    const [u] = await t.db.select({ h: users.password_hash }).from(users).where(eq(users.email, 'ana.souza@nexo.com.br'));
+    expect(u?.h).toMatch(/^scrypt\$/);
+    expect(u?.h).not.toContain(DEMO_PASSWORD);
+  });
   it('senha vazia → 400', async () => {
     expect((await doLogin('ana.souza@nexo.com.br', '')).status).toBe(400);
   });
@@ -55,8 +80,8 @@ describe('login', () => {
   });
   it('"Manter conectado" (padrão) grava cookie persistente; desmarcado, cookie da sessão do navegador', async () => {
     expect((await doLogin('ana.souza@nexo.com.br')).headers.get('set-cookie')).toMatch(/Max-Age=43200/);
-    expect((await doLogin('ana.souza@nexo.com.br', 'x', { remember: true })).headers.get('set-cookie')).toMatch(/Max-Age=43200/);
-    const sc = (await doLogin('ana.souza@nexo.com.br', 'x', { remember: false })).headers.get('set-cookie') ?? '';
+    expect((await doLogin('ana.souza@nexo.com.br', DEMO_PASSWORD, { remember: true })).headers.get('set-cookie')).toMatch(/Max-Age=43200/);
+    const sc = (await doLogin('ana.souza@nexo.com.br', DEMO_PASSWORD, { remember: false })).headers.get('set-cookie') ?? '';
     expect(sc).toMatch(/nexo_session=/);
     expect(sc).not.toMatch(/Max-Age|Expires/i);
   });

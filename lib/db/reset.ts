@@ -6,4 +6,4 @@ const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL não definida');
 await migrateDb(url);
 await resetAndSeed(url);
-console.log('banco migrado e semeado do zero');
+console.log('database migrated and seeded from scratch');
