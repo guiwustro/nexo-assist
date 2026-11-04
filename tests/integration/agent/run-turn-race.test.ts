@@ -15,18 +15,18 @@ import type { NexoUIMessage } from '@/lib/contracts/ui';
  * O analista assume entre a releitura do status (pós-turno) e a passagem criada por um gatilho. O mock devolve a
  * leitura antiga ("ai_handling") depois de aplicar o claim — exatamente a janela da corrida.
  */
-const corrida = vi.hoisted(() => ({ modo: 'off' as 'off' | 'claim' | 'erro', analista: '' }));
+const race = vi.hoisted(() => ({ mode: 'off' as 'off' | 'claim' | 'erro', analyst: '' }));
 vi.mock('@/lib/conversations/service', async (importOriginal) => {
   const orig = await importOriginal<typeof import('@/lib/conversations/service')>();
   return {
     ...orig,
     getConversation: async (...args: Parameters<typeof orig.getConversation>) => {
-      const lida = await orig.getConversation(...args);
-      if (corrida.modo === 'claim') {
-        await orig.applyTransition(args[1], 'claim', { user_id: corrida.analista, role: 'analyst' });
+      const stale = await orig.getConversation(...args);
+      if (race.mode === 'claim') {
+        await orig.applyTransition(args[1], 'claim', { user_id: race.analyst, role: 'analyst' });
       }
-      if (corrida.modo === 'erro') throw new Error('banco caiu no meio do turno');
-      return lida;
+      if (race.mode === 'erro') throw new Error('banco caiu no meio do turno');
+      return stale;
     },
   };
 });
@@ -38,12 +38,12 @@ function writer() {
 }
 
 beforeEach(() => {
-  setTicketsClient(createFakeTickets(t.agora));
+  setTicketsClient(createFakeTickets(t.now));
   setModelForTests();
-  corrida.analista = t.seed.users.rafael.id;
+  race.analyst = t.seed.users.rafael.id;
 });
 afterEach(() => {
-  corrida.modo = 'off';
+  race.mode = 'off';
   setModelForTests();
 });
 afterAll(async () => {
@@ -51,16 +51,16 @@ afterAll(async () => {
   await closeMemory();
 });
 
-async function turno(text: string) {
+async function runTurnFor(text: string) {
   const conv = await service.getOrCreateCurrent(t.seed.users.ana.id, 'sid-1');
   const employee = { user_id: t.seed.users.ana.id, role: 'employee' as const, name: 'Ana Souza', sid: 'sid-1' };
-  return { conv, r: runTurn({ conversation_id: conv.id, employee, text, writer: writer(), now: t.agora }) };
+  return { conv, r: runTurn({ conversation_id: conv.id, employee, text, writer: writer(), now: t.now }) };
 }
 
 describe('runTurn: analista assume na última hora', () => {
   it('gatilho de transferência perde a corrida: turno termina pausado, sem erro e sem passagem', async () => {
-    corrida.modo = 'claim';
-    const { conv, r } = await turno('não sei explicar o que houve com o sistema');
+    race.mode = 'claim';
+    const { conv, r } = await runTurnFor('não sei explicar o que houve com o sistema');
     const res = await r;
     expect(res.outcome).toBe('paused');
     const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, res.run_id!));
@@ -73,8 +73,8 @@ describe('runTurn: analista assume na última hora', () => {
   });
 
   it('erro inesperado depois do modelo não deixa o run como "running"', async () => {
-    corrida.modo = 'erro';
-    const { conv, r } = await turno('não sei explicar o que houve com o sistema');
+    race.mode = 'erro';
+    const { conv, r } = await runTurnFor('não sei explicar o que houve com o sistema');
     await expect(r).rejects.toThrow('banco caiu');
     const runs = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.conversation_id, conv.id));
     expect(runs).toHaveLength(1);

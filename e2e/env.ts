@@ -4,12 +4,12 @@ export const E2E_WEB_PORT = 3100;
 export const E2E_TICKETS_PORT = 4101;
 export const E2E_SECRET = 'segredo-interno-e2e';
 /** Terça-feira, 03/11/2026, 10:00 em São Paulo. */
-export const AGORA_E2E = new Date('2026-11-03T13:00:00.000Z');
+export const E2E_NOW = new Date('2026-11-03T13:00:00.000Z');
 
 export const E2E_ENV: Record<string, string> = {
   NODE_ENV: 'production',
   E2E: 'true',
-  NOW_OVERRIDE: AGORA_E2E.toISOString(),
+  NOW_OVERRIDE: E2E_NOW.toISOString(),
   DATABASE_URL: E2E_DB,
   SESSION_SECRET: 'segredo-de-sessao-do-e2e-com-32-caracteres',
   TICKETS_URL: `http://localhost:${E2E_TICKETS_PORT}`,

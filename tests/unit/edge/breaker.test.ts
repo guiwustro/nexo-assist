@@ -3,8 +3,8 @@ import { createBreaker } from '@/lib/agent-engine/edge/tickets/breaker';
 
 describe('createBreaker', () => {
   it('abre após 3 falhas seguidas, meio-abre depois de openMs e fecha no sucesso', () => {
-    let agora = 0;
-    const b = createBreaker({ threshold: 3, openMs: 15_000, now: () => agora });
+    let now = 0;
+    const b = createBreaker({ threshold: 3, openMs: 15_000, now: () => now });
     expect(b.state()).toBe('closed');
     b.onFailure();
     b.onFailure();
@@ -12,7 +12,7 @@ describe('createBreaker', () => {
     b.onFailure();
     expect(b.state()).toBe('open');
     expect(b.canPass()).toBe(false);
-    agora += 15_000;
+    now += 15_000;
     expect(b.state()).toBe('half_open');
     expect(b.canPass()).toBe(true);
     b.onSuccess();
@@ -20,12 +20,12 @@ describe('createBreaker', () => {
   });
 
   it('falha no meio-aberto reabre', () => {
-    let agora = 0;
-    const b = createBreaker({ threshold: 3, openMs: 1000, now: () => agora });
+    let now = 0;
+    const b = createBreaker({ threshold: 3, openMs: 1000, now: () => now });
     b.onFailure();
     b.onFailure();
     b.onFailure();
-    agora += 1000;
+    now += 1000;
     expect(b.state()).toBe('half_open');
     b.onFailure();
     expect(b.state()).toBe('open');

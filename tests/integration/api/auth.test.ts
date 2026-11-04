@@ -46,9 +46,9 @@ describe('login', () => {
     const errada = await doLogin('ana.souza@nexo.com.br', 'outra-senha');
     expect(errada.status).toBe(401);
     expect(errada.headers.get('set-cookie')).toBeNull();
-    const semEmail = await doLogin('ninguem@nexo.com.br');
+    const withoutEmail = await doLogin('ninguem@nexo.com.br');
     const a = ((await errada.json()) as { error: { code: string; message: string } }).error;
-    const b = ((await semEmail.json()) as { error: { code: string; message: string } }).error;
+    const b = ((await withoutEmail.json()) as { error: { code: string; message: string } }).error;
     expect(a).toEqual(b);
     expect(a).toMatchObject({ code: 'invalid_credentials', message: 'E-mail ou senha incorretos' });
   });

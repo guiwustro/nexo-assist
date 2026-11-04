@@ -5,18 +5,18 @@ import { SEED_ARTICLES, userByKey } from '@/lib/db/seed-data';
 import type { ActionTrace } from '@/lib/contracts/decision';
 import type { MessagePart } from '@/lib/contracts/parts';
 
-const agora = new Date('2026-11-03T13:00:00.000Z');
+const now = new Date('2026-11-03T13:00:00.000Z');
 
 function ctx(over: Partial<ToolCtx> = {}) {
   const actions: ActionTrace[] = [];
   const parts: MessagePart[] = [];
-  const tickets = createFakeTickets(agora);
+  const tickets = createFakeTickets(now);
   const c: ToolCtx = {
     employee_id: userByKey('ana').id,
     employee_text: 'texto',
     conversation_id: '00000000-0000-4000-8000-0000000000c1',
     agent_run_id: null,
-    now: agora,
+    now: now,
     tickets,
     articles: async () => SEED_ARTICLES,
     emitAction: (a) => actions.push(a),
@@ -27,15 +27,15 @@ function ctx(over: Partial<ToolCtx> = {}) {
   return { c, actions, parts, tickets };
 }
 
-const finais = (a: ActionTrace[]) => a.filter((x) => x.result !== 'running');
+const final = (a: ActionTrace[]) => a.filter((x) => x.result !== 'running');
 
 describe('tools do agent', () => {
   it('nenhum inputSchema aceita identidade', () => {
-    for (const [nome, def] of Object.entries(TOOL_DEFS)) {
-      const chaves = Object.keys(def.inputSchema.shape);
-      expect(chaves, nome).not.toContain('employee_id');
-      expect(chaves, nome).not.toContain('requester_id');
-      expect(chaves, nome).not.toContain('user_id');
+    for (const [name, def] of Object.entries(TOOL_DEFS)) {
+      const keys = Object.keys(def.inputSchema.shape);
+      expect(keys, name).not.toContain('employee_id');
+      expect(keys, name).not.toContain('requester_id');
+      expect(keys, name).not.toContain('user_id');
     }
   });
 
@@ -55,7 +55,7 @@ describe('tools do agent', () => {
     expect(out.tickets.map((t) => t.code).sort()).toEqual(['INC-20298', 'INC-20311', 'REQ-10442']);
     expect(parts).toHaveLength(1);
     expect(parts[0]?.kind).toBe('ticket_selector');
-    expect(finais(actions)[0]).toMatchObject({ label: 'consultou seus chamados', result: 'ok', tool: 'list_my_tickets' });
+    expect(final(actions)[0]).toMatchObject({ label: 'consultou seus chamados', result: 'ok', tool: 'list_my_tickets' });
   });
 
   it('list_my_tickets com status=closed → seletor só com os resolvidos/encerrados', async () => {
@@ -74,9 +74,9 @@ describe('tools do agent', () => {
     await runTool(c, 'list_my_tickets', { status: 'closed', show: true });
     expect(turn.sources.map((s) => s.id).sort()).toEqual(['INC-19410', 'INC-19877', 'INC-20150'].sort());
     expect(turn.sources.every((s) => s.kind === 'ticket')).toBe(true);
-    const interno = { sources: [] as typeof turn.sources };
-    await runTool(ctx({ turn: interno }).c, 'list_my_tickets', { status: 'open' });
-    expect(interno.sources).toEqual([]);
+    const internalCheck = { sources: [] as typeof turn.sources };
+    await runTool(ctx({ turn: internalCheck }).c, 'list_my_tickets', { status: 'open' });
+    expect(internalCheck.sources).toEqual([]);
   });
 
   it('list_my_tickets só para checar duplicidade não mostra card', async () => {
@@ -90,7 +90,7 @@ describe('tools do agent', () => {
     const out = (await runTool(c, 'get_ticket', { code: 'INC-20311' })) as { found: boolean; overdue: boolean };
     expect(out).toMatchObject({ found: true, overdue: true });
     expect(parts[0]).toMatchObject({ kind: 'ticket_card', overdue: true, overdue_label: 'há 6 dias · prazo vencido' });
-    expect(finais(actions).map((a) => a.label)).toEqual(['consultou o INC-20311', 'calculou o prazo']);
+    expect(final(actions).map((a) => a.label)).toEqual(['consultou o INC-20311', 'calculou o prazo']);
   });
 
   it('sistema de chamados fora → resposta honesta e ação com erro', async () => {
@@ -98,7 +98,7 @@ describe('tools do agent', () => {
     tickets.down = true;
     const out = await runTool(c, 'list_my_tickets', { status: 'open', show: true });
     expect(out).toEqual({ ok: false, error: 'tickets_unavailable' });
-    expect(finais(actions)[0]).toMatchObject({ result: 'error', label: 'sistema de chamados indisponível' });
+    expect(final(actions)[0]).toMatchObject({ result: 'error', label: 'sistema de chamados indisponível' });
   });
 
   it('search_articles devolve até 3 artigos', async () => {
@@ -124,6 +124,6 @@ describe('tools do agent', () => {
     };
     await runTool(c, 'list_my_tickets', { status: 'open' });
     expect(actions.some((a) => a.result === 'retried')).toBe(true);
-    expect(finais(actions).at(-1)?.result).toBe('ok');
+    expect(final(actions).at(-1)?.result).toBe('ok');
   });
 });

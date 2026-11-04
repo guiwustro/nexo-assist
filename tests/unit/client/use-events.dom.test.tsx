@@ -81,21 +81,21 @@ describe('useEvents', () => {
     vi.useFakeTimers();
     vi.stubGlobal('EventSource', FakeEventSource);
     const { result } = renderHook(() => useEvents(vi.fn()));
-    const primeiro = FakeEventSource.last!;
-    const antes = FakeEventSource.created;
+    const firstName = FakeEventSource.last!;
+    const before = FakeEventSource.created;
     act(() => {
-      primeiro.readyState = FakeEventSource.CLOSED;
-      primeiro.emit('error');
+      firstName.readyState = FakeEventSource.CLOSED;
+      firstName.emit('error');
     });
     expect(result.current.mode).toBe('polling');
     act(() => {
       vi.advanceTimersByTime(30_000);
     });
-    expect(FakeEventSource.created).toBe(antes + 1);
-    const segundo = FakeEventSource.last!;
+    expect(FakeEventSource.created).toBe(before + 1);
+    const second = FakeEventSource.last!;
     act(() => {
-      segundo.readyState = FakeEventSource.OPEN;
-      segundo.emit('open');
+      second.readyState = FakeEventSource.OPEN;
+      second.emit('open');
     });
     expect(result.current.mode).toBe('sse');
   });

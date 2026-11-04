@@ -9,8 +9,8 @@ describe('rotulosPara', () => {
     ['build_draft', {}, {}, ['classificou a prioridade', 'consultou o SLA', 'montou o rascunho']],
     ['transfer_to_analyst', {}, {}, ['transferiu para um analista']],
     ['offer_options', {}, {}, []],
-  ])('%s', (tool, input, output, esperado) => {
-    expect(labelsFor(tool, input, output)).toEqual(esperado);
+  ])('%s', (tool, input, output, expected) => {
+    expect(labelsFor(tool, input, output)).toEqual(expected);
   });
   it('sistema fora troca o rótulo pelo aviso', () => {
     expect(labelsFor('list_my_tickets', {}, { ok: false, error: 'tickets_unavailable' })).toEqual([

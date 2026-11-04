@@ -14,7 +14,7 @@ const ana = (): Session => ({ user_id: t.seed.users.ana.id, role: 'employee', na
 const rafael = (): Session => ({ user_id: t.seed.users.rafael.id, role: 'analyst', name: 'Rafael Lima', sid: 's' });
 
 beforeEach(() => {
-  fake = createFakeTickets(t.agora);
+  fake = createFakeTickets(t.now);
   setTicketsClient(fake);
 });
 afterAll(() => setTicketsClient(undefined));

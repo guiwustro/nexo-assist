@@ -6,19 +6,19 @@ import { resetAndSeed, type SeedResult } from '@/lib/db/seed';
 export const TEST_DB_URL = process.env.DATABASE_URL_TEST ?? 'postgres://nexo:nexo@localhost:5432/nexo_test';
 
 /** Terça-feira, 03/11/2026, 10:00 em São Paulo. */
-export const AGORA_TESTE = new Date('2026-11-03T13:00:00.000Z');
+export const TEST_NOW = new Date('2026-11-03T13:00:00.000Z');
 
-export type TestDb = { db: Db; seed: SeedResult; agora: Date };
+export type TestDb = { db: Db; seed: SeedResult; now: Date };
 
 /** Migra o banco de teste uma vez e refaz o seed antes de cada teste. */
-export function useTestDb(agora: Date = AGORA_TESTE): TestDb {
-  const ctx = { agora } as TestDb;
+export function useTestDb(now: Date = TEST_NOW): TestDb {
+  const ctx = { now: now } as TestDb;
   beforeAll(async () => {
     await migrateDb(TEST_DB_URL);
     ctx.db = getDb();
   });
   beforeEach(async () => {
-    ctx.seed = await resetAndSeed(TEST_DB_URL, agora);
+    ctx.seed = await resetAndSeed(TEST_DB_URL, now);
   });
   afterAll(async () => {
     await ctx.db?.$client.end({ timeout: 1 });

@@ -44,11 +44,11 @@ describe('UserMenu (avatar do console)', () => {
 
   it('Esc e clique fora fecham o menu', () => {
     render(<UserMenu me={rafael} />);
-    const botao = screen.getByRole('button', { name: /Rafael Lima/ });
-    fireEvent.click(botao);
+    const buttonClass = screen.getByRole('button', { name: /Rafael Lima/ });
+    fireEvent.click(buttonClass);
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
-    fireEvent.click(botao);
+    fireEvent.click(buttonClass);
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole('menu')).toBeNull();
   });

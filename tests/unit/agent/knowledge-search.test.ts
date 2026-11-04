@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { searchArticles, type Article } from '@/lib/agent-engine/knowledge/search';
 
-const artigos: Article[] = [
+const articles: Article[] = [
   {
     slug: 'vpn-erro-809',
     title: 'Erro 809 ao conectar na VPN',
@@ -27,24 +27,24 @@ const artigos: Article[] = [
 
 describe('buscarArtigos', () => {
   it('"erro 809 na vpn" → vpn-erro-809 primeiro', () => {
-    expect(searchArticles('erro 809 na vpn', artigos)[0]?.slug).toBe('vpn-erro-809');
+    expect(searchArticles('erro 809 na vpn', articles)[0]?.slug).toBe('vpn-erro-809');
   });
   it('acento e maiúscula não mudam o resultado', () => {
-    expect(searchArticles('VPN', artigos)[0]?.slug).toBe('vpn-erro-809');
-    expect(searchArticles('HORÁRIO', artigos)[0]?.slug).toBe('horario-service-desk');
+    expect(searchArticles('VPN', articles)[0]?.slug).toBe('vpn-erro-809');
+    expect(searchArticles('HORÁRIO', articles)[0]?.slug).toBe('horario-service-desk');
   });
   it('"qual o horário de atendimento" → horario-service-desk', () => {
-    expect(searchArticles('qual o horário de atendimento', artigos)[0]?.slug).toBe('horario-service-desk');
+    expect(searchArticles('qual o horário de atendimento', articles)[0]?.slug).toBe('horario-service-desk');
   });
   it('sem relação → lista vazia', () => {
-    expect(searchArticles('receita de bolo', artigos)).toEqual([]);
+    expect(searchArticles('receita de bolo', articles)).toEqual([]);
   });
   it('respeita o limite e ordena por score', () => {
-    const r = searchArticles('rede', artigos, 1);
+    const r = searchArticles('rede', articles, 1);
     expect(r).toHaveLength(1);
-    const todos = searchArticles('rede senha', artigos);
-    expect(todos[0]?.slug).toBe('redefinir-senha');
-    for (let i = 1; i < todos.length; i++) expect(todos[i - 1]!.score).toBeGreaterThanOrEqual(todos[i]!.score);
+    const showAll = searchArticles('rede senha', articles);
+    expect(showAll[0]?.slug).toBe('redefinir-senha');
+    for (let i = 1; i < showAll.length; i++) expect(showAll[i - 1]!.score).toBeGreaterThanOrEqual(showAll[i]!.score);
   });
 });
 

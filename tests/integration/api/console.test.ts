@@ -27,7 +27,7 @@ const rafael = (): Session => ({ user_id: t.seed.users.rafael.id, role: 'analyst
 const juliana = (): Session => ({ user_id: t.seed.users.juliana.id, role: 'analyst', name: 'Juliana Costa', sid: 's' });
 
 beforeEach(() => {
-  fake = createFakeTickets(t.agora);
+  fake = createFakeTickets(t.now);
   setTicketsClient(fake);
 });
 afterAll(async () => {
@@ -35,7 +35,7 @@ afterAll(async () => {
   await closeMemory();
 });
 
-async function anaTransferida() {
+async function transferAnaConversation() {
   const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
   await createHandoff(
     {
@@ -49,12 +49,12 @@ async function anaTransferida() {
       agent_reading: 'Notebook lento, chamado vencido',
       attempts: [],
     },
-    t.agora,
+    t.now,
   );
   return conv.id;
 }
 
-const fila = (filter: string, session = rafael()) =>
+const queue = (filter: string, session = rafael()) =>
   call(list, { session, url: `http://x/api/v1/conversations?filter=${filter}` });
 
 describe('console do analista', () => {
@@ -63,31 +63,31 @@ describe('console do analista', () => {
   });
 
   it('"Para você" mostra a Ana transferida com a tag certa e os contadores batem', async () => {
-    const id = await anaTransferida();
-    const { data } = await json<{ data: QueueItem[] }>(await fila('for_you'));
+    const id = await transferAnaConversation();
+    const { data } = await json<{ data: QueueItem[] }>(await queue('for_you'));
     expect(data.find((c) => c.id === id)?.tag).toEqual({ kind: 'transferred', label: 'Transferida · INC-20311' });
     const c = await json<{ data: Record<string, number> }>(await call(counts, { session: rafael() }));
     expect(c.data).toMatchObject({ for_you: 3, mine: 0 });
   });
 
   it('busca por chamado', async () => {
-    await anaTransferida();
+    await transferAnaConversation();
     const res = await call(list, { session: rafael(), url: 'http://x/api/v1/conversations?filter=all&q=INC-20311' });
     expect((await json<{ data: QueueItem[] }>(res)).data.map((c) => c.employee.name)).toEqual(['Ana Souza']);
   });
 
   it('assumir leva para "Minhas"; segundo analista recebe 409', async () => {
-    const id = await anaTransferida();
+    const id = await transferAnaConversation();
     expect((await call(claim, { session: rafael(), method: 'POST', params: { id } })).status).toBe(200);
-    const outro = await call(claim, { session: juliana(), method: 'POST', params: { id } });
-    expect(outro.status).toBe(409);
-    expect((await json(outro)).error?.code).toBe('conversation_already_claimed');
-    const { data } = await json<{ data: QueueItem[] }>(await fila('mine'));
+    const other = await call(claim, { session: juliana(), method: 'POST', params: { id } });
+    expect(other.status).toBe(409);
+    expect((await json(other)).error?.code).toBe('conversation_already_claimed');
+    const { data } = await json<{ data: QueueItem[] }>(await queue('mine'));
     expect(data.map((c) => c.id)).toEqual([id]);
   });
 
   it('devolver grava na memória do agent o que o analista disse', async () => {
-    const id = await anaTransferida();
+    const id = await transferAnaConversation();
     await call(claim, { session: rafael(), method: 'POST', params: { id } });
     await call(postMessage, { session: rafael(), method: 'POST', params: { id }, body: { text: 'Vou reiniciar seu perfil' } });
     const res = await call(release, { session: rafael(), method: 'POST', params: { id } });
@@ -95,20 +95,20 @@ describe('console do analista', () => {
     const [row] = await t.db.select().from(conversations).where(eq(conversations.id, id));
     expect(row?.status).toBe('ai_handling');
     const { messages } = await getMemory().recall({ threadId: id });
-    const textos = JSON.stringify(messages);
-    expect(textos).toContain('O analista Rafael Lima atendeu e devolveu');
-    expect(textos).toContain('Vou reiniciar seu perfil');
+    const texts = JSON.stringify(messages);
+    expect(texts).toContain('O analista Rafael Lima atendeu e devolveu');
+    expect(texts).toContain('Vou reiniciar seu perfil');
   });
 
   it('encerrar só por quem assumiu', async () => {
-    const id = await anaTransferida();
+    const id = await transferAnaConversation();
     await call(claim, { session: rafael(), method: 'POST', params: { id } });
     expect((await call(close, { session: juliana(), method: 'POST', params: { id } })).status).toBe(403);
     expect((await call(close, { session: rafael(), method: 'POST', params: { id } })).status).toBe(200);
   });
 
   it('briefings da passagem', async () => {
-    const id = await anaTransferida();
+    const id = await transferAnaConversation();
     const { data } = await json<{ data: Array<{ employee_words: string; agent_reading: string; reason_code: string }> }>(
       await call(handoffsRoute, { session: rafael(), params: { id } }),
     );

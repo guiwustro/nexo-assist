@@ -24,10 +24,10 @@ test.describe('controles do console', () => {
     await loginAs(page, 'rafael');
     await page.goto(`/console/${seed.conversations.carla}`);
     await page.getByTestId('employee-ticket-REQ-10460').click();
-    const detalhe = page.getByTestId('ticket-detail');
-    await expect(detalhe).toContainText('Licença do Power BI');
-    await expect(detalhe).toContainText('Histórico');
-    await expect(detalhe).toContainText('Chamado aberto');
+    const detail = page.getByTestId('ticket-detail');
+    await expect(detail).toContainText('Licença do Power BI');
+    await expect(detail).toContainText('Histórico');
+    await expect(detail).toContainText('Chamado aberto');
     await page.getByRole('button', { name: 'Voltar aos chamados' }).click();
     await expect(page.getByTestId('other-tickets')).toBeVisible();
   });
@@ -46,8 +46,8 @@ test.describe('controles do console', () => {
 
   test('"Disponível" é um selo, não um botão', async ({ page, loginAs }) => {
     await loginAs(page, 'rafael');
-    const selo = page.getByTestId('analyst-status');
-    await expect(selo).toHaveText('Disponível');
-    expect(await selo.evaluate((el) => el.tagName)).toBe('SPAN');
+    const badge = page.getByTestId('analyst-status');
+    await expect(badge).toHaveText('Disponível');
+    expect(await badge.evaluate((el) => el.tagName)).toBe('SPAN');
   });
 });

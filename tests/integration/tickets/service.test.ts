@@ -11,7 +11,7 @@ const t = useTestDb();
 const SECRET = 'segredo-de-teste';
 
 function setup() {
-  const clock = { now: new Date(t.agora) };
+  const clock = { now: new Date(t.now) };
   const chaos = createChaos({ failureRate: 0, now: () => clock.now });
   const app = createTicketsApp({ db: t.db, now: () => clock.now, chaos, secret: SECRET, chaosEnabled: true });
   const req = (path: string, init: RequestInit & { key?: string } = {}) => {
@@ -24,7 +24,7 @@ function setup() {
   return { app, req, clock, chaos };
 }
 
-const novo = () => ({
+const sinceStart = () => ({
   requester_id: t.seed.users.ana.id,
   type: 'incident',
   title: 'VPN não conecta',
@@ -61,24 +61,24 @@ describe('serviço de chamados', () => {
     const { req } = setup();
     const res = await req(`/tickets/INC-20388?requester_id=${t.seed.users.ana.id}`);
     expect(res.status).toBe(404);
-    const corpo = await res.text();
-    expect(corpo).not.toContain('Diretoria');
-    expect(JSON.parse(corpo).error.code).toBe('ticket_not_found');
-    const inexistente = await req(`/tickets/INC-99999?requester_id=${t.seed.users.ana.id}`);
-    expect(await inexistente.text()).toBe(corpo);
+    const body = await res.text();
+    expect(body).not.toContain('Diretoria');
+    expect(JSON.parse(body).error.code).toBe('ticket_not_found');
+    const missing = await req(`/tickets/INC-99999?requester_id=${t.seed.users.ana.id}`);
+    expect(await missing.text()).toBe(body);
   });
 
   it('POST sem Idempotency-Key → 400', async () => {
     const { req } = setup();
-    const res = await req('/tickets', { method: 'POST', body: JSON.stringify(novo()) });
+    const res = await req('/tickets', { method: 'POST', body: JSON.stringify(sinceStart()) });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('idempotency_key_required');
   });
 
   it('mesma chave em paralelo cria um único chamado', async () => {
     const { req } = setup();
-    const antes = await t.db.$count(tickets);
-    const body = JSON.stringify(novo());
+    const before = await t.db.$count(tickets);
+    const body = JSON.stringify(sinceStart());
     const [a, b] = await Promise.all([
       req('/tickets', { method: 'POST', body, key: 'k-1' }),
       req('/tickets', { method: 'POST', body, key: 'k-1' }),
@@ -89,16 +89,16 @@ describe('serviço de chamados', () => {
     const cb = ((await b.json()) as { data: Ticket }).data;
     expect(ca.code).toMatch(/^INC-\d+$/);
     expect(cb.code).toBe(ca.code);
-    expect(await t.db.$count(tickets)).toBe(antes + 1);
-    expect(ca.due_at).toBe(computeDeadline('high', t.agora).due_at.toISOString());
+    expect(await t.db.$count(tickets)).toBe(before + 1);
+    expect(ca.due_at).toBe(computeDeadline('high', t.now).due_at.toISOString());
   });
 
   it('mesma chave com corpo diferente → 422', async () => {
     const { req } = setup();
-    await req('/tickets', { method: 'POST', body: JSON.stringify(novo()), key: 'k-2' });
+    await req('/tickets', { method: 'POST', body: JSON.stringify(sinceStart()), key: 'k-2' });
     const res = await req('/tickets', {
       method: 'POST',
-      body: JSON.stringify({ ...novo(), title: 'outro' }),
+      body: JSON.stringify({ ...sinceStart(), title: 'outro' }),
       key: 'k-2',
     });
     expect(res.status).toBe(422);
@@ -109,7 +109,7 @@ describe('serviço de chamados', () => {
     const { req } = setup();
     const res = await req('/tickets', {
       method: 'POST',
-      body: JSON.stringify({ ...novo(), type: 'request', priority: 'low' }),
+      body: JSON.stringify({ ...sinceStart(), type: 'request', priority: 'low' }),
       key: 'k-req',
     });
     expect(((await res.json()) as { data: Ticket }).data.code).toMatch(/^REQ-105\d\d$/);
@@ -121,14 +121,14 @@ describe('serviço de chamados', () => {
     const ok = await req('/tickets/INC-20150/reopen', { method: 'POST', body, key: 'r-1' });
     expect(ok.status).toBe(200);
     expect(((await ok.json()) as { data: Ticket }).data.status).toBe('open');
-    const nao = await req('/tickets/INC-19877/reopen', { method: 'POST', body, key: 'r-2' });
-    expect(nao.status).toBe(422);
-    expect(((await nao.json()) as { error: { code: string } }).error.code).toBe('reopen_window_expired');
+    const rejected = await req('/tickets/INC-19877/reopen', { method: 'POST', body, key: 'r-2' });
+    expect(rejected.status).toBe(422);
+    expect(((await rejected.json()) as { error: { code: string } }).error.code).toBe('reopen_window_expired');
   });
 
   it('PATCH adiciona comentário, atualiza last_update_at e recalcula due_at', async () => {
     const { req, clock } = setup();
-    clock.now = new Date(t.agora.getTime() + 30 * 60_000);
+    clock.now = new Date(t.now.getTime() + 30 * 60_000);
     const res = await req('/tickets/INC-20298', {
       method: 'PATCH',
       key: 'p-1',
@@ -139,13 +139,13 @@ describe('serviço de chamados', () => {
     expect(data.last_update_at).toBe(clock.now.toISOString());
     expect(data.due_at).toBe(computeDeadline('medium', clock.now).due_at.toISOString());
     const [row] = await t.db.select().from(tickets).where(eq(tickets.code, 'INC-20298'));
-    const eventos = await t.db.select().from(ticketEvents).where(eq(ticketEvents.ticket_id, row!.id));
-    expect(eventos.some((e) => e.kind === 'comment' && e.body.includes('acesso negado'))).toBe(true);
+    const events = await t.db.select().from(ticketEvents).where(eq(ticketEvents.ticket_id, row!.id));
+    expect(events.some((e) => e.kind === 'comment' && e.body.includes('acesso negado'))).toBe(true);
   });
 
   it('histórico do chamado: do mais antigo ao mais recente, com o comentário novo', async () => {
     const { req, clock } = setup();
-    clock.now = new Date(t.agora.getTime() + 30 * 60_000);
+    clock.now = new Date(t.now.getTime() + 30 * 60_000);
     await req('/tickets/INC-20298', {
       method: 'PATCH',
       key: 'h-1',
@@ -198,11 +198,11 @@ describe('serviço de chamados', () => {
     const { req, clock } = setup();
     const ch = await req('/_chaos/outage?seconds=10', { method: 'POST' });
     expect(ch.status).toBe(200);
-    const fora = await req(`/tickets?requester_id=${t.seed.users.ana.id}`);
-    expect(fora.status).toBe(503);
-    expect(fora.headers.get('retry-after')).toBe('10');
-    expect(((await fora.json()) as { error: { code: string } }).error.code).toBe('tickets_unavailable');
-    clock.now = new Date(t.agora.getTime() + 11_000);
+    const onOutsideClick = await req(`/tickets?requester_id=${t.seed.users.ana.id}`);
+    expect(onOutsideClick.status).toBe(503);
+    expect(onOutsideClick.headers.get('retry-after')).toBe('10');
+    expect(((await onOutsideClick.json()) as { error: { code: string } }).error.code).toBe('tickets_unavailable');
+    clock.now = new Date(t.now.getTime() + 11_000);
     expect((await req(`/tickets?requester_id=${t.seed.users.ana.id}`)).status).toBe(200);
   });
 

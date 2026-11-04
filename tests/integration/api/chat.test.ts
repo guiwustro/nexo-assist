@@ -16,7 +16,7 @@ const ana = (): Session => ({ user_id: t.seed.users.ana.id, role: 'employee', na
 const carla = (): Session => ({ user_id: t.seed.users.carla.id, role: 'employee', name: 'Carla Mendes', sid: 'sid-carla' });
 const rafael = (): Session => ({ user_id: t.seed.users.rafael.id, role: 'analyst', name: 'Rafael Lima', sid: 'sid-r' });
 
-beforeEach(() => setTicketsClient(createFakeTickets(t.agora)));
+beforeEach(() => setTicketsClient(createFakeTickets(t.now)));
 afterAll(async () => {
   setTicketsClient(undefined);
   await closeMemory();
@@ -84,18 +84,18 @@ describe('chat', () => {
       body: { text: 'Meu notebook não conecta na VPN, erro 809' },
     });
     expect(res.status).toBe(200);
-    const corpo = await res.text();
-    expect(corpo).toContain('"type":"data-action"');
-    expect(corpo).toContain('"type":"data-card"');
-    const runId = corpo.match(/"run_id":"([0-9a-f-]{36})"/)?.[1];
+    const body = await res.text();
+    expect(body).toContain('"type":"data-action"');
+    expect(body).toContain('"type":"data-card"');
+    const runId = body.match(/"run_id":"([0-9a-f-]{36})"/)?.[1];
     expect(runId).toBeTruthy();
 
-    const meu = await call(getRun, { session: ana(), params: { id: runId! } });
-    expect(meu.status).toBe(200);
-    const detalhe = await json<{ data: { decision: unknown; tool_calls: unknown[]; cost: { model: string; cost_cents: number | null } } }>(meu);
-    expect(detalhe.data.tool_calls.length).toBeGreaterThan(0);
-    expect(detalhe.data.cost.cost_cents).toBeNull();
-    expect(detalhe.data.decision).not.toBeNull();
+    const requestSeq = await call(getRun, { session: ana(), params: { id: runId! } });
+    expect(requestSeq.status).toBe(200);
+    const detail = await json<{ data: { decision: unknown; tool_calls: unknown[]; cost: { model: string; cost_cents: number | null } } }>(requestSeq);
+    expect(detail.data.tool_calls.length).toBeGreaterThan(0);
+    expect(detail.data.cost.cost_cents).toBeNull();
+    expect(detail.data.decision).not.toBeNull();
 
     expect((await call(getRun, { session: carla(), params: { id: runId! } })).status).toBe(404);
     expect((await call(getRun, { session: rafael(), params: { id: runId! } })).status).toBe(200);

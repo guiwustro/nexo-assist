@@ -62,8 +62,8 @@ janela e assuma a conversa.
 │  /login                      │  POST conversations/:id/messages      │  runTurn               │
 │  /atendimento  (funcionário) │       → stream (AI SDK UI messages)   │   ├ tools (6)          │
 │  /perfil · /chamados         │  POST drafts/:id/confirm (idempotente)│   ├ decisão declarada  │
-│  /console      (analista)    │  GET  conversations (fila) · claim ·  │   ├ regras/ (puras)    │
-│                              │       release · close · handoffs      │   ├ gatilhos/          │
+│  /console      (analista)    │  GET  conversations (fila) · claim ·  │   ├ rules/ (puras)     │
+│                              │       release · close · handoffs      │   ├ triggers/          │
 │                              │  GET  events (SSE)  · ai/runs/:id     │   └ guardrails/        │
 └──────────────────────────────┴───────────────────────────────────────┴───────────┬────────────┘
              │ Drizzle                                                             │ HTTP tipado:
@@ -81,9 +81,11 @@ janela e assuma a conversa.
   instabilidade é real: dá para derrubá-lo (`POST /_chaos/outage?seconds=30`) e ver a UI avisar com honestidade,
   guardar o rascunho e confirmar depois. O agent só fala com ele pela borda `lib/agent-engine/edge/tickets`
   (retry curto, disjuntor, erros tipados).
-- **Pastas:** `lib/regras` (Anexo A em funções puras) · `lib/agent-engine` (agent, tools, gatilhos, guardrails,
+- **Pastas:** `lib/rules` (Anexo A em funções puras) · `lib/agent-engine` (agent, tools, `triggers`, guardrails,
   borda do LLM e dos chamados) · `lib/conversations` (estado agent × analista, passagem) · `lib/contracts`
   (Zod compartilhado entre API, UI e serviço) · `services/tickets` · `app/` (telas e rotas).
+- **Língua:** o código (nomes, arquivos, tools que o modelo vê, logs) é em inglês; o que a pessoa lê (telas,
+  URLs, mensagens da API), o prompt do agent, os comentários e os nomes dos testes ficam em português.
 - **Tempo real do console:** SSE sobre o `event_log` (com `Last-Event-ID`), caindo para polling se o
   `EventSource` falhar.
 
@@ -96,8 +98,8 @@ A divisão é: **o modelo interpreta, o código decide o que tem regra.**
 | Quem | Decide o quê |
 |---|---|
 | Modelo (DeepSeek) | O que o funcionário quer, que pergunta fazer, que artigo serve, que dados pôr no rascunho |
-| Código (`lib/regras`) | Prioridade e prazo (Anexo A), horário útil, chamado vencido, janela de reabertura de 7 dias, transições agent × analista |
-| Código (`gatilhos/`) | Quando transferir: pedido explícito, Crítica, confiança abaixo de 0,6, limite de 30 mensagens da sessão, teto de gasto do dia; oferta de analista para chamado vencido |
+| Código (`lib/rules`) | Prioridade e prazo (Anexo A), horário útil, chamado vencido, janela de reabertura de 7 dias, transições agent × analista |
+| Código (`triggers/`) | Quando transferir: pedido explícito, Crítica, confiança abaixo de 0,6, limite de 30 mensagens da sessão, teto de gasto do dia; oferta de analista para chamado vencido |
 | Código (`guardrails/`) | O agent prometeu um analista sem transferir → o sistema transfere. Disse que criou um chamado → aviso "o chamado ainda não foi criado". Fonte que nenhuma tool retornou → descartada. Rascunho de chamado novo com outro aberto na mesma categoria → recusado até o agent atualizar o existente ou dizer que é outro problema |
 | Funcionário | Criar, atualizar ou reabrir chamado: **só o clique em Confirmar** cria (idempotente) |
 
@@ -139,7 +141,7 @@ Duas perguntas diferentes, dois instrumentos:
 | Unitários | `pnpm test` | Anexo A, prazos em horário útil, reabertura, máquina de estados, gatilhos, guardrails, busca, contratos, componentes | **261/261** (31 arquivos) |
 | Integração | `pnpm test:int` (Postgres) | `runTurn` com memória e banco reais, API com sessão e papéis, serviço de chamados, idempotência, SSE | **134/134** (14 arquivos) |
 | E2E | `pnpm test:e2e` (Playwright) | As histórias do PRD de ponta a ponta: abrir, consultar, complementar, transparência, privacidade, fora de escopo, transferência e console, instabilidade do legado, limite da sessão, continuidade, conta e controles do console, histórico | **45/45** (~1,5 min) |
-| Evals | `pnpm eval` (DeepSeek) | Julgamento do modelo nas 14 histórias | **41/42 (98%)** |
+| Evals | `pnpm eval` (DeepSeek) | Julgamento do modelo nas 14 histórias | **40/42 (95%)** |
 
 `pnpm check` roda typecheck, lint e unitários juntos. Números da última rodada completa, em 04/11/2026.
 
@@ -148,9 +150,13 @@ Duas perguntas diferentes, dois instrumentos:
 Primeira rodada: **30/39 (77%)**. Os erros viraram correções no código (com teste antes) e ajustes de prompt
 (um commit por ajuste, com antes/depois): fonte verificada num turno anterior passou a contar; ação da decisão
 passou a seguir o que as tools fizeram; update/reopen montam o rascunho sem perguntar; caso crítico transfere no
-mesmo turno. Com os 13 cenários originais chegou a **39/39 (100%)**. A rodada atual, com o cenário novo
-`chamados-resolvidos` (histórico), deu **41/42 (98%)**: uma das três conversas do `outlook-60-dias` pediu mais
-detalhes em vez de montar o rascunho. Tabela completa em [`evals/resultados.md`](evals/resultados.md).
+mesmo turno. Com os 13 cenários originais chegou a **39/39 (100%)**; com o cenário novo `resolved-tickets`
+(histórico), **41/42 (98%)**. A rodada atual, depois da checagem de duplicidade e dos nomes das tools em inglês
+(`search_articles`, `build_draft`…), deu **40/42 (95%)**, com uma falha em cada um de dois cenários: em
+`vpn-809-win11` a chamada de decisão não devolveu JSON válido (o rascunho saiu certo), e em `monitor-request` o
+rascunho já tinha sido montado no turno anterior e o agent só confirmou os dados. Com 3 repetições por cenário,
+uma falha a mais está dentro da variação entre rodadas. Tabela completa em
+[`evals/resultados.md`](evals/resultados.md).
 
 ---
 
@@ -181,14 +187,14 @@ No **console do analista** a mesma trilha aparece em cada mensagem do agent, e a
 **DeepSeek `deepseek-flash`** via `@ai-sdk/deepseek` no Mastra. Escolhido por custo baixo e bom uso de tools em
 português; `MODEL_ID` e `LLM_PROVIDER` são trocáveis por env (a borda `edge/llm` isola o provedor).
 
-Custo por conversa, medido nos evals: **≈ 12.000 tokens de entrada e 1.100 de saída** (média das 42 conversas,
+Custo por conversa, medido nos evals: **≈ 11.800 tokens de entrada e 1.100 de saída** (média das 42 conversas,
 1 a 3 turnos cada, incluindo a chamada de decisão de cada turno). Com o preço oficial do `deepseek-flash`
 (nov/2026, horário de pico, entrada sem cache: US$ 0,30 / US$ 1,20 por milhão de tokens):
 
 | | Entrada | Saída | Total por conversa |
 |---|---|---|---|
-| Pico, sem cache (teto) | US$ 0,0036 | US$ 0,0013 | **≈ US$ 0,005 (0,49 ¢)** |
-| Fora do pico | US$ 0,0018 | US$ 0,0007 | ≈ US$ 0,0025 |
+| Pico, sem cache (teto) | US$ 0,0035 | US$ 0,0013 | **≈ US$ 0,005 (0,49 ¢)** |
+| Fora do pico | US$ 0,0018 | US$ 0,0007 | ≈ US$ 0,0024 |
 
 O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real abaixo do teto. Com os preços no
 `.env`, cada chamada grava `cost_cents` em `llm_calls` e o painel mostra o custo do turno.

@@ -1,25 +1,25 @@
 import type { Browser, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { enviar } from './helpers';
-import { AGORA_E2E } from './env';
+import { send } from './helpers';
+import { E2E_NOW } from './env';
 import { DEMO_PASSWORD, userByKey, type UserKey } from '../lib/db/seed-data';
 
-async function abrir(browser: Browser, who: UserKey): Promise<Page> {
+async function openConversation(browser: Browser, who: UserKey): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' });
   const page = await ctx.newPage();
-  await page.clock.setFixedTime(AGORA_E2E);
+  await page.clock.setFixedTime(E2E_NOW);
   const res = await page.request.post('/api/v1/auth/login', { data: { email: userByKey(who).email, password: DEMO_PASSWORD } });
   expect(res.ok()).toBeTruthy();
   return page;
 }
 
 test('Ana pede um analista, Rafael assume, responde, devolve e encerra', async ({ browser }) => {
-  const ana = await abrir(browser, 'ana');
-  const rafael = await abrir(browser, 'rafael');
+  const ana = await openConversation(browser, 'ana');
+  const rafael = await openConversation(browser, 'rafael');
 
   // 1. Ana pede um analista.
   await ana.goto('/atendimento');
-  await enviar(ana, 'quero falar com um analista');
+  await send(ana, 'quero falar com um analista');
   await expect(ana.getByTestId('system-event').filter({ hasText: 'Transferida para Suporte' })).toBeVisible();
   await expect(ana.getByTestId('composer-input')).toHaveAttribute('placeholder', 'Conversa com analista');
 
@@ -47,25 +47,25 @@ test('Ana pede um analista, Rafael assume, responde, devolve e encerra', async (
   });
 
   // 4. Ana escreve: vai para o analista, o agent não responde.
-  const linhasAntes = await ana.getByTestId('status-line').count();
-  await enviar(ana, 'ainda está lento');
+  const rowsBefore = await ana.getByTestId('status-line').count();
+  await send(ana, 'ainda está lento');
   await expect(rafael.getByTestId('console-thread')).toContainText('ainda está lento', { timeout: 5000 });
-  await expect(ana.getByTestId('status-line')).toHaveCount(linhasAntes);
+  await expect(ana.getByTestId('status-line')).toHaveCount(rowsBefore);
 
   // 5. Rafael responde.
   await rafael.getByTestId('console-composer').fill('Vou reiniciar seu perfil');
   await rafael.getByTestId('console-send').click();
-  const bolha = rafael.getByTestId('human-message').last();
-  await expect(bolha).toContainText('Vou reiniciar seu perfil');
-  await expect(bolha).toContainText('Suporte N2');
+  const bubble = rafael.getByTestId('human-message').last();
+  await expect(bubble).toContainText('Vou reiniciar seu perfil');
+  await expect(bubble).toContainText('Suporte N2');
   await expect(ana.getByText('Vou reiniciar seu perfil')).toBeVisible({ timeout: 5000 });
 
   // 6. Rafael devolve; o agent volta a responder.
   await rafael.getByTestId('header-release').click();
   await expect(rafael.getByTestId('takeover-claim')).toBeVisible();
   await expect(ana.getByTestId('composer-input')).toHaveAttribute('placeholder', 'Escreva para o Nexo…', { timeout: 5000 });
-  await enviar(ana, 'qual o status do meu chamado?');
-  await expect(ana.getByTestId('status-line')).toHaveCount(linhasAntes + 1);
+  await send(ana, 'qual o status do meu chamado?');
+  await expect(ana.getByTestId('status-line')).toHaveCount(rowsBefore + 1);
 
   // 7. Assume de novo e encerra.
   await rafael.getByTestId('takeover-claim').click();
@@ -74,18 +74,18 @@ test('Ana pede um analista, Rafael assume, responde, devolve e encerra', async (
 });
 
 test('dois analistas: o segundo a assumir vê que o primeiro já assumiu', async ({ browser, seed }) => {
-  const rafael = await abrir(browser, 'rafael');
-  const juliana = await abrir(browser, 'juliana');
+  const rafael = await openConversation(browser, 'rafael');
+  const juliana = await openConversation(browser, 'juliana');
   const carla = seed.conversations.carla!;
 
   await juliana.route('**/api/v1/events*', (r) => r.abort());
-  let primeira: string | null = null;
+  let first: string | null = null;
   await juliana.route(`**/api/v1/conversations/${carla}`, async (r) => {
     if (r.request().method() !== 'GET') return r.continue();
-    if (primeira) return r.fulfill({ status: 200, contentType: 'application/json', body: primeira });
+    if (first) return r.fulfill({ status: 200, contentType: 'application/json', body: first });
     const res = await r.fetch();
-    primeira = await res.text();
-    return r.fulfill({ response: res, body: primeira });
+    first = await res.text();
+    return r.fulfill({ response: res, body: first });
   });
 
   await juliana.goto(`/console/${carla}`);
@@ -98,23 +98,23 @@ test('dois analistas: o segundo a assumir vê que o primeiro já assumiu', async
 });
 
 test('painel de chamados, filtro vazio e busca', async ({ browser }) => {
-  const ana = await abrir(browser, 'ana');
-  const rafael = await abrir(browser, 'rafael');
+  const ana = await openConversation(browser, 'ana');
+  const rafael = await openConversation(browser, 'rafael');
   await ana.goto('/atendimento');
-  await enviar(ana, 'INC-20311');
-  await enviar(ana, 'quero falar com um analista');
+  await send(ana, 'INC-20311');
+  await send(ana, 'quero falar com um analista');
 
   await rafael.goto('/console');
   await rafael.getByTestId('conversation-item').filter({ hasText: 'Ana Souza' }).click();
-  const painel = rafael.getByTestId('employee-tickets');
-  await expect(painel).toContainText('Chamados da Ana');
-  await expect(painel).toContainText('3 abertos · 3 encerrados');
-  await expect(painel.getByTestId('focus-ticket')).toContainText('INC-20311');
-  const outros = painel.getByTestId('other-tickets');
-  await expect(outros).toContainText('INC-20298');
-  await expect(outros).toContainText('REQ-10442');
-  await expect(outros).toContainText('INC-19877');
-  await expect(painel).not.toContainText('INC-20388');
+  const panel = rafael.getByTestId('employee-tickets');
+  await expect(panel).toContainText('Chamados da Ana');
+  await expect(panel).toContainText('3 abertos · 3 encerrados');
+  await expect(panel.getByTestId('focus-ticket')).toContainText('INC-20311');
+  const others = panel.getByTestId('other-tickets');
+  await expect(others).toContainText('INC-20298');
+  await expect(others).toContainText('REQ-10442');
+  await expect(others).toContainText('INC-19877');
+  await expect(panel).not.toContainText('INC-20388');
 
   await rafael.getByTestId('filter-mine').click();
   await expect(rafael.getByText('Nenhuma conversa aqui')).toBeVisible();

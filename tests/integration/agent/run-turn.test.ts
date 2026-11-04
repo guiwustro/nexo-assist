@@ -28,20 +28,20 @@ function collector() {
 
 const ana = (): Session => ({ user_id: t.seed.users.ana.id, role: 'employee', name: 'Ana Souza', sid: 'sid-1' });
 
-async function turno(text: string, conversationId?: string) {
+async function runTurnFor(text: string, conversationId?: string) {
   const conv = conversationId ? { id: conversationId } : await getOrCreateCurrent(ana().user_id, 'sid-1');
   const c = collector();
   const employee = conversationId
     ? { ...ana(), user_id: (await t.db.select().from(conversations).where(eq(conversations.id, conversationId)))[0]!.employee_id }
     : ana();
-  const r = await runTurn({ conversation_id: conv.id, employee, text, writer: c.writer, now: t.agora });
+  const r = await runTurn({ conversation_id: conv.id, employee, text, writer: c.writer, now: t.now });
   return { ...r, run_id: r.run_id ?? '00000000-0000-4000-8000-000000000000', ...c, conversation_id: conv.id };
 }
 
-const statusDe = async (id: string) => (await t.db.select().from(conversations).where(eq(conversations.id, id)))[0]!.status;
+const statusOf = async (id: string) => (await t.db.select().from(conversations).where(eq(conversations.id, id)))[0]!.status;
 
 beforeEach(() => {
-  fake = createFakeTickets(t.agora);
+  fake = createFakeTickets(t.now);
   setTicketsClient(fake);
   setModelForTests();
 });
@@ -53,7 +53,7 @@ afterAll(async () => {
 
 describe('runTurn', () => {
   it('VPN 809: responde com trilha, opções rápidas e decisão registrada', async () => {
-    const r = await turno('Meu notebook não conecta na VPN, erro 809');
+    const r = await runTurnFor('Meu notebook não conecta na VPN, erro 809');
     expect(r.outcome).toBe('answered');
     const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, r.run_id));
     expect(run?.status).toBe('completed');
@@ -80,7 +80,7 @@ describe('runTurn', () => {
   it('conversa com analista: não chama o modelo', async () => {
     const carla = t.seed.conversations.carla!;
     await applyTransition(carla, 'claim', { user_id: t.seed.users.rafael.id, role: 'analyst' });
-    const r = await turno('alguém aí?', carla);
+    const r = await runTurnFor('alguém aí?', carla);
     expect(r.outcome).toBe('paused');
     expect(await t.db.$count(llmCalls)).toBe(0);
     expect(await t.db.$count(messages, and(eq(messages.conversation_id, carla), eq(messages.body, 'alguém aí?')))).toBe(1);
@@ -88,18 +88,18 @@ describe('runTurn', () => {
   });
 
   it('pedido de analista: transfere sem chamar o modelo', async () => {
-    const r = await turno('quero falar com um analista');
+    const r = await runTurnFor('quero falar com um analista');
     expect(r.outcome).toBe('transferred');
     expect(await t.db.$count(llmCalls)).toBe(0);
     const [h] = await t.db.select().from(handoffs).where(eq(handoffs.conversation_id, r.conversation_id));
     expect(h).toMatchObject({ reason_code: 'requested_human', origin: 'explicit_request' });
-    expect(await statusDe(r.conversation_id)).toBe('pending');
+    expect(await statusOf(r.conversation_id)).toBe('pending');
   });
 
   it('a 30ª mensagem transfere por limite da sessão', async () => {
     const conv = await getOrCreateCurrent(ana().user_id, 'sid-1');
     await t.db.update(conversations).set({ session_message_count: 29 }).where(eq(conversations.id, conv.id));
-    const r = await turno('mais uma pergunta');
+    const r = await runTurnFor('mais uma pergunta');
     expect(r.outcome).toBe('limit');
     expect(await t.db.$count(llmCalls)).toBe(0);
     const [h] = await t.db.select().from(handoffs).where(eq(handoffs.conversation_id, conv.id));
@@ -107,27 +107,27 @@ describe('runTurn', () => {
   });
 
   it('a passagem pelo limite leva o resumo do caso, o que já foi tentado e o chamado em foco', async () => {
-    const vpn = await turno('Meu notebook não conecta na VPN, erro 809');
-    const [antes] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, vpn.run_id));
-    const resumo = antes!.decision!.understanding.summary;
+    const vpn = await runTurnFor('Meu notebook não conecta na VPN, erro 809');
+    const [before] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, vpn.run_id));
+    const summary = before!.decision!.understanding.summary;
     await t.db
       .update(conversations)
       .set({ session_message_count: 29, focus_ticket_code: 'INC-20298' })
       .where(eq(conversations.id, vpn.conversation_id));
 
-    const r = await turno('mais uma pergunta');
+    const r = await runTurnFor('mais uma pergunta');
     expect(r.outcome).toBe('limit');
     const [h] = await t.db.select().from(handoffs).where(eq(handoffs.conversation_id, vpn.conversation_id));
-    expect(h?.agent_reading).toContain(resumo);
+    expect(h?.agent_reading).toContain(summary);
     expect(h?.agent_reading).not.toMatch(/confira o histórico\.$/);
     expect(h?.attempts.map((a) => a.label)).toContain('buscou na central de ajuda');
     expect(h?.ticket_code).toBe('INC-20298');
   });
 
   it('confiança 0.41 transfere para N1 com motivo low_confidence', async () => {
-    const r = await turno('não sei explicar o que houve com o sistema');
+    const r = await runTurnFor('não sei explicar o que houve com o sistema');
     expect(r.outcome).toBe('transferred');
-    expect(await statusDe(r.conversation_id)).toBe('pending');
+    expect(await statusOf(r.conversation_id)).toBe('pending');
     const [h] = await t.db.select().from(handoffs).where(eq(handoffs.conversation_id, r.conversation_id));
     expect(h).toMatchObject({ reason_code: 'low_confidence', support_level: 'N1', confidence: 0.41 });
     const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, r.run_id));
@@ -136,7 +136,7 @@ describe('runTurn', () => {
   });
 
   it('guardrail: prometeu analista sem transferir → transfere e registra', async () => {
-    const r = await turno('teste promessa');
+    const r = await runTurnFor('teste promessa');
     expect(r.outcome).toBe('transferred');
     const [h] = await t.db.select().from(handoffs).where(eq(handoffs.conversation_id, r.conversation_id));
     expect(h?.origin).toBe('guardrail');
@@ -147,7 +147,7 @@ describe('runTurn', () => {
   });
 
   it('decisão com JSON inválido → run completo com decision null', async () => {
-    const r = await turno('teste decisão inválida');
+    const r = await runTurnFor('teste decisão inválida');
     const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, r.run_id));
     expect(run?.status).toBe('completed');
     expect(run?.decision).toBeNull();
@@ -160,8 +160,8 @@ describe('runTurn', () => {
         if (step === 0) await applyTransition(conv.id, 'claim', { user_id: t.seed.users.rafael.id, role: 'analyst' });
       },
     });
-    const r = await turno('não sei explicar o que houve com o sistema');
-    expect(await statusDe(conv.id)).toBe('claimed');
+    const r = await runTurnFor('não sei explicar o que houve com o sistema');
+    expect(await statusOf(conv.id)).toBe('claimed');
     expect(await t.db.$count(handoffs, eq(handoffs.conversation_id, conv.id))).toBe(0);
     const out = await t.db.select().from(messages).where(eq(messages.agent_run_id, r.run_id));
     expect(out).toHaveLength(1);
@@ -170,7 +170,7 @@ describe('runTurn', () => {
 
   it('sistema de chamados fora: ação com erro, resposta honesta gravada', async () => {
     fake.down = true;
-    const r = await turno('qual o status do meu chamado?');
+    const r = await runTurnFor('qual o status do meu chamado?');
     const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, r.run_id));
     expect(run?.status).toBe('completed');
     expect(run!.tool_calls.some((a) => a.result === 'error')).toBe(true);
@@ -201,16 +201,16 @@ describe('runTurn', () => {
       },
     ]);
     fake.down = true;
-    const r = await turno('quero escalar o INC-20311');
+    const r = await runTurnFor('quero escalar o INC-20311');
     expect(r.outcome).toBe('transferred');
-    expect(await statusDe(r.conversation_id)).toBe('pending');
+    expect(await statusOf(r.conversation_id)).toBe('pending');
     const hs = await t.db.select().from(handoffs).where(eq(handoffs.conversation_id, r.conversation_id));
     expect(hs.some((h) => h.origin === 'model_tool')).toBe(true);
   });
 
   it('resposta de seguimento com o artigo do turno anterior não cai para baixa confiança', async () => {
-    const r1 = await turno('Meu notebook não conecta na VPN, erro 809');
-    const r2 = await turno('Windows 10', r1.conversation_id);
+    const r1 = await runTurnFor('Meu notebook não conecta na VPN, erro 809');
+    const r2 = await runTurnFor('Windows 10', r1.conversation_id);
     expect(r2.outcome).toBe('answered');
     expect(await t.db.$count(handoffs, eq(handoffs.conversation_id, r1.conversation_id))).toBe(0);
     const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, r2.run_id));
@@ -236,7 +236,7 @@ describe('runTurn', () => {
         },
       },
     ]);
-    const r = await turno('fonte inventada');
+    const r = await runTurnFor('fonte inventada');
     const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, r.run_id));
     expect(run?.decision?.decision.sources).toEqual([]);
     expect(run?.decision?.decision.confidence).toBe(0.5);
@@ -275,7 +275,7 @@ describe('runTurn', () => {
         },
       },
     ]);
-    const r = await turno('acesso negado agora');
+    const r = await runTurnFor('acesso negado agora');
     const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, r.run_id));
     expect(run?.decision?.decision.action).toBe('draft_update');
   });
@@ -315,7 +315,7 @@ describe('runTurn', () => {
         },
       },
     ]);
-    const r = await turno('O sistema de vendas está fora do ar para a equipe toda');
+    const r = await runTurnFor('O sistema de vendas está fora do ar para a equipe toda');
     expect(r.outcome).toBe('transferred');
     const [run] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, r.run_id));
     expect(run?.decision?.decision.action).toBe('transfer');
@@ -336,7 +336,7 @@ describe('runTurn', () => {
         },
       },
     ]);
-    const r = await turno('dois passos');
+    const r = await runTurnFor('dois passos');
     const [out] = await t.db
       .select()
       .from(messages)
@@ -358,7 +358,7 @@ describe('runTurn', () => {
         },
       },
     ]);
-    const r = await turno('abre logo');
+    const r = await runTurnFor('abre logo');
     const sys = await t.db
       .select()
       .from(messages)

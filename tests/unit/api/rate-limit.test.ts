@@ -9,10 +9,10 @@ describe('createRateLimiter (janela deslizante)', () => {
       expect(rl.take('ana').ok).toBe(true);
       t += 1000;
     }
-    const barrada = rl.take('ana');
-    expect(barrada.ok).toBe(false);
+    const blocked = rl.take('ana');
+    expect(blocked.ok).toBe(false);
     // A mais antiga (t0) sai da janela em t0 + 60 s; estamos em t0 + 20 s.
-    expect(barrada.retry_after_s).toBe(40);
+    expect(blocked.retry_after_s).toBe(40);
     t += 40_000;
     expect(rl.take('ana').ok).toBe(true);
   });

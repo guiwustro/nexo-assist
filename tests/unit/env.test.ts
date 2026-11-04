@@ -29,13 +29,13 @@ describe('parseEnv', () => {
   });
 
   it('avisa (sem recusar) quando produção usa o SESSION_SECRET público do .env.example', () => {
-    const exemplo = /^SESSION_SECRET=(.+)$/m.exec(readFileSync('.env.example', 'utf8'))![1]!;
+    const example = /^SESSION_SECRET=(.+)$/m.exec(readFileSync('.env.example', 'utf8'))![1]!;
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      parseEnv({ ...base, NODE_ENV: 'production', SESSION_SECRET: exemplo });
+      parseEnv({ ...base, NODE_ENV: 'production', SESSION_SECRET: example });
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/SESSION_SECRET is the example value/));
       warn.mockClear();
-      parseEnv({ ...base, NODE_ENV: 'development', SESSION_SECRET: exemplo });
+      parseEnv({ ...base, NODE_ENV: 'development', SESSION_SECRET: example });
       parseEnv({ ...base, NODE_ENV: 'production' });
       expect(warn).not.toHaveBeenCalled();
     } finally {
@@ -57,8 +57,8 @@ describe('parseEnv', () => {
 
 describe('parseEnv: modelo', () => {
   it('sem MODEL_ID usa deepseek-flash, o modelo da tabela de preços atual da DeepSeek', () => {
-    const { MODEL_ID: _ignorado, ...semModelo } = base;
-    expect(parseEnv({ ...semModelo, LLM_PROVIDER: 'scripted' }).MODEL_ID).toBe('deepseek-flash');
+    const { MODEL_ID: _ignored, ...withoutModel } = base;
+    expect(parseEnv({ ...withoutModel, LLM_PROVIDER: 'scripted' }).MODEL_ID).toBe('deepseek-flash');
   });
 });
 

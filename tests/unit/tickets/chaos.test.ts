@@ -12,13 +12,13 @@ describe('createChaos', () => {
     expect(createChaos({ failureRate: 0, random: () => 0 }).shouldFail()).toBe(false);
   });
   it('queda programada dura N segundos e informa o Retry-After', () => {
-    let agora = 1_000_000;
-    const chaos = createChaos({ failureRate: 0, now: () => new Date(agora) });
+    let now = 1_000_000;
+    const chaos = createChaos({ failureRate: 0, now: () => new Date(now) });
     chaos.startOutage(10);
     expect(chaos.shouldFail()).toBe(true);
-    agora += 4_000;
+    now += 4_000;
     expect(chaos.retryAfterSeconds()).toBe(6);
-    agora += 7_000;
+    now += 7_000;
     expect(chaos.shouldFail()).toBe(false);
   });
 });

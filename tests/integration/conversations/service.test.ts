@@ -15,17 +15,17 @@ const t = useTestDb();
 const rafael = () => ({ user_id: t.seed.users.rafael.id, role: 'analyst' as const });
 const juliana = () => ({ user_id: t.seed.users.juliana.id, role: 'analyst' as const });
 
-async function erroDe(p: Promise<unknown>): Promise<AppError> {
+async function errorOf(p: Promise<unknown>): Promise<AppError> {
   const e = await p.then(() => null, (x: unknown) => x);
   if (!(e instanceof AppError)) throw new Error(`esperava AppError, veio ${String(e)}`);
   return e;
 }
 
-async function eventos(conversationId: string, tipo: string) {
+async function events(conversationId: string, type: string) {
   return t.db
     .select()
     .from(eventLog)
-    .where(and(eq(eventLog.conversation_id, conversationId), eq(eventLog.event_type, tipo)));
+    .where(and(eq(eventLog.conversation_id, conversationId), eq(eventLog.event_type, type)));
 }
 
 describe('getOrCreateCurrent', () => {
@@ -66,7 +66,7 @@ describe('registerEmployeeMessage', () => {
     await t.db.update(conversations).set({ session_message_count: 29 }).where(eq(conversations.id, conv.id));
     const r = await registerEmployeeMessage(conv.id, 'trigésima', 30);
     expect(r).toMatchObject({ count: 30, reached_limit: true });
-    const e = await erroDe(registerEmployeeMessage(conv.id, 'trigésima primeira', 30));
+    const e = await errorOf(registerEmployeeMessage(conv.id, 'trigésima primeira', 30));
     expect(e.code).toBe('session_limit_reached');
     expect(e.status).toBe(409);
   });
@@ -87,7 +87,7 @@ describe('registerEmployeeMessage', () => {
     expect(message).toMatchObject({ direction: 'inbound', sent_via: 'user', body: 'VPN com erro 809' });
     const [row] = await t.db.select().from(conversations).where(eq(conversations.id, conv.id));
     expect(row?.last_message_preview).toBe('VPN com erro 809');
-    expect(await eventos(conv.id, 'conversation.message_created')).toHaveLength(1);
+    expect(await events(conv.id, 'conversation.message_created')).toHaveLength(1);
   });
 
   it('conversa encerrada volta para o agent quando o funcionário escreve', async () => {
@@ -116,8 +116,8 @@ describe('applyTransition', () => {
     expect(ko).toHaveLength(1);
     expect((ko[0]!.reason as AppError).code).toBe('conversation_already_claimed');
     const [row] = await t.db.select().from(conversations).where(eq(conversations.id, carla));
-    const vencedor = (ok[0] as PromiseFulfilledResult<{ assigned_to_user_id: string | null }>).value.assigned_to_user_id;
-    expect(row?.assigned_to_user_id).toBe(vencedor);
+    const winner = (ok[0] as PromiseFulfilledResult<{ assigned_to_user_id: string | null }>).value.assigned_to_user_id;
+    expect(row?.assigned_to_user_id).toBe(winner);
     expect(row?.status).toBe('claimed');
   });
 
@@ -129,32 +129,32 @@ describe('applyTransition', () => {
       .from(messages)
       .where(and(eq(messages.conversation_id, carla), eq(messages.type, 'system')));
     expect(sys.some((m) => /^Rafael Lima assumiu · agent pausado · \d\d:\d\d$/.test(m.body))).toBe(true);
-    expect(await eventos(carla, 'conversation.claimed')).toHaveLength(1);
+    expect(await events(carla, 'conversation.claimed')).toHaveLength(1);
   });
 
   it('devolver por quem não é o dono → Forbidden', async () => {
     const carla = t.seed.conversations.carla!;
     await applyTransition(carla, 'claim', rafael());
-    const e = await erroDe(applyTransition(carla, 'release', juliana()));
+    const e = await errorOf(applyTransition(carla, 'release', juliana()));
     expect(e.status).toBe(403);
   });
 
   it('devolver e encerrar emitem seus eventos', async () => {
     const carla = t.seed.conversations.carla!;
     await applyTransition(carla, 'claim', rafael());
-    const devolvida = await applyTransition(carla, 'release', rafael());
-    expect(devolvida.status).toBe('ai_handling');
-    expect(devolvida.assigned_to_user_id).toBeNull();
-    expect(await eventos(carla, 'conversation.released')).toHaveLength(1);
+    const returned = await applyTransition(carla, 'release', rafael());
+    expect(returned.status).toBe('ai_handling');
+    expect(returned.assigned_to_user_id).toBeNull();
+    expect(await events(carla, 'conversation.released')).toHaveLength(1);
     await applyTransition(carla, 'claim', rafael());
-    const fechada = await applyTransition(carla, 'close', rafael());
-    expect(fechada.status).toBe('closed');
-    expect(await eventos(carla, 'conversation.closed')).toHaveLength(1);
+    const closed = await applyTransition(carla, 'close', rafael());
+    expect(closed.status).toBe('closed');
+    expect(await events(carla, 'conversation.closed')).toHaveLength(1);
   });
 
   it('transição inválida → invalid_transition', async () => {
     const diego = t.seed.conversations.diego!;
-    const e = await erroDe(applyTransition(diego, 'release', rafael()));
+    const e = await errorOf(applyTransition(diego, 'release', rafael()));
     expect(e.code).toBe('invalid_transition');
   });
 });
@@ -174,7 +174,7 @@ describe('createHandoff', () => {
         agent_reading: 'Notebook lento há 6 dias, chamado vencido',
         attempts: [],
       },
-      t.agora,
+      t.now,
     );
     expect(h.body).toContain('"quero falar com um analista"');
     expect(h.body).toContain('Segundo o agent — confira');
@@ -184,7 +184,7 @@ describe('createHandoff', () => {
     const sys = await t.db.select().from(messages).where(eq(messages.conversation_id, conv.id));
     expect(sys.some((m) => m.body.startsWith('Transferida para Suporte N2 · '))).toBe(true);
     expect(sys.some((m) => m.parts.some((p) => p.kind === 'handoff_notice'))).toBe(true);
-    expect(await eventos(conv.id, 'conversation.transferred')).toHaveLength(1);
+    expect(await events(conv.id, 'conversation.transferred')).toHaveLength(1);
     expect(await t.db.$count(handoffs, eq(handoffs.conversation_id, conv.id))).toBe(1);
   });
 });
@@ -202,20 +202,20 @@ describe('fila do analista', () => {
         agent_reading: '—',
         attempts: [],
       },
-      t.agora,
+      t.now,
     );
     const counts = await countsForAnalyst(t.seed.users.rafael.id);
     expect(counts).toEqual({ all: 7, for_you: 3, with_agent: 2, mine: 0 });
-    const paraVoce = await listForAnalyst(t.seed.users.rafael.id, { filter: 'for_you', now: t.agora });
-    expect(paraVoce.map((c) => c.employee.name)).toContain('Ana Souza');
-    const bruno = paraVoce.find((c) => c.employee.name === 'Bruno Tavares');
+    const forYou = await listForAnalyst(t.seed.users.rafael.id, { filter: 'for_you', now: t.now });
+    expect(forYou.map((c) => c.employee.name)).toContain('Ana Souza');
+    const bruno = forYou.find((c) => c.employee.name === 'Bruno Tavares');
     expect(bruno?.tag).toEqual({ kind: 'agent_asked_help', label: 'Agent pediu ajuda · confiança 41%' });
-    const carla = paraVoce.find((c) => c.employee.name === 'Carla Mendes');
+    const carla = forYou.find((c) => c.employee.name === 'Carla Mendes');
     expect(carla?.tag).toEqual({ kind: 'transferred', label: 'Transferida · INC-20388' });
     await applyTransition(conv.id, 'claim', rafael());
     expect((await countsForAnalyst(t.seed.users.rafael.id)).mine).toBe(1);
-    const minhas = await listForAnalyst(t.seed.users.rafael.id, { filter: 'mine' });
-    expect(minhas[0]?.tag).toEqual({ kind: 'with_me', label: 'Você está atendendo' });
+    const mine = await listForAnalyst(t.seed.users.rafael.id, { filter: 'mine' });
+    expect(mine[0]?.tag).toEqual({ kind: 'with_me', label: 'Você está atendendo' });
   });
 
   it('busca por nome, preview e chamado em foco', async () => {
@@ -228,10 +228,10 @@ describe('fila do analista', () => {
 
   describe('busca da fila', () => {
     const rafa = () => t.seed.users.rafael.id;
-    const nomes = (l: Array<{ employee: { name: string } }>) => l.map((c) => c.employee.name);
+    const names = (l: Array<{ employee: { name: string } }>) => l.map((c) => c.employee.name);
 
     /** Conversa da Ana sobre VPN em que a última mensagem não fala de VPN. */
-    async function anaFalouDeVpn() {
+    async function anaTalkedAboutVpn() {
       const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
       await registerEmployeeMessage(conv.id, 'Meu notebook não conecta na VPN, aparece o erro 809', 30);
       await registerEmployeeMessage(conv.id, 'Ok, vou tentar e te aviso', 30);
@@ -240,51 +240,51 @@ describe('fila do analista', () => {
 
     it('ignora acento: "fabio" acha Fábio Nunes, pelo nome', async () => {
       const r = await listForAnalyst(rafa(), { q: 'fabio' });
-      expect(nomes(r)).toEqual(['Fábio Nunes']);
+      expect(names(r)).toEqual(['Fábio Nunes']);
       expect(r[0]?.match).toEqual({ kind: 'name', text: 'Fábio Nunes' });
     });
 
     it('procura em todas as mensagens, não só na última, e mostra o trecho', async () => {
-      await anaFalouDeVpn();
+      await anaTalkedAboutVpn();
       for (const q of ['vpn', '809']) {
         const r = await listForAnalyst(rafa(), { q });
-        expect(nomes(r), q).toEqual(['Ana Souza']);
+        expect(names(r), q).toEqual(['Ana Souza']);
         expect(r[0]?.match?.kind).toBe('message');
         expect(r[0]?.match?.text).toContain('VPN, aparece o erro 809');
       }
     });
 
     it('"ana" acha a Ana pelo nome e não quem só escreveu "analista"', async () => {
-      await anaFalouDeVpn();
-      expect(nomes(await listForAnalyst(rafa(), { q: 'ana' }))).toEqual(['Ana Souza']);
-      expect(nomes(await listForAnalyst(rafa(), { q: 'analis' }))).toEqual(['Carla Mendes', 'Bruno Tavares']);
+      await anaTalkedAboutVpn();
+      expect(names(await listForAnalyst(rafa(), { q: 'ana' }))).toEqual(['Ana Souza']);
+      expect(names(await listForAnalyst(rafa(), { q: 'analis' }))).toEqual(['Carla Mendes', 'Bruno Tavares']);
     });
 
     it('chamados do funcionário (código e título) vindos do serviço de chamados', async () => {
       const carla = t.seed.users.carla.id;
-      const porCodigo = await listForAnalyst(rafa(), {
+      const byCode = await listForAnalyst(rafa(), {
         q: 'REQ-10460',
         ticketHits: [{ requester_id: carla, code: 'REQ-10460', title: 'Licença do Power BI' }],
       });
-      expect(nomes(porCodigo)).toEqual(['Carla Mendes']);
-      expect(porCodigo[0]?.match).toEqual({ kind: 'ticket', text: 'REQ-10460 · Licença do Power BI' });
-      const porTitulo = await listForAnalyst(rafa(), {
+      expect(names(byCode)).toEqual(['Carla Mendes']);
+      expect(byCode[0]?.match).toEqual({ kind: 'ticket', text: 'REQ-10460 · Licença do Power BI' });
+      const byTitle = await listForAnalyst(rafa(), {
         q: 'diretoria',
         ticketHits: [{ requester_id: carla, code: 'INC-20388', title: 'Acesso à pasta da Diretoria' }],
       });
-      expect(nomes(porTitulo)).toEqual(['Carla Mendes']);
+      expect(names(byTitle)).toEqual(['Carla Mendes']);
     });
 
     it('nome vem antes de conteúdo', async () => {
       const conv = await getOrCreateCurrent(t.seed.users.bruno.id, 's');
       await registerEmployeeMessage(conv.id, 'A Carla Mendes também está sem acesso', 30);
-      expect(nomes(await listForAnalyst(rafa(), { q: 'carla' }))).toEqual(['Carla Mendes', 'Bruno Tavares']);
+      expect(names(await listForAnalyst(rafa(), { q: 'carla' }))).toEqual(['Carla Mendes', 'Bruno Tavares']);
     });
 
     it('combina com os filtros', async () => {
-      expect(nomes(await listForAnalyst(rafa(), { filter: 'for_you', q: 'carla' }))).toEqual(['Carla Mendes']);
+      expect(names(await listForAnalyst(rafa(), { filter: 'for_you', q: 'carla' }))).toEqual(['Carla Mendes']);
       expect(await listForAnalyst(rafa(), { filter: 'with_agent', q: 'carla' })).toEqual([]);
-      expect(nomes(await listForAnalyst(rafa(), { filter: 'with_agent', q: 'figma' }))).toEqual(['Diego Ramos']);
+      expect(names(await listForAnalyst(rafa(), { filter: 'with_agent', q: 'figma' }))).toEqual(['Diego Ramos']);
     });
 
     it('sem busca não há motivo', async () => {
@@ -293,9 +293,9 @@ describe('fila do analista', () => {
   });
 
   it('encerrada sem analista aparece como resolvida pelo agent', async () => {
-    const todas = await listForAnalyst(t.seed.users.rafael.id);
-    expect(todas.find((c) => c.employee.name === 'Fábio Nunes')?.tag.kind).toBe('resolved_by_agent');
-    expect(todas.find((c) => c.employee.name === 'Diego Ramos')?.tag).toEqual({
+    const all = await listForAnalyst(t.seed.users.rafael.id);
+    expect(all.find((c) => c.employee.name === 'Fábio Nunes')?.tag.kind).toBe('resolved_by_agent');
+    expect(all.find((c) => c.employee.name === 'Diego Ramos')?.tag).toEqual({
       kind: 'agent_handling',
       label: 'Agent atendendo',
     });
@@ -306,7 +306,7 @@ describe('mensagem do 409 de assumir', () => {
   it('diz quem já assumiu', async () => {
     const carla = t.seed.conversations.carla!;
     await applyTransition(carla, 'claim', rafael());
-    const e = await erroDe(applyTransition(carla, 'claim', juliana()));
+    const e = await errorOf(applyTransition(carla, 'claim', juliana()));
     expect(e.message).toBe('Rafael Lima já assumiu esta conversa');
   });
 });
@@ -314,7 +314,7 @@ describe('mensagem do 409 de assumir', () => {
 describe('listMessages (paginação)', () => {
   it('página pelo cursor sem pular nem repetir, mesmo com mensagens no mesmo instante', async () => {
     const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
-    const base = new Date(t.agora.getTime() - 3_600_000);
+    const base = new Date(t.now.getTime() - 3_600_000);
     // 120 mensagens em 40 instantes: 3 por instante, para o corte de página cair no meio de um empate.
     await t.db.insert(messages).values(
       Array.from({ length: 120 }, (_, i) => ({
@@ -325,18 +325,18 @@ describe('listMessages (paginação)', () => {
         created_at: new Date(base.getTime() + Math.floor(i / 3) * 1000 + 0.4),
       })),
     );
-    const vistas: string[] = [];
+    const seen: string[] = [];
     let cursor: string | undefined;
-    for (let pagina = 0; pagina < 10; pagina++) {
+    for (let page = 0; page < 10; page++) {
       const r = await listMessages(conv.id, { limit: 50, cursor });
-      vistas.unshift(...r.messages.map((m) => m.id));
+      seen.unshift(...r.messages.map((m) => m.id));
       if (!r.next_cursor) break;
       cursor = r.next_cursor;
     }
-    expect(vistas).toHaveLength(120);
-    expect(new Set(vistas).size).toBe(120);
-    const todas = await listMessages(conv.id, { limit: 100 });
-    expect(vistas.slice(-100)).toEqual(todas.messages.map((m) => m.id));
+    expect(seen).toHaveLength(120);
+    expect(new Set(seen).size).toBe(120);
+    const all = await listMessages(conv.id, { limit: 100 });
+    expect(seen.slice(-100)).toEqual(all.messages.map((m) => m.id));
   });
 
   it('cursor inválido ou de outra conversa → página vazia, sem erro', async () => {

@@ -2,7 +2,7 @@
  * Evals do Nexo Assist com o modelo real.
  *
  *   pnpm eval                       # todos os cenários, 3× cada (precisa de LLM_PROVIDER=deepseek)
- *   pnpm eval --only reabrir-sap    # só um cenário (vírgula para vários)
+ *   pnpm eval --only reopen-sap    # só um cenário (vírgula para vários)
  *   pnpm eval --vezes 1             # menos repetições
  *   pnpm eval --scripted            # roda com o modelo roteirizado: confere o runner sem gastar
  *
@@ -15,7 +15,7 @@ import { performance } from 'node:perf_hooks';
 import type { UIMessageStreamWriter } from 'ai';
 import type { NexoUIMessage } from '@/lib/contracts/ui';
 import type { Session } from '@/lib/auth/session';
-import { CENARIOS, type Cenario } from './cenarios';
+import { SCENARIOS, type Scenario } from './scenarios';
 
 const args = process.argv.slice(2);
 const arg = (name: string) => {
@@ -23,9 +23,9 @@ const arg = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const SCRIPTED = args.includes('--scripted');
-const VEZES = Number(arg('vezes') ?? 3);
+const TIMES = Number(arg('vezes') ?? 3);
 const ONLY = arg('only')?.split(',');
-const LIMIAR = 0.8;
+const THRESHOLD = 0.8;
 
 // Sempre no banco de teste; o provider vem do .env (ou roteirizado com --scripted).
 const TEST_DB_URL = process.env.DATABASE_URL_TEST ?? 'postgres://nexo:nexo@localhost:5432/nexo_test';
@@ -36,35 +36,35 @@ process.env.SESSION_MESSAGE_LIMIT = '30';
 delete process.env.LLM_DAILY_BUDGET_CENTS;
 
 /** Terça-feira, 03/11/2026, 10:00 em São Paulo — o mesmo "agora" da integração. */
-const AGORA = new Date('2026-11-03T13:00:00.000Z');
+const NOW = new Date('2026-11-03T13:00:00.000Z');
 
-type Resultado = {
-  cenario: Cenario;
+type Result = {
+  scenario: Scenario;
   ok: boolean;
-  falhas: string[];
-  custo_cents: number | null;
-  latencia_ms: number;
-  turnos: number;
+  failures: string[];
+  cost_cents: number | null;
+  latency_ms: number;
+  turns: number;
   tokens: { in: number; out: number };
   /** Última resposta do agent (para entender a falha). */
-  resposta: string;
-  decisao: string;
+  answer: string;
+  decision: string;
 };
 
-const normalizar = (s: string) =>
+const normalize = (s: string) =>
   s
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase();
 
-function writerColetor(): UIMessageStreamWriter<NexoUIMessage> {
+function collectingWriter(): UIMessageStreamWriter<NexoUIMessage> {
   return { write: () => {}, merge: () => {}, onError: undefined } as unknown as UIMessageStreamWriter<NexoUIMessage>;
 }
 
 async function main() {
   const { env } = await import('@/lib/env');
   if (env.LLM_PROVIDER !== 'deepseek' && !SCRIPTED) {
-    console.error('Defina LLM_PROVIDER=deepseek e DEEPSEEK_API_KEY no .env (ou rode com --scripted).');
+    console.error('Set LLM_PROVIDER=deepseek and DEEPSEEK_API_KEY in .env (or run with --scripted).');
     process.exit(2);
   }
   const { and, asc, eq, inArray } = await import('drizzle-orm');
@@ -82,15 +82,15 @@ async function main() {
 
   await migrateDb(TEST_DB_URL);
   const db = getDb();
-  const modelo = getModel();
-  const cenarios = ONLY ? CENARIOS.filter((c) => ONLY.includes(c.id)) : CENARIOS;
-  if (!cenarios.length) throw new Error(`Nenhum cenário com id ${ONLY?.join(', ')}`);
+  const model = getModel();
+  const scenarios = ONLY ? SCENARIOS.filter((c) => ONLY.includes(c.id)) : SCENARIOS;
+  if (!scenarios.length) throw new Error(`No scenario with id ${ONLY?.join(', ')}`);
 
-  console.log(`Evals: ${cenarios.length} cenários × ${VEZES} · modelo ${modelo.provider}/${modelo.model_id}\n`);
+  console.log(`Evals: ${scenarios.length} scenarios × ${TIMES} · model ${model.provider}/${model.model_id}\n`);
 
-  async function rodar(c: Cenario, rep: number): Promise<Resultado> {
-    await resetAndSeed(TEST_DB_URL, AGORA);
-    setTicketsClient(createFakeTickets(AGORA));
+  async function runScenario(c: Scenario, rep: number): Promise<Result> {
+    await resetAndSeed(TEST_DB_URL, NOW);
+    setTicketsClient(createFakeTickets(NOW));
     const user = userByKey(c.persona);
     const session: Session = { user_id: user.id, role: 'employee', name: user.name, sid: `eval-${c.id}-${rep}` };
     const conv = await getOrCreateCurrent(user.id, session.sid);
@@ -100,7 +100,7 @@ async function main() {
       await applyTransition(conv.id, 'release', { user_id: userByKey('rafael').id, role: 'analyst' });
     }
     // O que já existia antes do cenário (seed) fica de fora da avaliação.
-    const antes = async () => {
+    const before = async () => {
       const ids = await Promise.all([
         db.select({ id: aiAgentRuns.id }).from(aiAgentRuns).where(eq(aiAgentRuns.conversation_id, conv.id)),
         db.select({ id: ticketDrafts.id }).from(ticketDrafts).where(eq(ticketDrafts.conversation_id, conv.id)),
@@ -109,145 +109,145 @@ async function main() {
       ]);
       return new Set(ids.flat().map((r) => r.id));
     };
-    const seed = await antes();
-    const novo = <T extends { id: string }>(rows: T[]) => rows.filter((r) => !seed.has(r.id));
+    const seed = await before();
+    const sinceStart = <T extends { id: string }>(rows: T[]) => rows.filter((r) => !seed.has(r.id));
 
-    let latencia = 0;
+    let latency = 0;
     let outcome = '';
-    for (const text of c.turnos) {
+    for (const text of c.turns) {
       const t0 = performance.now();
-      const r = await runTurn({ conversation_id: conv.id, employee: session, text, writer: writerColetor(), now: AGORA });
-      latencia += performance.now() - t0;
+      const r = await runTurn({ conversation_id: conv.id, employee: session, text, writer: collectingWriter(), now: NOW });
+      latency += performance.now() - t0;
       outcome = r.outcome;
       if (r.outcome !== 'answered') break; // transferiu, pausou ou falhou: os próximos turnos não fazem sentido
     }
 
-    const runs = novo(
+    const runs = sinceStart(
       await db.select().from(aiAgentRuns).where(eq(aiAgentRuns.conversation_id, conv.id)).orderBy(asc(aiAgentRuns.started_at)),
     );
-    const drafts = novo(
+    const drafts = sinceStart(
       await db.select().from(ticketDrafts).where(eq(ticketDrafts.conversation_id, conv.id)).orderBy(asc(ticketDrafts.created_at)),
     );
-    const textos = novo(
+    const texts = sinceStart(
       await db
         .select({ id: messages.id, body: messages.body, parts: messages.parts })
         .from(messages)
         .where(and(eq(messages.conversation_id, conv.id), eq(messages.direction, 'outbound'))),
     );
-    const transferencias = novo(await db.select().from(handoffs).where(eq(handoffs.conversation_id, conv.id)));
-    const chamadas = runs.length
+    const transfers = sinceStart(await db.select().from(handoffs).where(eq(handoffs.conversation_id, conv.id)));
+    const calls = runs.length
       ? await db.select().from(llmCalls).where(inArray(llmCalls.agent_run_id, runs.map((r) => r.id)))
       : [];
 
     const tools = new Set(runs.flatMap((r) => r.tool_calls.map((a) => a.tool)));
-    const ultimo = runs.at(-1);
-    const acao = ultimo?.decision?.decision.action;
-    const fontes = new Set(runs.flatMap((r) => r.decision?.decision.sources.map((s) => s.id) ?? []));
-    const rascunho = drafts.at(-1);
-    const texto = normalizar(textos.map((t) => t.body).join('\n'));
-    const e = c.esperado;
-    const falhas: string[] = [];
+    const last = runs.at(-1);
+    const action = last?.decision?.decision.action;
+    const sources = new Set(runs.flatMap((r) => r.decision?.decision.sources.map((s) => s.id) ?? []));
+    const draft = drafts.at(-1);
+    const text = normalize(texts.map((t) => t.body).join('\n'));
+    const e = c.expected;
+    const failures: string[] = [];
 
-    for (const t of e.tools_incluem ?? []) if (!tools.has(t)) falhas.push(`não chamou ${t}`);
-    for (const t of e.tools_excluem ?? []) if (tools.has(t)) falhas.push(`chamou ${t}`);
-    if (e.acao_final) {
-      const aceitas = Array.isArray(e.acao_final) ? e.acao_final : [e.acao_final];
-      if (!acao || !aceitas.includes(acao)) falhas.push(`ação ${acao ?? 'sem decisão'} ≠ ${aceitas.join('|')}`);
+    for (const t of e.tools_include ?? []) if (!tools.has(t)) failures.push(`não chamou ${t}`);
+    for (const t of e.tools_exclude ?? []) if (tools.has(t)) failures.push(`chamou ${t}`);
+    if (e.final_action) {
+      const accepted = Array.isArray(e.final_action) ? e.final_action : [e.final_action];
+      if (!action || !accepted.includes(action)) failures.push(`ação ${action ?? 'sem decisão'} ≠ ${accepted.join('|')}`);
     }
     if (e.outcome) {
-      const real = transferencias.length ? 'transferred' : outcome;
-      const motivo = transferencias.length ? ` (${transferencias.map((h) => h.reason_code).join(', ')})` : '';
-      if (real !== e.outcome) falhas.push(`desfecho ${real}${motivo} ≠ ${e.outcome}`);
+      const real = transfers.length ? 'transferred' : outcome;
+      const matchReason = transfers.length ? ` (${transfers.map((h) => h.reason_code).join(', ')})` : '';
+      if (real !== e.outcome) failures.push(`desfecho ${real}${matchReason} ≠ ${e.outcome}`);
     }
-    if (e.rascunho === null && drafts.length) falhas.push(`montou rascunho ${rascunho!.kind}`);
-    if (e.rascunho && rascunho?.kind !== e.rascunho) falhas.push(`rascunho ${rascunho?.kind ?? 'nenhum'} ≠ ${e.rascunho}`);
-    if (e.alvo && rascunho?.target_ticket_code !== e.alvo) falhas.push(`alvo ${rascunho?.target_ticket_code ?? 'nenhum'} ≠ ${e.alvo}`);
-    if (e.prioridade && rascunho?.payload.priority !== e.prioridade)
-      falhas.push(`prioridade ${rascunho?.payload.priority ?? 'sem rascunho'} ≠ ${e.prioridade}`);
-    if (e.categoria && rascunho?.payload.category !== e.categoria)
-      falhas.push(`categoria ${rascunho?.payload.category ?? 'sem rascunho'} ≠ ${e.categoria}`);
-    if (e.tipo && rascunho?.payload.type !== e.tipo) falhas.push(`tipo ${rascunho?.payload.type ?? 'sem rascunho'} ≠ ${e.tipo}`);
-    if (e.cita_artigo && !fontes.has(e.cita_artigo)) falhas.push(`não citou ${e.cita_artigo}`);
-    const mostrados = new Set(
-      textos.flatMap((t) =>
+    if (e.draft === null && drafts.length) failures.push(`montou rascunho ${draft!.kind}`);
+    if (e.draft && draft?.kind !== e.draft) failures.push(`rascunho ${draft?.kind ?? 'nenhum'} ≠ ${e.draft}`);
+    if (e.target && draft?.target_ticket_code !== e.target) failures.push(`alvo ${draft?.target_ticket_code ?? 'nenhum'} ≠ ${e.target}`);
+    if (e.priority && draft?.payload.priority !== e.priority)
+      failures.push(`prioridade ${draft?.payload.priority ?? 'sem rascunho'} ≠ ${e.priority}`);
+    if (e.category && draft?.payload.category !== e.category)
+      failures.push(`categoria ${draft?.payload.category ?? 'sem rascunho'} ≠ ${e.category}`);
+    if (e.type && draft?.payload.type !== e.type) failures.push(`tipo ${draft?.payload.type ?? 'sem rascunho'} ≠ ${e.type}`);
+    if (e.cites_article && !sources.has(e.cites_article)) failures.push(`não citou ${e.cites_article}`);
+    const shown = new Set(
+      texts.flatMap((t) =>
         t.parts.flatMap((p) =>
           p.kind === 'ticket_selector' ? p.tickets.map((x) => x.code) : p.kind === 'ticket_card' ? [p.ticket.code] : [],
         ),
       ),
     );
-    for (const code of e.mostra_chamados ?? []) if (!mostrados.has(code)) falhas.push(`não mostrou ${code}`);
-    for (const code of e.nao_mostra_chamados ?? []) if (mostrados.has(code)) falhas.push(`mostrou ${code}`);
-    for (const proibido of e.texto_nao_contem ?? [])
-      if (texto.includes(normalizar(proibido))) falhas.push(`texto contém "${proibido}"`);
+    for (const code of e.shows_tickets ?? []) if (!shown.has(code)) failures.push(`não mostrou ${code}`);
+    for (const code of e.hides_tickets ?? []) if (shown.has(code)) failures.push(`mostrou ${code}`);
+    for (const forbidden of e.text_excludes ?? [])
+      if (text.includes(normalize(forbidden))) failures.push(`texto contém "${forbidden}"`);
 
-    const custos = chamadas.map((x) => x.cost_cents);
-    const custo = custos.length && custos.every((x) => x !== null) ? custos.reduce((a, b) => a! + b!, 0)! : custos.length ? null : 0;
+    const costs = calls.map((x) => x.cost_cents);
+    const cost = costs.length && costs.every((x) => x !== null) ? costs.reduce((a, b) => a! + b!, 0)! : costs.length ? null : 0;
     const tokens = {
-      in: chamadas.reduce((s, x) => s + x.input_tokens, 0),
-      out: chamadas.reduce((s, x) => s + x.output_tokens, 0),
+      in: calls.reduce((s, x) => s + x.input_tokens, 0),
+      out: calls.reduce((s, x) => s + x.output_tokens, 0),
     };
-    const resposta = textos.at(-1)?.body ?? '';
-    const dec = ultimo?.decision?.decision;
-    const decisao = dec ? `${dec.action} ${Math.round(dec.confidence * 100)}% — ${dec.why}` : 'sem decisão registrada';
-    return { cenario: c, ok: falhas.length === 0, falhas, custo_cents: custo, latencia_ms: latencia, turnos: runs.length, tokens, resposta, decisao };
+    const answer = texts.at(-1)?.body ?? '';
+    const dec = last?.decision?.decision;
+    const decision = dec ? `${dec.action} ${Math.round(dec.confidence * 100)}% — ${dec.why}` : 'sem decisão registrada';
+    return { scenario: c, ok: failures.length === 0, failures: failures, cost_cents: cost, latency_ms: latency, turns: runs.length, tokens, answer: answer, decision: decision };
   }
 
-  const porCenario = new Map<string, Resultado[]>();
-  for (const c of cenarios) {
-    const lista: Resultado[] = [];
-    for (let rep = 0; rep < VEZES; rep++) {
-      let r: Resultado;
+  const byScenario = new Map<string, Result[]>();
+  for (const c of scenarios) {
+    const list: Result[] = [];
+    for (let rep = 0; rep < TIMES; rep++) {
+      let r: Result;
       try {
-        r = await rodar(c, rep);
+        r = await runScenario(c, rep);
       } catch (err) {
-        r = { cenario: c, ok: false, falhas: [`erro: ${err instanceof Error ? err.message : String(err)}`], custo_cents: null, latencia_ms: 0, turnos: 0, tokens: { in: 0, out: 0 }, resposta: '', decisao: '' };
+        r = { scenario: c, ok: false, failures: [`erro: ${err instanceof Error ? err.message : String(err)}`], cost_cents: null, latency_ms: 0, turns: 0, tokens: { in: 0, out: 0 }, answer: '', decision: '' };
       }
-      lista.push(r);
-      console.log(`${r.ok ? '✓' : '✗'} ${c.id} #${rep + 1}${r.ok ? '' : ` — ${r.falhas.join('; ')}`}`);
-      if (!r.ok && r.resposta) console.log(`    agent: ${r.resposta.replace(/\s+/g, ' ').slice(0, 300)}`);
-      if (!r.ok && r.decisao) console.log(`    decisão: ${r.decisao.slice(0, 300)}`);
+      list.push(r);
+      console.log(`${r.ok ? '✓' : '✗'} ${c.id} #${rep + 1}${r.ok ? '' : ` — ${r.failures.join('; ')}`}`);
+      if (!r.ok && r.answer) console.log(`    agent: ${r.answer.replace(/\s+/g, ' ').slice(0, 300)}`);
+      if (!r.ok && r.decision) console.log(`    decision: ${r.decision.slice(0, 300)}`);
     }
-    porCenario.set(c.id, lista);
+    byScenario.set(c.id, list);
   }
   await closeMemory();
 
-  const todos = [...porCenario.values()].flat();
-  const passou = todos.filter((r) => r.ok).length;
-  const taxa = passou / todos.length;
+  const showAll = [...byScenario.values()].flat();
+  const passed = showAll.filter((r) => r.ok).length;
+  const passRate = passed / showAll.length;
   const media = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
-  const custosMedidos = todos.map((r) => r.custo_cents).filter((x): x is number => x !== null);
-  const fmtCusto = (xs: (number | null)[]) => {
+  const measuredCosts = showAll.map((r) => r.cost_cents).filter((x): x is number => x !== null);
+  const formatCost = (xs: (number | null)[]) => {
     const m = xs.filter((x): x is number => x !== null);
     return m.length === xs.length && m.length ? `${media(m).toFixed(3)}¢` : 'não medido';
   };
 
-  const linhas = [...porCenario.entries()].map(([id, rs]) => {
+  const lines = [...byScenario.entries()].map(([id, rs]) => {
     const ok = rs.filter((r) => r.ok).length;
-    const falhas = [...new Set(rs.flatMap((r) => r.falhas))].join('; ') || '—';
-    const turnos = media(rs.map((r) => r.turnos)) || 1;
+    const failures = [...new Set(rs.flatMap((r) => r.failures))].join('; ') || '—';
+    const turns = media(rs.map((r) => r.turns)) || 1;
     const tin = Math.round(media(rs.map((r) => r.tokens.in)));
     const tout = Math.round(media(rs.map((r) => r.tokens.out)));
-    return `| ${id} | ${ok}/${rs.length}${ok / rs.length < LIMIAR ? ' ⚠' : ''} | ${fmtCusto(rs.map((r) => r.custo_cents))} | ${tin} / ${tout} | ${Math.round(media(rs.map((r) => r.latencia_ms)) / turnos)} ms | ${falhas} |`;
+    return `| ${id} | ${ok}/${rs.length}${ok / rs.length < THRESHOLD ? ' ⚠' : ''} | ${formatCost(rs.map((r) => r.cost_cents))} | ${tin} / ${tout} | ${Math.round(media(rs.map((r) => r.latency_ms)) / turns)} ms | ${failures} |`;
   });
 
   const md = [
     '# Resultados dos evals',
     '',
-    `Rodado em ${new Date().toISOString()} · modelo \`${modelo.provider}/${modelo.model_id}\` · ${cenarios.length} cenários × ${VEZES}.`,
+    `Rodado em ${new Date().toISOString()} · modelo \`${model.provider}/${model.model_id}\` · ${scenarios.length} cenários × ${TIMES}.`,
     '',
-    `**Taxa de acerto: ${passou}/${todos.length} (${(taxa * 100).toFixed(0)}%)** · limiar ${LIMIAR * 100}% · ` +
-      `tokens médios por conversa: ${Math.round(media(todos.map((r) => r.tokens.in)))} entrada / ${Math.round(media(todos.map((r) => r.tokens.out)))} saída · ` +
-      `custo médio por conversa: ${custosMedidos.length === todos.length && custosMedidos.length ? `${media(custosMedidos).toFixed(3)}¢` : 'não medido (defina LLM_PRICE_*_CENTS_PER_MTOK)'}`,
+    `**Taxa de acerto: ${passed}/${showAll.length} (${(passRate * 100).toFixed(0)}%)** · limiar ${THRESHOLD * 100}% · ` +
+      `tokens médios por conversa: ${Math.round(media(showAll.map((r) => r.tokens.in)))} entrada / ${Math.round(media(showAll.map((r) => r.tokens.out)))} saída · ` +
+      `custo médio por conversa: ${measuredCosts.length === showAll.length && measuredCosts.length ? `${media(measuredCosts).toFixed(3)}¢` : 'não medido (defina LLM_PRICE_*_CENTS_PER_MTOK)'}`,
     '',
     '| Cenário | Passou | Custo médio/conversa | Tokens médios (entrada / saída) | Latência média/turno | Falhas |',
     '|---|---|---|---|---|---|',
-    ...linhas,
+    ...lines,
     '',
   ].join('\n');
 
   console.log(`\n${md}`);
   if (!SCRIPTED && !ONLY) await writeFile(new URL('./resultados.md', import.meta.url), md);
-  process.exit(taxa >= LIMIAR ? 0 : 1);
+  process.exit(passRate >= THRESHOLD ? 0 : 1);
 }
 
 main().catch((e) => {

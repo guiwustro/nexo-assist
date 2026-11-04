@@ -40,7 +40,7 @@ Não abre menu, não leva a um perfil e não tem "Sair". O analista fica preso l
 > - De brinde: `TicketsNotFoundError` vira 404 em toda a API, o que resolve o "confirmar rascunho com chamado
 >   sumido → 500" do item 5.
 >
-> E2E em `e2e/console-controles.spec.ts`.
+> E2E em `e2e/console-controls.spec.ts`.
 
 | Botão | Onde | O que deveria fazer |
 |---|---|---|
@@ -93,14 +93,14 @@ cada tela e confere que algo acontece.
 ## 3. Histórico: chamados e conversas anteriores (média) — ✅ feito em 04/11, com a sugestão abaixo
 
 > - Tela "Meus chamados" (`/chamados`, `/chamados/:code`), com rotas novas `GET /api/v1/me/tickets[/:code]`.
-> - Tool com `status: closed`, instrução nova e cenário `chamados-resolvidos` nos evals.
+> - Tool com `status: closed`, instrução nova e cenário `resolved-tickets` nos evals.
 > - Dois achados no caminho:
 >   - os chamados mostrados ao funcionário não contavam como fonte, e o guardrail de confiança limitava a 50%
 >     (transferia por "baixa confiança" uma resposta certa);
 >   - o prompt de decisão não via os cards.
 > - Paginação com cursor por id (o antigo, por `created_at` em ms, pulava mensagens).
 >
-> E2E em `e2e/historico.spec.ts`.
+> E2E em `e2e/history.spec.ts`.
 
 **O que acontece:**
 - O funcionário não tem tela para ver os próprios chamados. Hoje só dá para ver pelo chat ("qual o status do meu
@@ -145,7 +145,7 @@ Vieram da revisão final do branch inteiro. Estão também no ledger
 `.superpowers/sdd/2026-11-03-nexo-assist/progress.md` (linhas `Final: minor (deferred)`).
 
 - ✅ Analista assume no meio de um turno do agent: a passagem perdida só pausa o turno, e qualquer falha depois de
-  abrir o run fecha o registro como `failed` (`tests/integration/agent/run-turn-corrida.test.ts`).
+  abrir o run fecha o registro como `failed` (`tests/integration/agent/run-turn-race.test.ts`).
 - ✅ Editar um rascunho depois de uma confirmação cujas respostas se perderam: a primeira tentativa grava `sent_at`,
   e editar depois dela dá 409 `draft_already_sent`; o card esconde "Editar" depois de uma confirmação que falhou.
 - ✅ Confirmar um rascunho cujo chamado alvo não existe mais no legado devolve 404 (já estava feito).

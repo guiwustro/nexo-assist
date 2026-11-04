@@ -22,8 +22,8 @@ async function ctx() {
     employee_text: 'só eu, reunião às 14h',
     conversation_id: conv.id,
     agent_run_id: null,
-    now: t.agora,
-    tickets: createFakeTickets(t.agora),
+    now: t.now,
+    tickets: createFakeTickets(t.now),
     articles: async () => SEED_ARTICLES,
     emitAction: (a) => actions.push(a),
     emitPart: (p) => parts.push(p),
@@ -53,7 +53,7 @@ describe('build_draft', () => {
     };
     expect(out.priority).toBe('high');
     expect(out.priority_rule.startsWith('Alta')).toBe(true);
-    expect(out.due_at).toBe(computeDeadline('high', t.agora).due_at.toISOString());
+    expect(out.due_at).toBe(computeDeadline('high', t.now).due_at.toISOString());
     expect(out.draft_code).toBe('D-381');
     const [row] = await t.db.select().from(ticketDrafts).where(eq(ticketDrafts.code, 'D-381'));
     expect(row?.status).toBe('pending');

@@ -31,7 +31,7 @@ function writer() {
   return { w: w as unknown as UIMessageStreamWriter<NexoUIMessage>, chunks };
 }
 
-async function gastoDeHoje(cents: number) {
+async function todaySpend(cents: number) {
   const conv = await getOrCreateCurrent(t.seed.users.diego.id, 'sid-outro');
   const [run] = await t.db.insert(aiAgentRuns).values({ conversation_id: conv.id, status: 'completed', model: 'x' }).returning();
   await t.db.insert(llmCalls).values({
@@ -42,12 +42,12 @@ async function gastoDeHoje(cents: number) {
     input_tokens: 1,
     output_tokens: 1,
     cost_cents: cents,
-    created_at: t.agora,
+    created_at: t.now,
   });
 }
 
 beforeEach(() => {
-  setTicketsClient(createFakeTickets(t.agora));
+  setTicketsClient(createFakeTickets(t.now));
   setModelForTests();
   resetLimiters();
 });
@@ -72,14 +72,14 @@ describe('teto diário de gasto com o modelo', () => {
     process.env.LLM_PRICE_IN_CENTS_PER_MTOK = '30';
     process.env.LLM_PRICE_OUT_CENTS_PER_MTOK = '120';
     resetEnvCache();
-    await gastoDeHoje(120);
-    const antes = await t.db.$count(llmCalls);
+    await todaySpend(120);
+    const before = await t.db.$count(llmCalls);
     const conv = await getOrCreateCurrent(ana().user_id, 'sid-b');
     const { w, chunks } = writer();
-    const r = await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Qual o horário do service desk?', writer: w, now: t.agora });
+    const r = await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Qual o horário do service desk?', writer: w, now: t.now });
 
     expect(r.outcome).toBe('transferred');
-    expect(await t.db.$count(llmCalls)).toBe(antes);
+    expect(await t.db.$count(llmCalls)).toBe(before);
     const [h] = await t.db.select().from(handoffs).where(eq(handoffs.conversation_id, conv.id));
     expect(h).toMatchObject({ origin: 'budget', reason_code: 'budget_exceeded', support_level: 'N1' });
     const [c] = await t.db.select().from(conversations).where(eq(conversations.id, conv.id));
@@ -87,24 +87,24 @@ describe('teto diário de gasto com o modelo', () => {
     const out = await t.db.select().from(messages).where(eq(messages.conversation_id, conv.id));
     expect(out.some((m) => m.direction === 'outbound' && /limite de uso de hoje/.test(m.body))).toBe(true);
     expect(chunks.some((x) => x.type === 'data-system' && (x.data as { kind: string }).kind === 'budget')).toBe(true);
-    const fila = await listForAnalyst(t.seed.users.rafael.id, { now: t.agora, onlyId: conv.id });
-    expect(fila[0]?.tag.label).toBe('Transferida · limite de uso do assistente');
+    const queue = await listForAnalyst(t.seed.users.rafael.id, { now: t.now, onlyId: conv.id });
+    expect(queue[0]?.tag.label).toBe('Transferida · limite de uso do assistente');
   });
 
   it('a passagem pelo teto leva o resumo do caso e o chamado em foco', async () => {
     const conv = await getOrCreateCurrent(ana().user_id, 'sid-b');
-    await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Meu notebook não conecta na VPN, erro 809', writer: writer().w, now: t.agora });
-    const [antes] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.conversation_id, conv.id));
+    await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Meu notebook não conecta na VPN, erro 809', writer: writer().w, now: t.now });
+    const [before] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.conversation_id, conv.id));
     await t.db.update(conversations).set({ focus_ticket_code: 'INC-20298' }).where(eq(conversations.id, conv.id));
     process.env.LLM_DAILY_BUDGET_CENTS = '100';
     process.env.LLM_PRICE_IN_CENTS_PER_MTOK = '30';
     process.env.LLM_PRICE_OUT_CENTS_PER_MTOK = '120';
     resetEnvCache();
-    await gastoDeHoje(120);
+    await todaySpend(120);
 
-    await runTurn({ conversation_id: conv.id, employee: ana(), text: 'e agora?', writer: writer().w, now: t.agora });
+    await runTurn({ conversation_id: conv.id, employee: ana(), text: 'e agora?', writer: writer().w, now: t.now });
     const [h] = await t.db.select().from(handoffs).where(eq(handoffs.conversation_id, conv.id));
-    expect(h?.agent_reading).toContain(antes!.decision!.understanding.summary);
+    expect(h?.agent_reading).toContain(before!.decision!.understanding.summary);
     expect(h?.attempts.length).toBeGreaterThan(0);
     expect(h?.ticket_code).toBe('INC-20298');
   });
@@ -114,9 +114,9 @@ describe('teto diário de gasto com o modelo', () => {
     process.env.LLM_PRICE_IN_CENTS_PER_MTOK = '30';
     process.env.LLM_PRICE_OUT_CENTS_PER_MTOK = '120';
     resetEnvCache();
-    await gastoDeHoje(40);
+    await todaySpend(40);
     const conv = await getOrCreateCurrent(ana().user_id, 'sid-b');
-    const r = await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Qual o horário do service desk?', writer: writer().w, now: t.agora });
+    const r = await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Qual o horário do service desk?', writer: writer().w, now: t.now });
     expect(r.outcome).toBe('answered');
   });
 
@@ -125,10 +125,10 @@ describe('teto diário de gasto com o modelo', () => {
     process.env.LLM_PRICE_IN_CENTS_PER_MTOK = '30';
     process.env.LLM_PRICE_OUT_CENTS_PER_MTOK = '120';
     resetEnvCache();
-    await gastoDeHoje(500);
-    await t.db.update(llmCalls).set({ created_at: new Date(t.agora.getTime() - 24 * 3600_000) });
+    await todaySpend(500);
+    await t.db.update(llmCalls).set({ created_at: new Date(t.now.getTime() - 24 * 3600_000) });
     const conv = await getOrCreateCurrent(ana().user_id, 'sid-b');
-    const r = await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Qual o horário do service desk?', writer: writer().w, now: t.agora });
+    const r = await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Qual o horário do service desk?', writer: writer().w, now: t.now });
     expect(r.outcome).toBe('answered');
   });
 });
@@ -151,7 +151,7 @@ describe('rate limit', () => {
   });
 
   it('login: 10 por minuto por IP', async () => {
-    const tentar = (ip: string) =>
+    const attempt = (ip: string) =>
       login(
         new Request('http://x/api/v1/auth/login', {
           method: 'POST',
@@ -160,10 +160,10 @@ describe('rate limit', () => {
         }),
         { params: Promise.resolve({}) },
       );
-    for (let i = 0; i < 10; i++) expect((await tentar('10.0.0.1')).status).toBe(200);
-    const r = await tentar('10.0.0.1');
+    for (let i = 0; i < 10; i++) expect((await attempt('10.0.0.1')).status).toBe(200);
+    const r = await attempt('10.0.0.1');
     expect(r.status).toBe(429);
     expect(r.headers.get('retry-after')).toBeTruthy();
-    expect((await tentar('10.0.0.2')).status).toBe(200);
+    expect((await attempt('10.0.0.2')).status).toBe(200);
   });
 });

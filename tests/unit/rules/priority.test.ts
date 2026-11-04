@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { computePriority } from '@/lib/rules/priority';
 import { PRIORITY_LABEL, type Affected, type Priority, type TicketType } from '@/lib/contracts/enums';
 
-const casos: Array<[TicketType, Affected, boolean, boolean, Priority]> = [
+const cases: Array<[TicketType, Affected, boolean, boolean, Priority]> = [
   ['incident', 'team', true, false, 'critical'],
   ['incident', 'company', true, false, 'critical'],
   ['incident', 'team', false, false, 'medium'],
@@ -13,10 +13,10 @@ const casos: Array<[TicketType, Affected, boolean, boolean, Priority]> = [
 ];
 
 describe('calcularPrioridade', () => {
-  it.each(casos)('%s / %s / bloqueia=%s / hoje=%s → %s', (type, affected, blocks_work, deadline_today, esperado) => {
+  it.each(cases)('%s / %s / bloqueia=%s / hoje=%s → %s', (type, affected, blocks_work, deadline_today, expected) => {
     const r = computePriority({ type, affected, blocks_work, deadline_today });
-    expect(r.priority).toBe(esperado);
-    expect(r.rule.startsWith(PRIORITY_LABEL[esperado])).toBe(true);
+    expect(r.priority).toBe(expected);
+    expect(r.rule.startsWith(PRIORITY_LABEL[expected])).toBe(true);
   });
 
   it('a regra da Crítica cita o prazo de 1 hora', () => {

@@ -3,8 +3,8 @@ import { findMatches, containsTerm, fold } from '@/lib/text/matches';
 
 describe('acharTrechos', () => {
   it('ignora acento e caixa e devolve os índices do texto original', () => {
-    const texto = 'Não consigo acessar a VPN. A vpn caiu de novo.';
-    expect(findMatches(texto, 'vpn')).toEqual([
+    const text = 'Não consigo acessar a VPN. A vpn caiu de novo.';
+    expect(findMatches(text, 'vpn')).toEqual([
       [22, 25],
       [29, 32],
     ]);
@@ -13,9 +13,9 @@ describe('acharTrechos', () => {
   });
 
   it('acento decomposto (NFD) no texto não desloca os índices', () => {
-    const texto = 'Fábio aqui';
-    const [[a, b]] = findMatches(texto, 'fabio') as [[number, number]];
-    expect(texto.slice(a, b)).toBe('Fábio');
+    const text = 'Fábio aqui';
+    const [[a, b]] = findMatches(text, 'fabio') as [[number, number]];
+    expect(text.slice(a, b)).toBe('Fábio');
   });
 
   it('termo vazio ou só espaços não acha nada', () => {

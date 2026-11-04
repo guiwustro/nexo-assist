@@ -8,7 +8,7 @@ const SP = 'America/Sao_Paulo';
 /** Data em horário de São Paulo: (dia de novembro/2026, hora, minuto). 03/11/2026 é terça. */
 const sp = (day: number, h: number, m = 0) => new Date(new TZDate(2026, 10, day, h, m, SP).getTime());
 
-const casos: Array<[string, Date, Priority, Date]> = [
+const cases: Array<[string, Date, Priority, Date]> = [
   ['ter 10:00', sp(3, 10), 'high', sp(3, 14)],
   ['ter 16:00', sp(3, 16), 'high', sp(4, 10)],
   ['sex 17:00', sp(6, 17), 'high', sp(9, 11)],
@@ -27,9 +27,9 @@ afterAll(() => {
 });
 
 describe.each(['UTC', 'Asia/Tokyo', 'America/Sao_Paulo'])('com o servidor em %s', (tz) => {
-  it.each(casos)('%s + %s → prazo esperado', (_rotulo, desde, prioridade, esperado) => {
+  it.each(cases)('%s + %s → prazo esperado', (_label, since, priority, expected) => {
     process.env.TZ = tz;
-    expect(computeDeadline(prioridade, desde).due_at.toISOString()).toBe(esperado.toISOString());
+    expect(computeDeadline(priority, since).due_at.toISOString()).toBe(expected.toISOString());
   });
 
   it('formatarPrazoCurto no mesmo dia mostra só a hora', () => {

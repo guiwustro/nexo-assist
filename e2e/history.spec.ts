@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { conversations, messages } from '../lib/db/schema';
 import { expect, test } from './fixtures';
-import { enviar, ultimaResposta } from './helpers';
-import { AGORA_E2E } from './env';
+import { send, lastAgentReply } from './helpers';
+import { E2E_NOW } from './env';
 
 /** Histórico: "Meus chamados", chamados resolvidos pelo chat e mensagens anteriores (docs/PROXIMOS-PASSOS.md, item 3). */
 test.describe('histórico', () => {
@@ -46,18 +46,18 @@ test.describe('histórico', () => {
 
   test('no chat, pedir os chamados resolvidos mostra só os encerrados', async ({ page, loginAs }) => {
     await loginAs(page, 'ana');
-    await enviar(page, 'Quero ver meus chamados resolvidos');
-    const resposta = ultimaResposta(page);
-    await expect(resposta.getByTestId('ticket-option-INC-20150')).toBeVisible();
-    await expect(resposta.getByTestId('ticket-option-INC-19877')).toBeVisible();
-    await expect(resposta.getByTestId('ticket-option-INC-20311')).toHaveCount(0);
+    await send(page, 'Quero ver meus chamados resolvidos');
+    const answer = lastAgentReply(page);
+    await expect(answer.getByTestId('ticket-option-INC-20150')).toBeVisible();
+    await expect(answer.getByTestId('ticket-option-INC-19877')).toBeVisible();
+    await expect(answer.getByTestId('ticket-option-INC-20311')).toHaveCount(0);
   });
 
   test('conversa longa: carregar mensagens anteriores no chat e no console', async ({ page, loginAs, db, seed }) => {
     await loginAs(page, 'ana');
     await expect(page.getByTestId('composer-input')).toBeEnabled();
     const [conv] = await db.select().from(conversations).where(eq(conversations.employee_id, seed.users.ana.id));
-    const base = AGORA_E2E.getTime() - 3_600_000;
+    const base = E2E_NOW.getTime() - 3_600_000;
     await db.insert(messages).values(
       Array.from({ length: 70 }, (_, i) => ({
         conversation_id: conv!.id,

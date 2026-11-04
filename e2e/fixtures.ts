@@ -3,7 +3,7 @@ import { createDb, type Db } from '../lib/db/client';
 import { resetAndSeed, type SeedResult } from '../lib/db/seed';
 import type { UserKey } from '../lib/db/seed-data';
 import { DEMO_PASSWORD, userByKey } from '../lib/db/seed-data';
-import { AGORA_E2E, E2E_DB, E2E_SECRET, E2E_TICKETS_PORT } from './env';
+import { E2E_NOW, E2E_DB, E2E_SECRET, E2E_TICKETS_PORT } from './env';
 
 type Fixtures = {
   seed: SeedResult;
@@ -21,7 +21,7 @@ export const test = base.extend<Fixtures>({
       });
       const reset = await request.post('/api/v1/e2e/reset');
       expect(reset.ok(), `reset do web: ${reset.status()}`).toBeTruthy();
-      await use(await resetAndSeed(E2E_DB, AGORA_E2E));
+      await use(await resetAndSeed(E2E_DB, E2E_NOW));
     },
     { auto: true },
   ],
@@ -31,7 +31,7 @@ export const test = base.extend<Fixtures>({
     await db.$client.end({ timeout: 1 });
   },
   page: async ({ page }, use) => {
-    await page.clock.setFixedTime(AGORA_E2E);
+    await page.clock.setFixedTime(E2E_NOW);
     await use(page);
   },
   loginAs: async ({}, use) => {

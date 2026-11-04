@@ -17,8 +17,8 @@ export type FakeTickets = TicketsClient & {
 };
 
 /** Serviço de chamados em memória com os dados do seed (relativos a `agora`). */
-export function createFakeTickets(agora: Date): FakeTickets {
-  const t0 = agora.getTime();
+export function createFakeTickets(now: Date): FakeTickets {
+  const t0 = now.getTime();
   const tickets: Ticket[] = SEED_TICKETS.map((s) => {
     const last = new Date(t0 - s.last_update_ago);
     return {
@@ -42,15 +42,15 @@ export function createFakeTickets(agora: Date): FakeTickets {
   const history = new Map<string, TicketEvent[]>(
     tickets.map((t) => [t.code, [{ kind: 'created', body: 'Chamado aberto', actor: 'funcionário', created_at: t.created_at }]]),
   );
-  const registrar = (code: string, kind: TicketEvent['kind'], body: string) =>
-    history.set(code, [...(history.get(code) ?? []), { kind, body, actor: 'funcionário', created_at: agora.toISOString() }]);
+  const recordEvent = (code: string, kind: TicketEvent['kind'], body: string) =>
+    history.set(code, [...(history.get(code) ?? []), { kind, body, actor: 'funcionário', created_at: now.toISOString() }]);
   let seq = 20520;
-  const recibos = new Map<string, Ticket>();
+  const receipts = new Map<string, Ticket>();
   const once = async (key: string, fn: () => Promise<Ticket>) => {
-    let t = recibos.get(key);
+    let t = receipts.get(key);
     if (!t) {
       t = await fn();
-      recibos.set(key, t);
+      receipts.set(key, t);
     }
     if (fake.loseResponses) throw new TicketsTransportError('resposta perdida');
     return t;
@@ -63,9 +63,9 @@ export function createFakeTickets(agora: Date): FakeTickets {
     calls: [],
     async listByRequester(requesterId, status = 'all') {
       guard('list');
-      const abertos = ['open', 'in_progress', 'awaiting_analyst', 'approved'];
+      const OPEN_STATUSES = ['open', 'in_progress', 'awaiting_analyst', 'approved'];
       return tickets
-        .filter((t) => t.requester_id === requesterId && (status === 'all' || abertos.includes(t.status)))
+        .filter((t) => t.requester_id === requesterId && (status === 'all' || OPEN_STATUSES.includes(t.status)))
         .sort((a, b) => b.last_update_at.localeCompare(a.last_update_at));
     },
     async get(code, requesterId) {
@@ -81,10 +81,10 @@ export function createFakeTickets(agora: Date): FakeTickets {
     },
     async search(q) {
       guard('search');
-      const alvo = fold(q.trim());
-      if (!alvo) return [];
+      const target = fold(q.trim());
+      if (!target) return [];
       return tickets
-        .filter((t) => fold(`${t.code} ${t.title}`).includes(alvo))
+        .filter((t) => fold(`${t.code} ${t.title}`).includes(target))
         .map((t) => ({ requester_id: t.requester_id, code: t.code, title: t.title }));
     },
     async create(input, key) {
@@ -96,13 +96,13 @@ export function createFakeTickets(agora: Date): FakeTickets {
         code: `${input.type === 'incident' ? 'INC' : 'REQ'}-${seq++}`,
         status: 'open',
         assignee_name: null,
-        due_at: computeDeadline(input.priority, agora).due_at.toISOString(),
-        last_update_at: agora.toISOString(),
+        due_at: computeDeadline(input.priority, now).due_at.toISOString(),
+        last_update_at: now.toISOString(),
         resolved_at: null,
-        created_at: agora.toISOString(),
+        created_at: now.toISOString(),
       };
       tickets.push(t);
-      registrar(t.code, 'created', 'Chamado aberto');
+      recordEvent(t.code, 'created', 'Chamado aberto');
       return t;
       });
     },
@@ -110,8 +110,8 @@ export function createFakeTickets(agora: Date): FakeTickets {
       guard('update');
       return once(key, async () => {
         const t = await fake.get(code, input.requester_id);
-        t.last_update_at = agora.toISOString();
-        registrar(code, 'comment', input.comment);
+        t.last_update_at = now.toISOString();
+        recordEvent(code, 'comment', input.comment);
         return t;
       });
     },
@@ -119,10 +119,10 @@ export function createFakeTickets(agora: Date): FakeTickets {
       guard('reopen');
       return once(key, async () => {
         const t = await fake.get(code, requesterId);
-        if (!canReopen(t, agora).ok) throw new TicketsRejectedError('reopen_window_expired', 'Fora da janela', 422);
+        if (!canReopen(t, now).ok) throw new TicketsRejectedError('reopen_window_expired', 'Fora da janela', 422);
         t.status = 'open';
         t.resolved_at = null;
-        registrar(code, 'reopened', 'Reaberto pelo funcionário');
+        recordEvent(code, 'reopened', 'Reaberto pelo funcionário');
         return t;
       });
     },
@@ -130,7 +130,7 @@ export function createFakeTickets(agora: Date): FakeTickets {
       guard('transfer');
       const t = await fake.get(code, input.requester_id);
       t.status = 'awaiting_analyst';
-      registrar(code, 'transferred', input.summary);
+      recordEvent(code, 'transferred', input.summary);
       return t;
     },
     breakerState: () => 'closed',

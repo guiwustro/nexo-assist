@@ -30,7 +30,7 @@ const data: EmployeeTicketsData = {
   closed: 0,
 };
 
-function renderPainel() {
+function renderPanel() {
   return render(
     <EmployeeTickets
       employeeId={ANA}
@@ -66,7 +66,7 @@ describe('EmployeeTickets (painel do console)', () => {
         { status: 200 },
       ),
     );
-    renderPainel();
+    renderPanel();
     fireEvent.click(screen.getByRole('button', { name: /Notebook lento ao abrir o ERP/ }));
     expect(fetchSpy.mock.calls[0]?.[0]).toBe(`/api/v1/employees/${ANA}/tickets/INC-20298`);
     expect(await screen.findByText('Continua lento hoje')).toBeTruthy();
@@ -81,7 +81,7 @@ describe('EmployeeTickets (painel do console)', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ error: { code: 'tickets_unavailable', message: 'fora' } }), { status: 503 }),
     );
-    renderPainel();
+    renderPanel();
     fireEvent.click(screen.getByRole('button', { name: /Notebook lento ao abrir o ERP/ }));
     expect(await screen.findByTestId('ticket-detail-error')).toBeTruthy();
   });

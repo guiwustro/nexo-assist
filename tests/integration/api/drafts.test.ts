@@ -22,10 +22,10 @@ let fake: FakeTickets;
 const ana = (): Session => ({ user_id: t.seed.users.ana.id, role: 'employee', name: 'Ana Souza', sid: 'sid-ana' });
 
 beforeEach(() => {
-  fake = createFakeTickets(t.agora);
+  fake = createFakeTickets(t.now);
   setTicketsClient(fake);
   process.env.E2E = 'true';
-  process.env.NOW_OVERRIDE = t.agora.toISOString();
+  process.env.NOW_OVERRIDE = t.now.toISOString();
   resetEnvCache();
 });
 afterAll(async () => {
@@ -46,10 +46,10 @@ const payload = (): DraftPayload => ({
   deadline_today: true,
   priority: 'high',
   priority_rule: 'Alta: …',
-  due_at: computeDeadline('high', t.agora).due_at.toISOString(),
+  due_at: computeDeadline('high', t.now).due_at.toISOString(),
 });
 
-async function draftDa(employeeId: string) {
+async function draftFor(employeeId: string) {
   const conv = await getOrCreateCurrent(employeeId, 'sid');
   const d = await createDraft({ conversation_id: conv.id, agent_run_id: null, kind: 'create', target_ticket_code: null, payload: payload() });
   await appendMessage(getDb(), {
@@ -66,8 +66,8 @@ type Confirmed = { data: { draft: { status: string; result_ticket_code: string }
 
 describe('rascunhos', () => {
   it('duas confirmações ao mesmo tempo criam um único chamado', async () => {
-    const d = await draftDa(t.seed.users.ana.id);
-    const antes = fake.tickets.length;
+    const d = await draftFor(t.seed.users.ana.id);
+    const before = fake.tickets.length;
     const [a, b] = await Promise.all([
       call(confirm, { session: ana(), method: 'POST', params: { id: d.id } }),
       call(confirm, { session: ana(), method: 'POST', params: { id: d.id } }),
@@ -78,7 +78,7 @@ describe('rascunhos', () => {
     const cb = (await json<Confirmed>(b)).data.ticket.code;
     expect(ca).toMatch(/^INC-205\d\d$/);
     expect(cb).toBe(ca);
-    expect(fake.tickets.length).toBe(antes + 1);
+    expect(fake.tickets.length).toBe(before + 1);
     const sys = await t.db
       .select()
       .from(messages)
@@ -90,10 +90,10 @@ describe('rascunhos', () => {
   });
 
   it('sistema fora: 503 e o rascunho continua pendente; depois confirma', async () => {
-    const d = await draftDa(t.seed.users.ana.id);
+    const d = await draftFor(t.seed.users.ana.id);
     fake.down = true;
-    const fora = await call(confirm, { session: ana(), method: 'POST', params: { id: d.id } });
-    expect(fora.status).toBe(503);
+    const onOutsideClick = await call(confirm, { session: ana(), method: 'POST', params: { id: d.id } });
+    expect(onOutsideClick.status).toBe(503);
     const [row] = await t.db.select().from(ticketDrafts).where(eq(ticketDrafts.id, d.id));
     expect(row?.status).toBe('pending');
     fake.down = false;
@@ -102,8 +102,8 @@ describe('rascunhos', () => {
   });
 
   it('confirmação com a resposta perdida: editar é recusado e confirmar de novo devolve o mesmo chamado', async () => {
-    const d = await draftDa(t.seed.users.ana.id);
-    const antes = fake.tickets.length;
+    const d = await draftFor(t.seed.users.ana.id);
+    const before = fake.tickets.length;
     fake.loseResponses = true;
     expect((await call(confirm, { session: ana(), method: 'POST', params: { id: d.id } })).status).toBe(503);
     fake.loseResponses = false;
@@ -117,11 +117,11 @@ describe('rascunhos', () => {
 
     const ok = await call(confirm, { session: ana(), method: 'POST', params: { id: d.id } });
     expect(ok.status).toBe(200);
-    expect(fake.tickets.length).toBe(antes + 1);
+    expect(fake.tickets.length).toBe(before + 1);
   });
 
   it('antes de qualquer envio o rascunho continua editável', async () => {
-    const d = await draftDa(t.seed.users.ana.id);
+    const d = await draftFor(t.seed.users.ana.id);
     const edit = await call(patchDraft, { session: ana(), method: 'PATCH', params: { id: d.id }, body: { title: 'Outro título' } });
     expect(edit.status).toBe(200);
   });
@@ -141,12 +141,12 @@ describe('rascunhos', () => {
   });
 
   it('Ana não confirma rascunho da Carla', async () => {
-    const d = await draftDa(t.seed.users.carla.id);
+    const d = await draftFor(t.seed.users.carla.id);
     expect((await call(confirm, { session: ana(), method: 'POST', params: { id: d.id } })).status).toBe(404);
   });
 
   it('editar afetados para a equipe com bloqueio recalcula para Crítica (+1 h)', async () => {
-    const d = await draftDa(t.seed.users.ana.id);
+    const d = await draftFor(t.seed.users.ana.id);
     const res = await call(patchDraft, {
       session: ana(),
       method: 'PATCH',
@@ -156,18 +156,18 @@ describe('rascunhos', () => {
     expect(res.status).toBe(200);
     const { data } = await json<{ data: { payload: DraftPayload } }>(res);
     expect(data.payload.priority).toBe('critical');
-    expect(data.payload.due_at).toBe(new Date(t.agora.getTime() + 3600_000).toISOString());
+    expect(data.payload.due_at).toBe(new Date(t.now.getTime() + 3600_000).toISOString());
   });
 
   it('não dá para mudar a prioridade direto', async () => {
-    const d = await draftDa(t.seed.users.ana.id);
+    const d = await draftFor(t.seed.users.ana.id);
     const res = await call(patchDraft, { session: ana(), method: 'PATCH', params: { id: d.id }, body: { priority: 'low' } });
     const { data } = await json<{ data: { payload: DraftPayload } }>(res);
     expect(data.payload.priority).toBe('high');
   });
 
   it('cancelar marca cancelado e impede confirmar', async () => {
-    const d = await draftDa(t.seed.users.ana.id);
+    const d = await draftFor(t.seed.users.ana.id);
     expect((await call(cancel, { session: ana(), method: 'POST', params: { id: d.id } })).status).toBe(200);
     const res = await call(confirm, { session: ana(), method: 'POST', params: { id: d.id } });
     expect(res.status).toBe(409);

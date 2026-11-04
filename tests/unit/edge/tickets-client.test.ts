@@ -32,11 +32,11 @@ const json = (status: number, body: unknown, headers: Record<string, string> = {
 const unavailable = () => json(503, { error: { code: 'tickets_unavailable', message: 'fora' } });
 
 /** fetch falso que devolve as respostas em ordem e registra as chamadas. */
-function fakeFetch(...respostas: Array<() => Response | Promise<Response>>) {
+function fakeFetch(...answers: Array<() => Response | Promise<Response>>) {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const fn = vi.fn(async (url: string | URL | Request, init: RequestInit = {}) => {
     calls.push({ url: String(url), init });
-    const r = respostas[Math.min(calls.length - 1, respostas.length - 1)];
+    const r = answers[Math.min(calls.length - 1, answers.length - 1)];
     return r!();
   });
   return { fetch: fn as unknown as typeof fetch, calls };
@@ -70,22 +70,22 @@ describe('createTicketsClient', () => {
 
   it('422 → TicketsRejectedError com o código, sem nova tentativa', async () => {
     const { fetch, calls } = fakeFetch(() => json(422, { error: { code: 'reopen_window_expired', message: 'x' } }));
-    const erro = await client(fetch)
+    const error = await client(fetch)
       .reopen('INC-19877', REQ, 'k')
       .catch((e: unknown) => e);
-    expect(erro).toBeInstanceOf(TicketsRejectedError);
-    expect((erro as TicketsRejectedError).code).toBe('reopen_window_expired');
+    expect(error).toBeInstanceOf(TicketsRejectedError);
+    expect((error as TicketsRejectedError).code).toBe('reopen_window_expired');
     expect(calls).toHaveLength(1);
   });
 
   it('timeout → TicketsTransportError', async () => {
-    const nunca = vi.fn(
+    const neverResolves = vi.fn(
       (_url: string | URL | Request, init: RequestInit = {}) =>
         new Promise<Response>((_resolve, reject) => {
           init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
         }),
     );
-    const c = client(nunca as unknown as typeof fetch, { timeoutMs: 20, retries: 0 });
+    const c = client(neverResolves as unknown as typeof fetch, { timeoutMs: 20, retries: 0 });
     await expect(c.listByRequester(REQ)).rejects.toBeInstanceOf(TicketsTransportError);
   });
 
@@ -131,9 +131,9 @@ describe('createTicketsClient', () => {
     const c = client(fetch, { retries: 0, breaker });
     for (let i = 0; i < 3; i++) await c.listByRequester(REQ).catch(() => null);
     expect(c.breakerState()).toBe('open');
-    const antes = calls.length;
+    const before = calls.length;
     await expect(c.listByRequester(REQ)).rejects.toBeInstanceOf(TicketsTransportError);
-    expect(calls.length).toBe(antes);
+    expect(calls.length).toBe(before);
   });
 
   it('404 não conta como falha para o disjuntor', async () => {

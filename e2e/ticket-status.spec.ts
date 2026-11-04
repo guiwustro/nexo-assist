@@ -1,9 +1,9 @@
 import { expect, test } from './fixtures';
-import { enviar, ultimaResposta } from './helpers';
+import { send, lastAgentReply } from './helpers';
 
 test('Ana consulta o chamado sem lembrar o número e vê que está vencido', async ({ page, loginAs }) => {
   await loginAs(page, 'ana');
-  await enviar(page, 'qual o status do meu chamado?');
+  await send(page, 'qual o status do meu chamado?');
   const sel = page.getByTestId('ticket-selector');
   await expect(sel).toContainText('INC-20311');
   await expect(sel).toContainText('Aguardando analista');
@@ -14,7 +14,7 @@ test('Ana consulta o chamado sem lembrar o número e vê que está vencido', asy
 
   await sel.getByTestId('ticket-option-INC-20311').click();
   await expect(page.getByTestId('user-message').last()).toContainText('INC-20311 · Notebook lento após atualização');
-  const r = ultimaResposta(page);
+  const r = lastAgentReply(page);
   await expect(r.getByTestId('status-line')).toContainText('consultou o INC-20311');
   await expect(r.getByTestId('status-line')).toContainText('calculou o prazo');
   const card = r.getByTestId('ticket-card');

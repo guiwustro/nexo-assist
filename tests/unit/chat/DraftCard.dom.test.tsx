@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { DraftCard } from '@/components/chat/DraftCard';
 import type { DraftCardPart } from '@/lib/contracts/parts';
 
-const agora = new Date('2026-11-03T13:00:00.000Z');
+const now = new Date('2026-11-03T13:00:00.000Z');
 const part: DraftCardPart = {
   kind: 'draft_card',
   draft_id: '00000000-0000-4000-8000-0000000000d1',
@@ -27,7 +27,7 @@ const part: DraftCardPart = {
 };
 
 function setup(onConfirm = vi.fn(() => new Promise<void>(() => {}))) {
-  render(<DraftCard part={part} now={agora} onConfirm={onConfirm} onCancel={vi.fn()} onSave={vi.fn()} keyboard />);
+  render(<DraftCard part={part} now={now} onConfirm={onConfirm} onCancel={vi.fn()} onSave={vi.fn()} keyboard />);
   return onConfirm;
 }
 
@@ -65,7 +65,7 @@ describe('DraftCard', () => {
     render(
       <DraftCard
         part={{ ...part, status: 'confirmed', result_ticket_code: 'INC-20520' }}
-        now={agora}
+        now={now}
         onConfirm={vi.fn()}
         onCancel={vi.fn()}
         onSave={vi.fn()}
@@ -77,17 +77,17 @@ describe('DraftCard', () => {
 
   it('na edição, o tipo tem rótulo próprio e "impede de trabalhar" e "compromisso hoje" podem mudar', async () => {
     const onSave = vi.fn();
-    render(<DraftCard part={part} now={agora} onConfirm={vi.fn()} onCancel={vi.fn()} onSave={onSave} />);
+    render(<DraftCard part={part} now={now} onConfirm={vi.fn()} onCancel={vi.fn()} onSave={onSave} />);
     fireEvent.click(screen.getByTestId('draft-edit'));
 
     expect(screen.getByLabelText('Tipo')).toBe(screen.getByTestId('draft-field-type'));
-    const bloqueia = screen.getByLabelText('Impede de trabalhar');
-    const hoje = screen.getByLabelText('Compromisso hoje');
-    expect(bloqueia).toBeChecked();
-    expect(hoje).toBeChecked();
+    const blocks = screen.getByLabelText('Impede de trabalhar');
+    const today = screen.getByLabelText('Compromisso hoje');
+    expect(blocks).toBeChecked();
+    expect(today).toBeChecked();
 
-    fireEvent.click(bloqueia);
-    fireEvent.click(hoje);
+    fireEvent.click(blocks);
+    fireEvent.click(today);
     await act(async () => {
       fireEvent.click(screen.getByTestId('draft-save'));
     });
@@ -96,7 +96,7 @@ describe('DraftCard', () => {
 
   it('depois de uma confirmação que falhou não oferece editar (o rascunho pode já ter chegado ao sistema)', () => {
     render(
-      <DraftCard part={part} now={agora} onConfirm={vi.fn()} onCancel={vi.fn()} onSave={vi.fn()} error="Sistema fora do ar" />,
+      <DraftCard part={part} now={now} onConfirm={vi.fn()} onCancel={vi.fn()} onSave={vi.fn()} error="Sistema fora do ar" />,
     );
     expect(screen.getByTestId('draft-confirm')).toHaveTextContent('Tentar de novo');
     expect(screen.queryByTestId('draft-edit')).toBeNull();
