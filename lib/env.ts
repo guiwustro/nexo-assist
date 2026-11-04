@@ -50,12 +50,22 @@ const EnvSchema = z
 
 export type Env = z.infer<typeof EnvSchema>;
 
+/** O segredo público do `.env.example`: cookies assinados com ele podem ser forjados por qualquer um. */
+const SEGREDO_DE_EXEMPLO = 'troque-este-segredo-por-algo-com-32-caracteres';
+
 export function parseEnv(raw: Record<string, string | undefined>): Env {
   const limpo = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined && v !== ''));
   const parsed = EnvSchema.safeParse(limpo);
   if (!parsed.success) {
     const detail = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
     throw new Error(`Variáveis de ambiente inválidas — ${detail}`);
+  }
+  // Não recusa: o perfil "full" do compose roda em produção com o .env de exemplo, para avaliar localmente.
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.SESSION_SECRET === SEGREDO_DE_EXEMPLO) {
+    console.warn(
+      '[env] ATENÇÃO: SESSION_SECRET é o valor de exemplo do .env.example; qualquer um pode forjar sessões. ' +
+        'Gere outro com `openssl rand -base64 48` antes de expor o app.',
+    );
   }
   return parsed.data;
 }

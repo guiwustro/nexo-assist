@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
 import { parseEnv } from '@/lib/env';
 
 const base = {
@@ -25,6 +26,21 @@ describe('parseEnv', () => {
 
   it('rejeita SESSION_SECRET curto', () => {
     expect(() => parseEnv({ ...base, LLM_PROVIDER: 'scripted', SESSION_SECRET: 'x' })).toThrow();
+  });
+
+  it('avisa (sem recusar) quando produção usa o SESSION_SECRET público do .env.example', () => {
+    const exemplo = /^SESSION_SECRET=(.+)$/m.exec(readFileSync('.env.example', 'utf8'))![1]!;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      parseEnv({ ...base, NODE_ENV: 'production', SESSION_SECRET: exemplo });
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/SESSION_SECRET.*exemplo/));
+      warn.mockClear();
+      parseEnv({ ...base, NODE_ENV: 'development', SESSION_SECRET: exemplo });
+      parseEnv({ ...base, NODE_ENV: 'production' });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('converte números vindos como texto', () => {
