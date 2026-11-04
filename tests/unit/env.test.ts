@@ -46,6 +46,26 @@ describe('parseEnv: modelo', () => {
   });
 });
 
+describe('parseEnv: teto de gasto', () => {
+  it('teto sem os dois preços é erro: sem preço o custo não é medido e o teto nunca dispararia', () => {
+    expect(() => parseEnv({ ...base, LLM_PROVIDER: 'scripted', LLM_DAILY_BUDGET_CENTS: '500' })).toThrow(/LLM_PRICE/);
+    expect(() =>
+      parseEnv({ ...base, LLM_PROVIDER: 'scripted', LLM_DAILY_BUDGET_CENTS: '500', LLM_PRICE_IN_CENTS_PER_MTOK: '30' }),
+    ).toThrow(/LLM_PRICE_OUT/);
+  });
+
+  it('teto com os dois preços é aceito', () => {
+    const env = parseEnv({
+      ...base,
+      LLM_PROVIDER: 'scripted',
+      LLM_DAILY_BUDGET_CENTS: '500',
+      LLM_PRICE_IN_CENTS_PER_MTOK: '30',
+      LLM_PRICE_OUT_CENTS_PER_MTOK: '120',
+    });
+    expect(env.LLM_DAILY_BUDGET_CENTS).toBe(500);
+  });
+});
+
 describe('parseEnv com .env copiado do exemplo', () => {
   it('trata valores vazios como ausentes', () => {
     const env = parseEnv({ ...base, LLM_PROVIDER: 'scripted', DEEPSEEK_API_KEY: '', LLM_DAILY_BUDGET_CENTS: '' });

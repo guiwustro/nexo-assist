@@ -36,6 +36,14 @@ const EnvSchema = z
         message: 'DEEPSEEK_API_KEY é obrigatória quando LLM_PROVIDER=deepseek',
       });
     }
+    // Sem preço o custo não é medido (conta como 0) e o teto nunca dispararia: configuração inválida.
+    if (env.LLM_DAILY_BUDGET_CENTS !== undefined) {
+      for (const k of ['LLM_PRICE_IN_CENTS_PER_MTOK', 'LLM_PRICE_OUT_CENTS_PER_MTOK'] as const) {
+        if (env[k] === undefined) {
+          ctx.addIssue({ code: 'custom', path: [k], message: `${k} é obrigatório quando LLM_DAILY_BUDGET_CENTS está definido` });
+        }
+      }
+    }
   });
 
 export type Env = z.infer<typeof EnvSchema>;

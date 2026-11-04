@@ -52,6 +52,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   delete process.env.LLM_DAILY_BUDGET_CENTS;
+  delete process.env.LLM_PRICE_IN_CENTS_PER_MTOK;
+  delete process.env.LLM_PRICE_OUT_CENTS_PER_MTOK;
   delete process.env.RATE_LIMIT_PER_MINUTE;
   resetEnvCache();
   resetLimiters();
@@ -66,6 +68,8 @@ afterAll(async () => {
 describe('teto diário de gasto com o modelo', () => {
   it('acima do orçamento: não chama o modelo, transfere e avisa', async () => {
     process.env.LLM_DAILY_BUDGET_CENTS = '100';
+    process.env.LLM_PRICE_IN_CENTS_PER_MTOK = '30';
+    process.env.LLM_PRICE_OUT_CENTS_PER_MTOK = '120';
     resetEnvCache();
     await gastoDeHoje(120);
     const antes = await t.db.$count(llmCalls);
@@ -88,6 +92,8 @@ describe('teto diário de gasto com o modelo', () => {
 
   it('abaixo do orçamento: segue normal', async () => {
     process.env.LLM_DAILY_BUDGET_CENTS = '100';
+    process.env.LLM_PRICE_IN_CENTS_PER_MTOK = '30';
+    process.env.LLM_PRICE_OUT_CENTS_PER_MTOK = '120';
     resetEnvCache();
     await gastoDeHoje(40);
     const conv = await getOrCreateCurrent(ana().user_id, 'sid-b');
@@ -97,6 +103,8 @@ describe('teto diário de gasto com o modelo', () => {
 
   it('gasto de ontem não conta', async () => {
     process.env.LLM_DAILY_BUDGET_CENTS = '100';
+    process.env.LLM_PRICE_IN_CENTS_PER_MTOK = '30';
+    process.env.LLM_PRICE_OUT_CENTS_PER_MTOK = '120';
     resetEnvCache();
     await gastoDeHoje(500);
     await t.db.update(llmCalls).set({ created_at: new Date(t.agora.getTime() - 24 * 3600_000) });
