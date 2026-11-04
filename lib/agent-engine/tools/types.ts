@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 import type { TicketsClient } from '@/lib/agent-engine/edge/tickets/client';
-import type { Article } from '@/lib/agent-engine/conhecimento/busca';
+import type { Article } from '@/lib/agent-engine/knowledge/search';
 import type { ActionTrace } from '@/lib/contracts/decision';
 import type { MessagePart } from '@/lib/contracts/parts';
 

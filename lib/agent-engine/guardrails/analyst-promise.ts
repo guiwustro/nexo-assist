@@ -1,6 +1,6 @@
 import { normalize } from '@/lib/text/normalize';
 
-const PROMESSAS = [
+const PROMISE_PATTERNS = [
   /\b(vou|irei|vamos) (te |lhe |voce )?(transferir|passar|encaminhar)\b/,
   /\bum (analista|atendente|tecnico) (vai|ira) (entrar em contato|falar|te atender|assumir|continuar)/,
   /\b(encaminhei|transferi|passei|repassei) (voce |seu caso |o caso |sua conversa )?(para|pra) (o |a |um |uma )?(suporte|analista|atendente|equipe|n1|n2)/,
@@ -8,13 +8,13 @@ const PROMESSAS = [
 ];
 
 // Oferta condicional ("se preferir…", "caso continue…", "quer que eu…?") não é promessa: o funcionário decide.
-const CONDICIONAL = /\b(se|caso|quer que|prefere|preferir|posso)\b/;
+const CONDITIONAL_PATTERN = /\b(se|caso|quer que|prefere|preferir|posso)\b/;
 
 /** O texto afirma (não oferece) que um humano vai assumir. Avalia frase a frase; frase condicional ou pergunta não conta. */
-export function prometeuAnalista(texto: string): boolean {
-  const frases = normalize(texto).match(/[^.!?]+[.!?]*/g) ?? [];
-  return frases.some((f) => {
-    if (f.trim().endsWith('?') || CONDICIONAL.test(f)) return false;
-    return PROMESSAS.some((re) => re.test(f));
+export function promisedAnalyst(text: string): boolean {
+  const sentences = normalize(text).match(/[^.!?]+[.!?]*/g) ?? [];
+  return sentences.some((f) => {
+    if (f.trim().endsWith('?') || CONDITIONAL_PATTERN.test(f)) return false;
+    return PROMISE_PATTERNS.some((re) => re.test(f));
   });
 }

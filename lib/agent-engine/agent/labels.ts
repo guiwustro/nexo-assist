@@ -1,12 +1,12 @@
-const INDISPONIVEL = 'sistema de chamados indisponível';
+const UNAVAILABLE_LABEL = 'sistema de chamados indisponível';
 
 type Obj = Record<string, unknown> | null | undefined;
 const asObj = (v: unknown): Obj => (v && typeof v === 'object' ? (v as Record<string, unknown>) : null);
 
 /** Rótulos da status line (textos do protótipo). Saem das tool calls reais, nunca do texto do modelo. */
-export function rotulosPara(tool: string, input: unknown, output: unknown): string[] {
+export function labelsFor(tool: string, input: unknown, output: unknown): string[] {
   const out = asObj(output);
-  if (out?.error === 'tickets_unavailable') return [INDISPONIVEL];
+  if (out?.error === 'tickets_unavailable') return [UNAVAILABLE_LABEL];
   const inp = asObj(input);
   switch (tool) {
     case 'buscar_meus_chamados':

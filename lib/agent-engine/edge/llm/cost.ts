@@ -1,9 +1,9 @@
 /** Custo em centavos de dólar. Preço desconhecido → null (nunca 0: "não medido" ≠ "de graça"). */
-export function custoEmCentavos(
+export function costInCents(
   usage: { input_tokens: number; output_tokens: number },
-  precos: { in?: number; out?: number },
+  prices: { in?: number; out?: number },
 ): number | null {
-  if (precos.in === undefined || precos.out === undefined) return null;
-  const c = (usage.input_tokens * precos.in + usage.output_tokens * precos.out) / 1_000_000;
+  if (prices.in === undefined || prices.out === undefined) return null;
+  const c = (usage.input_tokens * prices.in + usage.output_tokens * prices.out) / 1_000_000;
   return Math.round(c * 10_000) / 10_000;
 }

@@ -40,14 +40,14 @@ export function decisionPrompt(i: {
   /** Cards mostrados ao funcionário (o texto da resposta não os repete). */
   cards?: string[];
 }): string {
-  const acoes = i.actions.length
+  const actionsText = i.actions.length
     ? i.actions.map((a) => `- ${a.label} (${a.tool}): ${a.result} · ${a.summary}`).join('\n')
     : '- nenhuma ferramenta usada';
   return [
     'Registre a decisão deste turno do Nexo Assist, em JSON no formato pedido.',
     'Use as palavras do funcionário como evidência (trecho literal, sem parafrasear).',
     `${DECISION_OPEN}${i.employee_text}${DECISION_CLOSE}`,
-    `Ações executadas:\n${acoes}`,
+    `Ações executadas:\n${actionsText}`,
     `Resposta enviada ao funcionário:\n${i.answer_text}`,
     `Cards mostrados junto com a resposta:\n${i.cards?.length ? i.cards.map((c) => `- ${c}`).join('\n') : '- nenhum'}`,
   ].join('\n\n');

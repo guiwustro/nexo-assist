@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { createTool } from '@mastra/core/tools';
 import type { RequestContext } from '@mastra/core/request-context';
 import { TicketsRejectedError, TicketsTransportError } from '@/lib/agent-engine/edge/tickets/errors';
-import { rotulosPara } from '@/lib/agent-engine/agent/rotulos';
+import { labelsFor } from '@/lib/agent-engine/agent/labels';
 import type { ActionTrace } from '@/lib/contracts/decision';
 import { buscarArtigosTool } from './buscar-artigos';
 import { buscarMeusChamados } from './buscar-meus-chamados';
@@ -37,7 +37,7 @@ export async function runTool(ctx: ToolCtx, name: ToolName, rawInput: unknown): 
   const id = randomUUID();
   const t0 = Date.now();
   // Enquanto roda, só o primeiro rótulo aparece (com spinner); o resultado traz os definitivos.
-  const running = rotulosPara(name, input, undefined).slice(0, 1);
+  const running = labelsFor(name, input, undefined).slice(0, 1);
   const emit = (labels: string[], result: ActionTrace['result'], summary: string) =>
     labels.forEach((label, i) =>
       ctx.emitAction({ id: `${id}:${i}`, label, tool: name, result, duration_ms: Date.now() - t0, summary }),
@@ -59,7 +59,7 @@ export async function runTool(ctx: ToolCtx, name: ToolName, rawInput: unknown): 
     ctx.retry.current = null;
   }
   const err = (output as { error?: string } | null)?.error;
-  const finais = rotulosPara(name, input, output);
+  const finais = labelsFor(name, input, output);
   // Se o rótulo final mudou (ex.: "sistema indisponível"), os ids de "running" são reaproveitados.
   emit(
     finais,

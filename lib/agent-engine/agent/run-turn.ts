@@ -16,14 +16,14 @@ import { Conflict } from '@/lib/api/errors';
 import { getTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import { getModel } from '@/lib/agent-engine/edge/llm/provider';
 import { recordLlmCall } from '@/lib/agent-engine/edge/llm/record';
-import { avaliarGatilhos, pediuAnalista } from '@/lib/agent-engine/gatilhos/transferencia';
-import { ajustarConfianca } from '@/lib/agent-engine/guardrails/confianca';
-import { afirmouCriacao } from '@/lib/agent-engine/guardrails/acao-alucinada';
-import { prometeuAnalista } from '@/lib/agent-engine/guardrails/promessa-analista';
+import { evaluateTriggers, askedForAnalyst } from '@/lib/agent-engine/triggers/transfer';
+import { adjustConfidence } from '@/lib/agent-engine/guardrails/confidence';
+import { claimsCreation } from '@/lib/agent-engine/guardrails/hallucinated-action';
+import { promisedAnalyst } from '@/lib/agent-engine/guardrails/analyst-promise';
 import { TOOL_CTX_KEY, type ToolCtx } from '@/lib/agent-engine/tools';
 import type { TurnSignals } from '@/lib/agent-engine/tools/types';
-import type { Article } from '@/lib/agent-engine/conhecimento/busca';
-import { declararDecisao } from './decisao';
+import type { Article } from '@/lib/agent-engine/knowledge/search';
+import { declareDecision } from './decision';
 import { summarizeParts } from '@/lib/conversations/parts-summary';
 import { createNexoAgent } from './nexo-agent';
 
@@ -32,11 +32,11 @@ export type TurnWriter = UIMessageStreamWriter<NexoUIMessage>;
 
 type Input = { conversation_id: string; employee: Session; text: string; writer: TurnWriter; now?: Date };
 
-const GUARD_PROMESSA = 'Guardrail: o agent prometeu um analista, transferência executada';
-const GUARD_CRIACAO = 'Guardrail: o agent disse que criou o chamado, mas só a confirmação cria — aviso mostrado';
-export const AVISO_NAO_CRIADO = 'O chamado ainda não foi criado — confira o rascunho e confirme.';
-const ACAO_DO_RASCUNHO = { create: 'draft_create', update: 'draft_update', reopen: 'reopen' } as const;
-export const AVISO_ORCAMENTO = 'O assistente atingiu o limite de uso de hoje';
+const PROMISE_GUARD = 'Guardrail: o agent prometeu um analista, transferência executada';
+const CREATION_GUARD = 'Guardrail: o agent disse que criou o chamado, mas só a confirmação cria — aviso mostrado';
+export const NOT_CREATED_NOTICE = 'O chamado ainda não foi criado — confira o rascunho e confirme.';
+const DRAFT_ACTION = { create: 'draft_create', update: 'draft_update', reopen: 'reopen' } as const;
+export const BUDGET_NOTICE = 'O assistente atingiu o limite de uso de hoje';
 
 function system(writer: TurnWriter, data: NexoDataParts['system']) {
   writer.write({ type: 'data-system', id: `sys-${crypto.randomUUID()}`, data });
@@ -48,7 +48,7 @@ async function loadArticles(): Promise<Article[]> {
 }
 
 /** Turno sem modelo (transferência determinística): fica registrado com decisão de regra e custo zero. */
-async function turnoDeRegra(
+async function ruleBasedTurn(
   i: Input,
   inboundId: string,
   answer: string,
@@ -103,7 +103,7 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
 
   // 2. Limite da sessão.
   if (reg.reached_limit) {
-    const run_id = await turnoDeRegra(
+    const run_id = await ruleBasedTurn(
       i,
       reg.message.id,
       `Você chegou ao limite de ${limit} mensagens desta sessão. Transferi para um analista, que continua daqui com todo o histórico.`,
@@ -125,7 +125,7 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         reason_code: 'session_limit',
         level: 'N1',
         employee_words: i.text,
-        ...(await casoSemModelo(`A sessão chegou a ${limit} mensagens sem resolver.`, reg.conversation, run_id)),
+        ...(await caseWithoutModel(`A sessão chegou a ${limit} mensagens sem resolver.`, reg.conversation, run_id)),
       },
       now,
     );
@@ -134,8 +134,8 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
   }
 
   // 3. Pedido explícito de pessoa: regra, sem modelo.
-  if (pediuAnalista(i.text)) {
-    const run_id = await turnoDeRegra(
+  if (askedForAnalyst(i.text)) {
+    const run_id = await ruleBasedTurn(
       i,
       reg.message.id,
       'Certo, transferi para um analista. Ele vai continuar este atendimento por aqui.',
@@ -150,18 +150,18 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         },
       },
     );
-    const foco = await chamadoEmFoco(reg.conversation.focus_ticket_code, i.employee.user_id, 'N1');
+    const focusTicket = await getFocusTicket(reg.conversation.focus_ticket_code, i.employee.user_id, 'N1');
     await createHandoff(
       {
         conversation_id: i.conversation_id,
-        ticket_code: foco?.code ?? null,
-        ticket_priority: foco?.priority,
+        ticket_code: focusTicket?.code ?? null,
+        ticket_priority: focusTicket?.priority,
         origin: 'explicit_request',
         reason_code: 'requested_human',
         level: 'N1',
         employee_words: i.text,
-        agent_reading: foco
-          ? `Pediu um analista; o chamado em foco é o ${foco.code} (${foco.title}).`
+        agent_reading: focusTicket
+          ? `Pediu um analista; o chamado em foco é o ${focusTicket.code} (${focusTicket.title}).`
           : 'Pediu um analista; leia o histórico da conversa.',
         attempts: [],
       },
@@ -172,12 +172,12 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
   }
 
   // 4. Teto diário de gasto: acima dele o modelo não é chamado e um analista continua.
-  const teto = env.LLM_DAILY_BUDGET_CENTS;
-  if (teto !== undefined && (await gastoDoDia(now)) >= teto) {
-    const run_id = await turnoDeRegra(
+  const cap = env.LLM_DAILY_BUDGET_CENTS;
+  if (cap !== undefined && (await dailySpend(now)) >= cap) {
+    const run_id = await ruleBasedTurn(
       i,
       reg.message.id,
-      `${AVISO_ORCAMENTO}. Transferi para um analista, que continua daqui com todo o histórico.`,
+      `${BUDGET_NOTICE}. Transferi para um analista, que continua daqui com todo o histórico.`,
       {
         understanding: { intent: 'other', summary: 'O assistente atingiu o teto diário de uso', evidence: i.text },
         decision: {
@@ -196,11 +196,11 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         reason_code: 'budget_exceeded',
         level: 'N1',
         employee_words: i.text,
-        ...(await casoSemModelo('O assistente atingiu o limite de uso de hoje e não leu esta mensagem.', reg.conversation, run_id)),
+        ...(await caseWithoutModel('O assistente atingiu o limite de uso de hoje e não leu esta mensagem.', reg.conversation, run_id)),
       },
       now,
     );
-    system(i.writer, { kind: 'budget', text: AVISO_ORCAMENTO });
+    system(i.writer, { kind: 'budget', text: BUDGET_NOTICE });
     return { run_id, outcome: 'transferred' };
   }
 
@@ -275,7 +275,7 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
       usage = { in: u.inputTokens ?? 0, out: u.outputTokens ?? 0, cached: u.cachedInputTokens ?? 0 };
     } catch (e) {
       failed = e instanceof Error ? e.message : String(e);
-      console.error('[runTurn] falha no modelo', e);
+      console.error('[runTurn] model call failed', e);
     }
     if (!answer.trim()) {
       writeText(
@@ -312,7 +312,7 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
     // 6. Decisão declarada (ausente ≠ vazia) + ajustes determinísticos.
     let decision = failed
       ? null
-      : await declararDecisao({
+      : await declareDecision({
           employee_text: i.text,
           actions: actionList,
           answer_text: answer,
@@ -323,40 +323,40 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
     if (decision) {
       // Fontes saem das tools de verdade, não do que o modelo disse que consultou. Uma fonte citada que uma tool
       // retornou num turno anterior desta conversa também vale (ex.: "Windows 10" respondido com o artigo já buscado).
-      const anteriores = await fontesJaVerificadas(i.conversation_id, run_id);
+      const previous = await previouslyVerifiedSources(i.conversation_id, run_id);
       const sources = dedupe([
         ...turn.sources,
-        ...decision.decision.sources.filter((s) => anteriores.has(`${s.kind}:${s.id}`)),
+        ...decision.decision.sources.filter((s) => previous.has(`${s.kind}:${s.id}`)),
       ]);
-      const declarada = decision.decision.confidence;
-      const ajustada = ajustarConfianca(declarada, {
+      const declared = decision.decision.confidence;
+      const adjusted = adjustConfidence(declared, {
         intent: decision.understanding.intent,
         sources_count: sources.length,
         action: decision.decision.action,
-      }) ?? declarada;
+      }) ?? declared;
       const rules = [...decision.decision.rules_applied];
-      if (ajustada < declarada) rules.push('Confiança ajustada: dúvida respondida sem fonte na central (máximo 50%)');
+      if (adjusted < declared) rules.push('Confiança ajustada: dúvida respondida sem fonte na central (máximo 50%)');
       // A ação também sai do que a tool fez: transferir vence (o agent fica pausado); senão, um rascunho montado
       // define se foi criação, atualização ou reabertura.
       const action = turn.handoff_created
         ? 'transfer'
         : turn.draft_kind
-          ? ACAO_DO_RASCUNHO[turn.draft_kind]
+          ? DRAFT_ACTION[turn.draft_kind]
           : decision.decision.action;
-      decision = { ...decision, decision: { ...decision.decision, action, confidence: ajustada, sources, rules_applied: rules } };
+      decision = { ...decision, decision: { ...decision.decision, action, confidence: adjusted, sources, rules_applied: rules } };
     }
 
     // 7. Pós-turno: só se a conversa continua com o agent (o analista pode ter assumido durante o stream).
     let outcome: TurnOutcome = failed ? 'failed' : 'answered';
-    const atual = await getConversation(db, i.conversation_id);
+    const current = await getConversation(db, i.conversation_id);
     const rules: string[] = [];
     if (turn.handoff_created) {
       outcome = 'transferred';
-    } else if (atual?.status !== 'ai_handling') {
+    } else if (current?.status !== 'ai_handling') {
       outcome = 'paused';
     } else if (!failed) {
-      const g = avaliarGatilhos({
-        texto_funcionario: i.text,
+      const g = evaluateTriggers({
+        employee_text: i.text,
         confidence: decision?.decision.confidence ?? null,
         draft_priority: turn.draft_priority,
         overdue_ticket_code: turn.overdue_ticket_code,
@@ -365,7 +365,7 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         threshold: env.LOW_CONFIDENCE_THRESHOLD,
       });
       if ('transfer' in g && g.transfer) {
-        const transferiu = await transferirSeComAgent(
+        const transferred = await transferIfWithAgent(
           {
             conversation_id: i.conversation_id,
             ticket_code: turn.overdue_ticket_code ?? null,
@@ -380,15 +380,15 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
           },
           now,
         );
-        if (transferiu) {
-          rules.push(g.regra);
+        if (transferred) {
+          rules.push(g.rule);
           system(i.writer, { kind: 'transferred', text: 'Transferida para um analista' });
           outcome = 'transferred';
         } else outcome = 'paused';
       } else {
-        if ('offer' in g) rules.push(g.regra);
-        if (prometeuAnalista(answer)) {
-          const transferiu = await transferirSeComAgent(
+        if ('offer' in g) rules.push(g.rule);
+        if (promisedAnalyst(answer)) {
+          const transferred = await transferIfWithAgent(
             {
               conversation_id: i.conversation_id,
               origin: 'guardrail',
@@ -401,24 +401,24 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
             },
             now,
           );
-          if (transferiu) {
-            rules.push(GUARD_PROMESSA);
+          if (transferred) {
+            rules.push(PROMISE_GUARD);
             system(i.writer, { kind: 'guardrail', text: 'Transferida para um analista' });
             outcome = 'transferred';
           } else outcome = 'paused';
         }
       }
-      if (afirmouCriacao(answer)) {
-        rules.push(GUARD_CRIACAO);
+      if (claimsCreation(answer)) {
+        rules.push(CREATION_GUARD);
         await appendMessage(db, {
           conversation_id: i.conversation_id,
           direction: 'outbound',
           type: 'system',
           sent_via: 'system',
-          body: AVISO_NAO_CRIADO,
+          body: NOT_CREATED_NOTICE,
           agent_run_id: run_id,
         });
-        system(i.writer, { kind: 'guardrail', text: AVISO_NAO_CRIADO });
+        system(i.writer, { kind: 'guardrail', text: NOT_CREATED_NOTICE });
       }
     }
     if (decision && rules.length) {
@@ -458,7 +458,7 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         completed_at: new Date(),
       })
       .where(and(eq(aiAgentRuns.id, run_id), eq(aiAgentRuns.status, 'running')))
-      .catch((err: unknown) => console.error('[runTurn] não consegui fechar o run', err));
+      .catch((err: unknown) => console.error('[runTurn] could not close the run', err));
     throw e;
   }
 }
@@ -467,7 +467,7 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
  * Passagem pós-turno. Se o analista assumiu entre a releitura do status e aqui, a transição falha: o turno só
  * termina pausado (a conversa já está com um humano), em vez de virar erro para o funcionário.
  */
-async function transferirSeComAgent(input: Parameters<typeof createHandoff>[0], now: Date): Promise<boolean> {
+async function transferIfWithAgent(input: Parameters<typeof createHandoff>[0], now: Date): Promise<boolean> {
   try {
     await createHandoff(input, now);
     return true;
@@ -478,41 +478,41 @@ async function transferirSeComAgent(input: Parameters<typeof createHandoff>[0], 
 }
 
 /** Leitura, tentativas e chamado em foco de uma passagem feita sem o modelo (limite da sessão, teto de gasto). */
-async function casoSemModelo(
-  motivo: string,
+async function caseWithoutModel(
+  matchReason: string,
   conv: { id: string; focus_ticket_code: string | null },
   runId: string,
 ): Promise<{ agent_reading: string; attempts: ActionTrace[]; ticket_code: string | null }> {
-  const caso = await resumoDoCaso(conv.id, runId);
-  const leitura = [
-    motivo,
-    caso.resumos.length ? `Assuntos dos últimos turnos: ${caso.resumos.map((r) => `"${r}"`).join('; ')}.` : '',
+  const caseInfo = await summarizeCase(conv.id, runId);
+  const reading = [
+    matchReason,
+    caseInfo.summaries.length ? `Assuntos dos últimos turnos: ${caseInfo.summaries.map((r) => `"${r}"`).join('; ')}.` : '',
     conv.focus_ticket_code ? `Chamado em foco: ${conv.focus_ticket_code}.` : '',
   ];
-  return { agent_reading: leitura.filter(Boolean).join(' '), attempts: caso.tentativas, ticket_code: conv.focus_ticket_code };
+  return { agent_reading: reading.filter(Boolean).join(' '), attempts: caseInfo.attempts, ticket_code: conv.focus_ticket_code };
 }
 
 /**
  * Resumo do caso para a passagem sem modelo: o que o agent entendeu nos últimos turnos e o que
  * ele já fez, a partir dos runs gravados. Sem chamada ao modelo, para não gastar token numa sessão já no limite.
  */
-async function resumoDoCaso(conversationId: string, exceptRunId: string): Promise<{ resumos: string[]; tentativas: ActionTrace[] }> {
+async function summarizeCase(conversationId: string, exceptRunId: string): Promise<{ summaries: string[]; attempts: ActionTrace[] }> {
   const runs = await getDb()
     .select({ decision: aiAgentRuns.decision, tool_calls: aiAgentRuns.tool_calls })
     .from(aiAgentRuns)
     .where(and(eq(aiAgentRuns.conversation_id, conversationId), ne(aiAgentRuns.id, exceptRunId), isNotNull(aiAgentRuns.decision)))
     .orderBy(desc(aiAgentRuns.started_at))
     .limit(5);
-  const resumos = [...new Set(runs.map((r) => r.decision!.understanding.summary))].slice(0, 3).reverse();
-  const vistas = new Set<string>();
-  const tentativas = runs
+  const summaries = [...new Set(runs.map((r) => r.decision!.understanding.summary))].slice(0, 3).reverse();
+  const seen = new Set<string>();
+  const attempts = runs
     .flatMap((r) => r.tool_calls)
-    .filter((a) => a.result !== 'running' && !vistas.has(a.label) && vistas.add(a.label));
-  return { resumos, tentativas };
+    .filter((a) => a.result !== 'running' && !seen.has(a.label) && seen.add(a.label));
+  return { summaries: summaries, attempts: attempts };
 }
 
 /** Chamado em foco da conversa (para a passagem levar o código e o prazo certo). Falha do legado não bloqueia. */
-async function chamadoEmFoco(
+async function getFocusTicket(
   code: string | null,
   employeeId: string,
   level: 'N1' | 'N2',
@@ -529,18 +529,18 @@ async function chamadoEmFoco(
 }
 
 /** Soma do custo das chamadas ao modelo no dia corrente de São Paulo (custo não medido conta como zero). */
-async function gastoDoDia(now: Date): Promise<number> {
+async function dailySpend(now: Date): Promise<number> {
   const sp = new TZDate(now.getTime(), 'America/Sao_Paulo');
-  const inicio = new TZDate(sp.getFullYear(), sp.getMonth(), sp.getDate(), 0, 0, 0, 'America/Sao_Paulo');
+  const start = new TZDate(sp.getFullYear(), sp.getMonth(), sp.getDate(), 0, 0, 0, 'America/Sao_Paulo');
   const [r] = await getDb()
     .select({ total: sql<string | null>`sum(${llmCalls.cost_cents})` })
     .from(llmCalls)
-    .where(gte(llmCalls.created_at, new Date(inicio.getTime())));
+    .where(gte(llmCalls.created_at, new Date(start.getTime())));
   return Number(r?.total ?? 0);
 }
 
 /** Fontes que já entraram em decisões anteriores da conversa (e portanto vieram de tools). */
-async function fontesJaVerificadas(conversationId: string, exceptRunId: string): Promise<Set<string>> {
+async function previouslyVerifiedSources(conversationId: string, exceptRunId: string): Promise<Set<string>> {
   const rows = await getDb()
     .select({ decision: aiAgentRuns.decision })
     .from(aiAgentRuns)

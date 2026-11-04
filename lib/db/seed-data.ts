@@ -1,4 +1,4 @@
-import type { Article } from '@/lib/agent-engine/conhecimento/busca';
+import type { Article } from '@/lib/agent-engine/knowledge/search';
 import type { Affected, Category, Priority, TicketStatus, TicketType } from '@/lib/contracts/enums';
 
 export type UserKey = 'ana' | 'carla' | 'bruno' | 'diego' | 'elisa' | 'fabio' | 'gabriela' | 'rafael' | 'juliana';

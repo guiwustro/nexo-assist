@@ -2,10 +2,10 @@ import type { TurnDecision } from '@/lib/contracts/decision';
 import type { Script, StepCtx } from './scripted-model';
 
 /** Algum resultado de tool disse que o sistema de chamados caiu? */
-const caiu = (c: StepCtx) =>
+const isDown = (c: StepCtx) =>
   c.results.some((r) => (r.output as { error?: string } | null)?.error === 'tickets_unavailable');
 
-const FORA_DO_AR =
+const TICKETS_DOWN_MESSAGE =
   'O sistema de chamados está fora do ar agora e não consegui consultar. Tente de novo em alguns segundos — não vou inventar informação.';
 
 const d = (
@@ -36,7 +36,7 @@ export const SCRIPTS: Script[] = [
       },
       {
         tool_calls: (c) =>
-          caiu(c)
+          isDown(c)
             ? []
             : [
                 {
@@ -44,7 +44,7 @@ export const SCRIPTS: Script[] = [
                   args: { question: 'Qual é o sistema do seu notebook?', options: ['Windows 10', 'Windows 11'] },
                 },
               ],
-        text: (c) => (caiu(c) ? FORA_DO_AR : ''),
+        text: (c) => (isDown(c) ? TICKETS_DOWN_MESSAGE : ''),
       },
       {
         text: 'Encontrei um artigo sobre o erro 809, mas ele vale só para o Windows 10. Qual é o sistema do seu notebook?',
@@ -95,7 +95,7 @@ export const SCRIPTS: Script[] = [
       ]),
   },
   {
-    id: 'so-eu',
+    id: 'only-me',
     match: /^s[óo] eu/i,
     steps: [
       {
@@ -118,8 +118,8 @@ export const SCRIPTS: Script[] = [
       },
       {
         text: (c) =>
-          caiu(c)
-            ? FORA_DO_AR
+          isDown(c)
+            ? TICKETS_DOWN_MESSAGE
             : 'Montei o rascunho abaixo. Confira os dados e clique em Confirmar para eu abrir o chamado.',
       },
     ],
@@ -135,13 +135,13 @@ export const SCRIPTS: Script[] = [
       ),
   },
   {
-    id: 'resolvidos',
+    id: 'resolved',
     match: /resolvid|antig|encerrad|hist[oó]rico/i,
     steps: [
       { tool_calls: [{ name: 'buscar_meus_chamados', args: { status: 'closed', show: true } }] },
       {
         text: (c) => {
-          if (caiu(c)) return FORA_DO_AR;
+          if (isDown(c)) return TICKETS_DOWN_MESSAGE;
           const r = c.results.find((x) => x.toolName === 'buscar_meus_chamados')?.output as { tickets?: unknown[] } | undefined;
           const n = r?.tickets?.length ?? 0;
           if (n === 0) return 'Você ainda não tem chamados resolvidos.';
@@ -159,7 +159,7 @@ export const SCRIPTS: Script[] = [
       { tool_calls: [{ name: 'buscar_meus_chamados', args: { status: 'open', show: true } }] },
       {
         text: (c) => {
-          if (caiu(c)) return FORA_DO_AR;
+          if (isDown(c)) return TICKETS_DOWN_MESSAGE;
           const r = c.results.find((x) => x.toolName === 'buscar_meus_chamados')?.output as { tickets?: unknown[] } | undefined;
           const n = r?.tickets?.length ?? 0;
           if (n === 0) return 'Você não tem chamados abertos agora.';
@@ -172,11 +172,11 @@ export const SCRIPTS: Script[] = [
       d('status', 'Quer saber o status de um chamado sem informar o número', text, 'ask', 0.86, 'Listei os chamados abertos para a pessoa escolher.'),
   },
   {
-    id: 'ver-codigo',
+    id: 'ticket-by-code',
     match: /^(INC|REQ)-\d+/i,
     steps: [{ tool_calls: [{ name: 'ver_chamado', args: (c: StepCtx) => ({ code: c.match[0].toUpperCase() }) }] }, {
       text: (c) => {
-        if (caiu(c)) return FORA_DO_AR;
+        if (isDown(c)) return TICKETS_DOWN_MESSAGE;
         const r = c.results.find((x) => x.toolName === 'ver_chamado')?.output as
           | { found?: boolean; overdue?: boolean; overdue_label?: string; sla_rule?: string; ticket?: { code: string; priority: string } }
           | undefined;
@@ -184,10 +184,10 @@ export const SCRIPTS: Script[] = [
           return 'Não encontrei esse chamado entre os seus. Só consigo mostrar chamados abertos por você.';
         }
         if (r.overdue) {
-          const quando = r.overdue_label?.split(' · ')[0] ?? 'há dias';
-          const [prio, prazo] = (r.sla_rule ?? '').split(': ');
-          const prazoCurto = prazo?.replace(/ \(.*\)$/, '') ?? 'o prazo';
-          return `Está sem atualização ${quando}, acima do prazo de ${prazoCurto} para prioridade ${prio?.toLowerCase() ?? ''}. Quer que eu chame um analista?`;
+          const ago = r.overdue_label?.split(' · ')[0] ?? 'há dias';
+          const [prio, deadline] = (r.sla_rule ?? '').split(': ');
+          const shortDeadline = deadline?.replace(/ \(.*\)$/, '') ?? 'o prazo';
+          return `Está sem atualização ${ago}, acima do prazo de ${shortDeadline} para prioridade ${prio?.toLowerCase() ?? ''}. Quer que eu chame um analista?`;
         }
         return `Aqui está o ${r.ticket.code}. Está dentro do prazo.`;
       },
@@ -200,7 +200,7 @@ export const SCRIPTS: Script[] = [
     },
   },
   {
-    id: 'rh',
+    id: 'hr',
     match: /f[ée]rias|holerite|reembolso/i,
     steps: [
       {
@@ -213,7 +213,7 @@ export const SCRIPTS: Script[] = [
       ]),
   },
   {
-    id: 'duvida-horario',
+    id: 'hours-question',
     match: /hor[áa]rio/i,
     steps: [
       { tool_calls: [{ name: 'buscar_artigos', args: { query: 'horário do service desk' } }] },
@@ -225,20 +225,20 @@ export const SCRIPTS: Script[] = [
       ]),
   },
   {
-    id: 'incerto',
+    id: 'uncertain',
     match: /n[ãa]o sei explicar/i,
     steps: [{ text: 'Não tenho certeza do que está acontecendo. Vou chamar um analista para olhar isso com você.' }],
     decision: ({ text }) =>
       d('other', 'Problema que a pessoa não consegue descrever', text, 'transfer', 0.41, 'Sem informação suficiente nem artigo relacionado.'),
   },
   {
-    id: 'promessa',
+    id: 'promise',
     match: /teste promessa/i,
     steps: [{ text: 'Vou te transferir para um analista agora.' }],
     decision: ({ text }) => d('other', 'Teste do guardrail de promessa', text, 'answer', 0.9, 'Respondi.'),
   },
   {
-    id: 'decisao-invalida',
+    id: 'invalid-decision',
     match: /teste decis[ãa]o inv[áa]lida/i,
     steps: [{ text: 'Certo, anotado.' }],
     decision: 'invalid',

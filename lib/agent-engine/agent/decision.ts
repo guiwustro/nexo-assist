@@ -4,7 +4,7 @@ import { decisionPrompt } from '@/lib/agent-engine/edge/llm/scripted-model';
 import { recordLlmCall } from '@/lib/agent-engine/edge/llm/record';
 import type { ModelInfo } from '@/lib/agent-engine/edge/llm/provider';
 
-const FORMATO = `Formato (JSON):
+const DECISION_FORMAT = `Formato (JSON):
 {"understanding":{"intent":"question|status|complement|open_ticket|talk_to_human|out_of_scope|other","summary":"o que entendeu, em uma frase","evidence":"trecho LITERAL da fala do funcionário"},
  "decision":{"action":"answer|ask|draft_create|draft_update|reopen|transfer|redirect","confidence":0.0-1.0,"why":"por quê, em linguagem simples","rules_applied":["regras do service desk que pesaram"],"sources":[{"kind":"article|ticket","id":"slug ou código","title":"título"}]}}`;
 
@@ -12,7 +12,7 @@ const FORMATO = `Formato (JSON):
  * Chamada de fechamento do turno: o modelo declara o que entendeu, o que fez, com que confiança e por quê.
  * Erro ou JSON inválido → null ("o agent não registrou"), nunca um objeto inventado.
  */
-export async function declararDecisao(i: {
+export async function declareDecision(i: {
   employee_text: string;
   actions: ActionTrace[];
   answer_text: string;
@@ -30,7 +30,7 @@ export async function declararDecisao(i: {
       messages: [
         {
           role: 'user',
-          content: `${decisionPrompt({ employee_text: i.employee_text, actions: i.actions, answer_text: i.answer_text, cards: i.cards })}\n\n${FORMATO}`,
+          content: `${decisionPrompt({ employee_text: i.employee_text, actions: i.actions, answer_text: i.answer_text, cards: i.cards })}\n\n${DECISION_FORMAT}`,
         },
       ],
     });

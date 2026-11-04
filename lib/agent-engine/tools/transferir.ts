@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TicketsNotFoundError, TicketsTransportError } from '@/lib/agent-engine/edge/tickets/errors';
-import { NIVEL_POR_MOTIVO } from '@/lib/agent-engine/gatilhos/transferencia';
+import { LEVEL_BY_REASON } from '@/lib/agent-engine/triggers/transfer';
 import { TicketCodeSchema } from '@/lib/contracts/tickets';
 import type { Priority } from '@/lib/contracts/enums';
 import { createHandoff } from '@/lib/conversations/handoff';
@@ -17,7 +17,7 @@ export const transferirParaAnalista = defineTool({
     ticket_code: TicketCodeSchema.optional(),
   }),
   async run(ctx, input) {
-    const level = NIVEL_POR_MOTIVO[input.reason];
+    const level = LEVEL_BY_REASON[input.reason];
     // O legado é melhor-esforço: a passagem vive no banco do app e é justamente o caminho quando ele cai.
     // Chamado não confirmado (não encontrado ou legado fora) não entra na passagem.
     let priority: Priority | undefined;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { avaliarGatilhos, pediuAnalista } from '@/lib/agent-engine/gatilhos/transferencia';
+import { evaluateTriggers, askedForAnalyst } from '@/lib/agent-engine/triggers/transfer';
 
 describe('pediuAnalista', () => {
   it.each([
@@ -9,7 +9,7 @@ describe('pediuAnalista', () => {
     'prefiro falar com uma pessoa',
     'Quero falar com um ATENDENTE humano!',
     'pode me transferir para um técnico?',
-  ])('"%s" → pediu', (t) => expect(pediuAnalista(t)).toBe(true));
+  ])('"%s" → pediu', (t) => expect(askedForAnalyst(t)).toBe(true));
 
   it.each([
     'o analista já respondeu?',
@@ -20,48 +20,48 @@ describe('pediuAnalista', () => {
     'Quero o pessoal da minha equipe com acesso à pasta do SharePoint',
     'Preciso de uma pessoa nova adicionada no grupo de e-mail',
     'quero falar com a pessoa do RH sobre minhas férias',
-  ])('"%s" → não pediu', (t) => expect(pediuAnalista(t)).toBe(false));
+  ])('"%s" → não pediu', (t) => expect(askedForAnalyst(t)).toBe(false));
 });
 
-const base = { texto_funcionario: 'oi', confidence: 0.9, session_count: 3, limit: 30, threshold: 0.6 };
+const base = { employee_text: 'oi', confidence: 0.9, session_count: 3, limit: 30, threshold: 0.6 };
 
 describe('avaliarGatilhos', () => {
   it('limite da sessão vence até o pedido explícito', () => {
-    const r = avaliarGatilhos({ ...base, session_count: 30, texto_funcionario: 'quero falar com um analista' });
+    const r = evaluateTriggers({ ...base, session_count: 30, employee_text: 'quero falar com um analista' });
     expect(r).toMatchObject({ transfer: true, reason: 'session_limit', level: 'N1' });
   });
   it('pedido explícito → requested_human N1', () => {
-    expect(avaliarGatilhos({ ...base, texto_funcionario: 'quero falar com um analista' })).toMatchObject({
+    expect(evaluateTriggers({ ...base, employee_text: 'quero falar com um analista' })).toMatchObject({
       transfer: true,
       reason: 'requested_human',
       level: 'N1',
     });
   });
   it('confiança null nunca transfere', () => {
-    expect(avaliarGatilhos({ ...base, confidence: null })).toEqual({ transfer: false });
+    expect(evaluateTriggers({ ...base, confidence: null })).toEqual({ transfer: false });
   });
   it('confiança 0.41 → low_confidence N1', () => {
-    const r = avaliarGatilhos({ ...base, confidence: 0.41 });
+    const r = evaluateTriggers({ ...base, confidence: 0.41 });
     expect(r).toMatchObject({ transfer: true, reason: 'low_confidence', level: 'N1' });
-    if ('regra' in r) expect(r.regra).toMatch(/41%/);
+    if ('rule' in r) expect(r.rule).toMatch(/41%/);
   });
   it('confiança igual ao limiar não transfere', () => {
-    expect(avaliarGatilhos({ ...base, confidence: 0.6 })).toEqual({ transfer: false });
+    expect(evaluateTriggers({ ...base, confidence: 0.6 })).toEqual({ transfer: false });
   });
   it('rascunho crítico → critical_priority N2', () => {
-    expect(avaliarGatilhos({ ...base, draft_priority: 'critical' })).toMatchObject({
+    expect(evaluateTriggers({ ...base, draft_priority: 'critical' })).toMatchObject({
       transfer: true,
       reason: 'critical_priority',
       level: 'N2',
     });
   });
   it('chamado vencido sem pedido → oferta', () => {
-    expect(avaliarGatilhos({ ...base, overdue_ticket_code: 'INC-20311' })).toMatchObject({
+    expect(evaluateTriggers({ ...base, overdue_ticket_code: 'INC-20311' })).toMatchObject({
       offer: 'overdue',
       ticket_code: 'INC-20311',
     });
   });
   it('nada a fazer → sem transferência', () => {
-    expect(avaliarGatilhos(base)).toEqual({ transfer: false });
+    expect(evaluateTriggers(base)).toEqual({ transfer: false });
   });
 });

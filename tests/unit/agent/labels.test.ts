@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rotulosPara } from '@/lib/agent-engine/agent/rotulos';
+import { labelsFor } from '@/lib/agent-engine/agent/labels';
 
 describe('rotulosPara', () => {
   it.each([
@@ -10,17 +10,17 @@ describe('rotulosPara', () => {
     ['transferir_para_analista', {}, {}, ['transferiu para um analista']],
     ['oferecer_opcoes', {}, {}, []],
   ])('%s', (tool, input, output, esperado) => {
-    expect(rotulosPara(tool, input, output)).toEqual(esperado);
+    expect(labelsFor(tool, input, output)).toEqual(esperado);
   });
   it('sistema fora troca o rótulo pelo aviso', () => {
-    expect(rotulosPara('buscar_meus_chamados', {}, { ok: false, error: 'tickets_unavailable' })).toEqual([
+    expect(labelsFor('buscar_meus_chamados', {}, { ok: false, error: 'tickets_unavailable' })).toEqual([
       'sistema de chamados indisponível',
     ]);
   });
   it('ver_chamado não encontrado não calcula prazo', () => {
-    expect(rotulosPara('ver_chamado', { code: 'INC-1' }, { found: false })).toEqual(['consultou o INC-1']);
+    expect(labelsFor('ver_chamado', { code: 'INC-1' }, { found: false })).toEqual(['consultou o INC-1']);
   });
   it('rascunho recusado por duplicidade não diz que montou nada', () => {
-    expect(rotulosPara('montar_rascunho', {}, { ok: false, error: 'possible_duplicate' })).toEqual(['consultou seus chamados']);
+    expect(labelsFor('montar_rascunho', {}, { ok: false, error: 'possible_duplicate' })).toEqual(['consultou seus chamados']);
   });
 });
