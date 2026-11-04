@@ -44,7 +44,6 @@ export function Composer({
         <textarea
           ref={ref}
           data-testid="composer-input"
-          data-quickreply-ok="true"
           rows={1}
           value={text}
           disabled={disabled}

@@ -7,10 +7,12 @@ function campoDeTexto(el: EventTarget | null): el is HTMLElement {
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable;
 }
 
-/** Composer vazio aceita os atalhos 1–4; qualquer outro campo de texto em foco bloqueia. */
+/**
+ * Atalhos 1–4 só com o foco fora de campos de texto. No composer, mesmo vazio, um número é o começo de uma resposta
+ * ("11", "3 pessoas"), não uma escolha.
+ */
 function teclaLiberada(target: EventTarget | null): boolean {
-  if (!campoDeTexto(target)) return true;
-  return target.dataset.quickreplyOk === 'true' && (target as HTMLTextAreaElement).value === '';
+  return !campoDeTexto(target);
 }
 
 export function QuickReplies({

@@ -27,6 +27,20 @@ describe('QuickReplies', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it('digitar um número no composer vazio não escolhe opção ("11" não vira "Windows 10")', () => {
+    const onSelect = vi.fn();
+    render(
+      <>
+        <textarea data-testid="composer" defaultValue="" />
+        <QuickReplies question="Qual é o sistema?" options={['Windows 10', 'Windows 11']} onSelect={onSelect} keyboard />
+      </>,
+    );
+    const c = screen.getByTestId('composer');
+    c.focus();
+    fireEvent.keyDown(c, { key: '1' });
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it('clique envia o texto da opção', () => {
     const onSelect = vi.fn();
     render(<QuickReplies question="Quem?" options={options} onSelect={onSelect} />);
