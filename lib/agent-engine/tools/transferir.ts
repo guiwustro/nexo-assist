@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { TicketsNotFoundError } from '@/lib/agent-engine/edge/tickets/errors';
+import { TicketsNotFoundError, TicketsTransportError } from '@/lib/agent-engine/edge/tickets/errors';
 import { NIVEL_POR_MOTIVO } from '@/lib/agent-engine/gatilhos/transferencia';
 import { TicketCodeSchema } from '@/lib/contracts/tickets';
 import type { Priority } from '@/lib/contracts/enums';
@@ -18,14 +18,14 @@ export const transferirParaAnalista = defineTool({
   }),
   async run(ctx, input) {
     const level = NIVEL_POR_MOTIVO[input.reason];
+    // O legado é melhor-esforço: a passagem vive no banco do app e é justamente o caminho quando ele cai.
+    // Chamado não confirmado (não encontrado ou legado fora) não entra na passagem.
     let priority: Priority | undefined;
     if (input.ticket_code) {
       try {
-        const t = await ctx.tickets.get(input.ticket_code, ctx.employee_id);
-        priority = t.priority;
-        await ctx.tickets.transfer(t.code, { requester_id: ctx.employee_id, level, summary: input.reading });
+        priority = (await ctx.tickets.get(input.ticket_code, ctx.employee_id)).priority;
       } catch (e) {
-        if (!(e instanceof TicketsNotFoundError)) throw e;
+        if (!(e instanceof TicketsNotFoundError || e instanceof TicketsTransportError)) throw e;
       }
     }
     await createHandoff({
@@ -40,6 +40,14 @@ export const transferirParaAnalista = defineTool({
       attempts: [],
     }, ctx.now);
     if (ctx.turn) ctx.turn.handoff_created = true;
+    if (priority && input.ticket_code) {
+      try {
+        await ctx.tickets.transfer(input.ticket_code, { requester_id: ctx.employee_id, level, summary: input.reading });
+      } catch (e) {
+        if (!(e instanceof TicketsTransportError)) throw e;
+        console.warn(`[transferir] legado fora ao transferir ${input.ticket_code}; passagem já registrada no app`);
+      }
+    }
     return { ok: true, level, note: 'Conversa transferida. Avise o funcionário que um analista vai continuar.' };
   },
   summary: (output) => `Suporte ${(output as { level?: string }).level ?? ''}`.trim(),

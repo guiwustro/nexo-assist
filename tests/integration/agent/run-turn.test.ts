@@ -160,6 +160,36 @@ describe('runTurn', () => {
     expect(msg?.body).toMatch(/fora do ar/);
   });
 
+  it('sistema de chamados fora: a tool de transferência ainda passa a conversa para um analista', async () => {
+    setModelForTests(undefined, undefined, [
+      {
+        id: 'transfere-com-legado-fora',
+        match: /escalar o INC-20311/i,
+        steps: [
+          {
+            tool_calls: [
+              {
+                name: 'transferir_para_analista',
+                args: { reason: 'overdue_ticket', reading: 'INC-20311 vencido, quer escalar', ticket_code: 'INC-20311' },
+              },
+            ],
+          },
+          { text: 'Transferi para um analista, que vai continuar com você.' },
+        ],
+        decision: {
+          understanding: { intent: 'talk_to_human', summary: 'Escalar INC-20311', evidence: 'escalar' },
+          decision: { action: 'transfer', confidence: 0.9, why: 'x', rules_applied: [], sources: [] },
+        },
+      },
+    ]);
+    fake.down = true;
+    const r = await turno('quero escalar o INC-20311');
+    expect(r.outcome).toBe('transferred');
+    expect(await statusDe(r.conversation_id)).toBe('pending');
+    const hs = await t.db.select().from(handoffs).where(eq(handoffs.conversation_id, r.conversation_id));
+    expect(hs.some((h) => h.origin === 'model_tool')).toBe(true);
+  });
+
   it('resposta de seguimento com o artigo do turno anterior não cai para baixa confiança', async () => {
     const r1 = await turno('Meu notebook não conecta na VPN, erro 809');
     const r2 = await turno('Windows 10', r1.conversation_id);
