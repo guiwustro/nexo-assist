@@ -66,6 +66,18 @@ export const chatLimiter = () =>
 export const loginLimiter = () => shared('login', () => createRateLimiter({ limit: 10, windowMs: 60_000 }));
 
 /** IP do cliente atrás do proxy (Caddy põe X-Forwarded-For). */
-export function clientIp(req: Request): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'local';
+/**
+ * IP do cliente para o limite de login. Cada proxy acrescenta à direita do X-Forwarded-For o endereço de quem
+ * falou com ele; o que vem à esquerda o próprio cliente pode escrever. Com `hops` proxies confiáveis na frente
+ * (TRUST_PROXY_HOPS; 1 = o Caddy da VPS), o cliente real é a entrada `hops` a partir da direita. Com 0 (porta do
+ * app publicada direto), os cabeçalhos são ignorados: todo mundo cai no mesmo balde, mas ninguém escapa do limite.
+ */
+export function clientIp(req: Request, hops: number = env.TRUST_PROXY_HOPS): string {
+  if (hops <= 0) return 'local';
+  const xff = (req.headers.get('x-forwarded-for') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (xff.length) return xff[Math.max(0, xff.length - hops)]!;
+  return req.headers.get('x-real-ip')?.trim() || 'local';
 }

@@ -37,6 +37,7 @@ services:
     environment:
       DATABASE_URL: postgres://nexo:nexo@db:5432/nexo
       TICKETS_URL: http://tickets:4001
+      TRUST_PROXY_HOPS: '0' # porta publicada direto, sem proxy: X-Forwarded-For não é confiável
     ports:
       - '${WEB_PORT:-3000}:3000'
     depends_on:

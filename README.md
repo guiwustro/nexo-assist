@@ -289,7 +289,8 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
   cliente; o navegador só fala com a API do app. Gere um segredo novo para produção (`openssl rand -base64 48`) —
   o do `.env.example` é público.
 - **Proteção:** rate limit de mensagens por funcionário (`RATE_LIMIT_PER_MINUTE`, 429 com `Retry-After` antes de
-  abrir o stream) e de login por IP; **teto diário de gasto** (`LLM_DAILY_BUDGET_CENTS`, exige os dois `LLM_PRICE_*`; sem eles o app não sobe) — acima dele o agent
+  abrir o stream) e de login por IP (o IP vem da entrada do `X-Forwarded-For` que o Caddy acrescentou,
+  `TRUST_PROXY_HOPS=1`; o que o cliente escreve à esquerda é ignorado); **teto diário de gasto** (`LLM_DAILY_BUDGET_CENTS`, exige os dois `LLM_PRICE_*`; sem eles o app não sobe) — acima dele o agent
   para de chamar o modelo e transfere para um analista; cabeçalhos de segurança (`X-Frame-Options: DENY`,
   `nosniff`, `Referrer-Policy`, `Permissions-Policy`) e sem `X-Powered-By`.
 - **CI** (`.github/workflows/ci.yml`): typecheck + lint + unitários, integração com Postgres, E2E.

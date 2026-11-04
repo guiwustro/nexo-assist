@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRateLimiter } from '@/lib/api/rate-limit';
+import { clientIp, createRateLimiter } from '@/lib/api/rate-limit';
 
 describe('createRateLimiter (janela deslizante)', () => {
   it('20 passam, a 21ª é barrada, e depois de 60 s volta a passar', () => {
@@ -49,5 +49,27 @@ describe('createRateLimiter (janela deslizante)', () => {
     rl.take('k');
     rl.reset();
     expect(rl.take('k').ok).toBe(true);
+  });
+});
+
+describe('clientIp', () => {
+  const req = (headers: Record<string, string>) => new Request('http://x/', { headers });
+
+  it('atrás de um proxy confiável, usa o endereço que ele acrescentou (o da direita), não o que o cliente mandou', () => {
+    expect(clientIp(req({ 'x-forwarded-for': '1.2.3.4, 203.0.113.9' }), 1)).toBe('203.0.113.9');
+    expect(clientIp(req({ 'x-forwarded-for': '203.0.113.9' }), 1)).toBe('203.0.113.9');
+  });
+
+  it('com dois proxies, pula o mais próximo', () => {
+    expect(clientIp(req({ 'x-forwarded-for': '1.2.3.4, 203.0.113.9, 10.0.0.5' }), 2)).toBe('203.0.113.9');
+  });
+
+  it('sem proxy confiável, ignora os cabeçalhos (qualquer um poderia forjar)', () => {
+    expect(clientIp(req({ 'x-forwarded-for': '1.2.3.4', 'x-real-ip': '5.6.7.8' }), 0)).toBe('local');
+  });
+
+  it('sem cabeçalho, cai no x-real-ip ou em "local"', () => {
+    expect(clientIp(req({ 'x-real-ip': '5.6.7.8' }), 1)).toBe('5.6.7.8');
+    expect(clientIp(req({}), 1)).toBe('local');
   });
 });

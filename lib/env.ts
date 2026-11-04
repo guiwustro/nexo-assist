@@ -21,6 +21,8 @@ const EnvSchema = z
     LLM_PRICE_IN_CENTS_PER_MTOK: optionalNumber,
     LLM_PRICE_OUT_CENTS_PER_MTOK: optionalNumber,
     RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(20),
+    /** Proxies confiáveis na frente do app (o Caddy = 1). 0 = porta publicada direto: X-Forwarded-For é ignorado. */
+    TRUST_PROXY_HOPS: z.coerce.number().int().nonnegative().default(1),
     LLM_DAILY_BUDGET_CENTS: optionalNumber,
     E2E: z
       .enum(['true', 'false'])
