@@ -139,26 +139,30 @@ README como adição.
 
 ---
 
-## 5. Pendências menores da revisão de código (baixa)
+## 5. Pendências menores da revisão de código (baixa) — ✅ feito em 04/11
 
-Vieram da revisão final do branch inteiro e não bloqueiam. Estão também no ledger
+Vieram da revisão final do branch inteiro. Estão também no ledger
 `.superpowers/sdd/2026-11-03-nexo-assist/progress.md` (linhas `Final: minor (deferred)`).
 
-- Analista assume bem no meio de um turno do agent: o funcionário vê erro numa mensagem que foi entregue, e o run
-  fica como "running" (`lib/agent-engine/agent/run-turn.ts`, `createHandoff` depois de `getConversation`).
-- Editar um rascunho depois de uma confirmação cujas respostas se perderam pode marcá-lo como falho, mesmo com o
-  chamado criado (`lib/drafts/service.ts:84-104`).
-- ~~Confirmar um rascunho cujo chamado alvo não existe mais no legado devolve 500 em vez de 404/422.~~ Agora 404
-  (`tests/integration/api/drafts.test.ts`). O rascunho continua pendente.
-- O SSE pode pular um evento commitado fora de ordem (`app/api/v1/events/route.ts`).
-- Depois de qualquer erro do SSE, a tela fica em polling de 3 s até recarregar (`lib/client/use-events.ts`).
-- O formulário de edição do rascunho não deixa mudar "impede de trabalhar" e "compromisso hoje", e o seletor de tipo
-  fica sob o rótulo "Prioridade" (`components/chat/DraftCard.tsx`).
-- Dois aparelhos logados alternando zeram o contador da sessão (`lib/conversations/service.ts`, `getOrCreateCurrent`).
-- O `SESSION_SECRET` do `.env.example` é aceito em produção (o README avisa para gerar outro).
-- A checagem de chamado duplicado depende só do prompt; não há checagem determinística por categoria antes de criar.
-- A transferência pelo limite de 30 mensagens vai sem resumo do caso (só "confira o histórico").
-- O limite de login usa o `X-Forwarded-For` e pode ser burlado quando a porta 3000 fica exposta (`docker compose --profile full`).
+- ✅ Analista assume no meio de um turno do agent: a passagem perdida só pausa o turno, e qualquer falha depois de
+  abrir o run fecha o registro como `failed` (`tests/integration/agent/run-turn-corrida.test.ts`).
+- ✅ Editar um rascunho depois de uma confirmação cujas respostas se perderam: a primeira tentativa grava `sent_at`,
+  e editar depois dela dá 409 `draft_already_sent`; o card esconde "Editar" depois de uma confirmação que falhou.
+- ✅ Confirmar um rascunho cujo chamado alvo não existe mais no legado devolve 404 (já estava feito).
+- ✅ O SSE lia por id e podia pular um evento commitado fora de ordem: agora lê em ordem (transação, id), só até a
+  transação aberta mais antiga (`pg_snapshot_xmin`). O `id:` do SSE virou `tx-id`.
+- ✅ Depois de um erro do SSE, a tela ficava em polling até recarregar: agora volta ao SSE quando ele reconecta.
+- ✅ O formulário de edição do rascunho muda "impede de trabalhar" e "compromisso hoje", e o tipo tem rótulo próprio.
+- ✅ Dois aparelhos alternando zeravam o contador: só um login mais novo (`iat` do token) começa outra sessão.
+- ✅ O `SESSION_SECRET` do `.env.example` em produção: aviso alto no boot (não recusa, para não quebrar o perfil
+  `full` do compose).
+- ✅ Checagem determinística de duplicidade: `montar_rascunho` com `create` recusa (`possible_duplicate`) se houver
+  chamado aberto na mesma categoria; o agent atualiza o existente ou passa `distinct_from`. **Evals não foram
+  rodados de novo depois disso** (gastam a API da DeepSeek).
+- ✅ A transferência pelo limite de mensagens (e pelo teto de gasto) leva o resumo do caso, o que já foi tentado e o
+  chamado em foco, montados dos runs gravados, sem chamar o modelo.
+- ✅ O limite de login usa a entrada do `X-Forwarded-For` acrescentada pelo proxy confiável (`TRUST_PROXY_HOPS`,
+  padrão 1); com 0 (porta publicada direto) ignora os cabeçalhos.
 
 ---
 
