@@ -53,6 +53,16 @@ describe('registerEmployeeMessage', () => {
     expect(e.status).toBe(409);
   });
 
+  it('com o analista, a mensagem passa do limite: o limite vale só para o agent', async () => {
+    const carla = t.seed.conversations.carla!; // pendente, esperando um analista
+    await t.db.update(conversations).set({ session_message_count: 30 }).where(eq(conversations.id, carla));
+    const r = await registerEmployeeMessage(carla, 'ainda estou aqui', 30);
+    expect(r.message.body).toBe('ainda estou aqui');
+    await applyTransition(carla, 'claim', rafael());
+    const r2 = await registerEmployeeMessage(carla, 'oi, Rafael', 30);
+    expect(r2.message.body).toBe('oi, Rafael');
+  });
+
   it('grava a mensagem, atualiza o preview e emite evento', async () => {
     const conv = await getOrCreateCurrent(t.seed.users.ana.id, 'sid-a');
     const { message } = await registerEmployeeMessage(conv.id, 'VPN com erro 809', 30);

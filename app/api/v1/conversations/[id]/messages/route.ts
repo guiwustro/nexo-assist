@@ -5,11 +5,12 @@ import { fail, ok, withRoute } from '@/lib/api/wrappers';
 import { chatLimiter } from '@/lib/api/rate-limit';
 import { env } from '@/lib/env';
 import { getDb } from '@/lib/db/client';
-import { appendMessage, getConversation, getOrCreateCurrent } from '@/lib/conversations/service';
+import { appendMessage, comAnalista, getConversation, getOrCreateCurrent } from '@/lib/conversations/service';
 import { listMessages } from '@/lib/conversations/queries';
 import { toApiMessage } from '@/lib/conversations/serialize';
 import { runTurn } from '@/lib/agent-engine/agent/run-turn';
 import type { NexoUIMessage } from '@/lib/contracts/ui';
+import type { ConversationStatus } from '@/lib/contracts/enums';
 import type { Session } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
@@ -61,7 +62,7 @@ export const POST = withRoute({ role: 'any', params: Params, body: Body }, async
   // Funcionário: a conversa é sempre a dele (a da sessão); outra → 404.
   const conv = await getOrCreateCurrent(session.user_id, session.sid);
   if (conv.id !== params.id) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
-  if (conv.session_message_count >= env.SESSION_MESSAGE_LIMIT) {
+  if (conv.session_message_count >= env.SESSION_MESSAGE_LIMIT && !comAnalista(conv.status as ConversationStatus)) {
     throw new Conflict('session_limit_reached', `Limite de ${env.SESSION_MESSAGE_LIMIT} mensagens nesta sessão`);
   }
 

@@ -88,7 +88,11 @@ export async function appendMessage(tx: DbOrTx, m: NewMessage): Promise<Message>
   return msg!;
 }
 
-/** Conta a mensagem do funcionário na sessão. Passou do limite → 409 `session_limit_reached`. */
+/**
+ * Conta a mensagem do funcionário na sessão. Passou do limite com a conversa indo para o agent → 409
+ * `session_limit_reached`. O limite existe para o agent (custo do modelo): com um analista (pendente ou assumida),
+ * a mensagem sempre passa — a 30ª transfere justamente para ele continuar.
+ */
 export async function registerEmployeeMessage(
   conversationId: string,
   body: string,
@@ -98,7 +102,7 @@ export async function registerEmployeeMessage(
     const [conv] = await tx.select().from(conversations).where(eq(conversations.id, conversationId)).for('update');
     if (!conv) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
     const count = conv.session_message_count + 1;
-    if (count > limit) {
+    if (count > limit && !comAnalista(conv.status as ConversationStatus)) {
       throw new Conflict('session_limit_reached', `Limite de ${limit} mensagens nesta sessão`, { limit });
     }
     const r = transicao(conv.status as ConversationStatus, 'employee_message');
@@ -120,6 +124,11 @@ export async function registerEmployeeMessage(
     });
     return { message, count, reached_limit: count >= limit, conversation: updated! };
   });
+}
+
+/** A conversa está com um analista (esperando ou assumida): mensagens não passam pelo agent. */
+export function comAnalista(status: ConversationStatus): boolean {
+  return status === 'pending' || status === 'claimed';
 }
 
 async function nomeDe(tx: Tx, userId: string): Promise<string> {

@@ -123,6 +123,7 @@ function ChatSession({ data, reload }: { data: CurrentData; reload: () => Promis
     onError: async (e) => {
       const err = parseChatError(e);
       if (err.code === 'session_limit_reached') {
+        setBanner(err.message || 'Esta sessão chegou ao limite de mensagens.');
         chat.setMessages([]);
         await reload();
         return;
