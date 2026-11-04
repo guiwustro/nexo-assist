@@ -10,13 +10,13 @@ const t = useTestDb();
 const ana = (): Session => ({ user_id: t.seed.users.ana.id, role: 'employee', name: 'Ana Souza', sid: 's' });
 const carla = (): Session => ({ user_id: t.seed.users.carla.id, role: 'employee', name: 'Carla Mendes', sid: 's' });
 
-type Ev = { id: number; event: string; data: { conversation_id: string } };
+type Ev = { id: number; cursor: string; event: string; data: { id: number; conversation_id: string } };
 
 /** Abre o SSE, roda `during` e lê o que chegar por `ms`. */
-async function ouvir(session: Session, ms: number, during?: () => Promise<void>, lastEventId?: number): Promise<Ev[]> {
+async function ouvir(session: Session, ms: number, during?: () => Promise<void>, lastEventId?: string): Promise<Ev[]> {
   const ctrl = new AbortController();
   const headers = new Headers({ cookie: await cookieFor(session) });
-  if (lastEventId !== undefined) headers.set('last-event-id', String(lastEventId));
+  if (lastEventId !== undefined) headers.set('last-event-id', lastEventId);
   const res = await events(new Request('http://x/api/v1/events', { headers, signal: ctrl.signal }));
   expect(res.headers.get('content-type')).toMatch(/text\/event-stream/);
   const reader = res.body!.getReader();
@@ -42,10 +42,10 @@ async function ouvir(session: Session, ms: number, during?: () => Promise<void>,
     .split('\n\n')
     .filter((b) => b.includes('data:'))
     .map((b) => {
-      const id = Number(/^id: (\d+)$/m.exec(b)?.[1]);
+      const cursor = /^id: (\d+-\d+)$/m.exec(b)?.[1] ?? '';
       const event = /^event: (.+)$/m.exec(b)?.[1] ?? '';
       const data = JSON.parse(/^data: (.+)$/m.exec(b)?.[1] ?? '{}') as Ev['data'];
-      return { id, event, data };
+      return { id: data.id, cursor, event, data };
     });
 }
 
@@ -83,10 +83,10 @@ describe('GET /events (SSE)', () => {
   it('reconexão com Last-Event-ID não repete eventos', async () => {
     const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
     const primeiro = await ouvir(ana(), 2600, () => transferirEAssumir(conv.id));
-    const ultimo = primeiro[primeiro.length - 1]!.id;
+    const ultimo = primeiro[primeiro.length - 1]!.cursor;
     const segundo = await ouvir(ana(), 1500, undefined, ultimo);
     expect(segundo).toHaveLength(0);
-    const desdeOInicio = await ouvir(ana(), 1500, undefined, 0);
+    const desdeOInicio = await ouvir(ana(), 1500, undefined, '0-0');
     expect(desdeOInicio.length).toBeGreaterThanOrEqual(primeiro.length);
   });
 });

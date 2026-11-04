@@ -1,0 +1,2 @@
+ALTER TABLE "event_log" ADD COLUMN "tx_id" bigint DEFAULT (pg_current_xact_id()::text::bigint) NOT NULL;--> statement-breakpoint
+CREATE INDEX "event_log_tx_idx" ON "event_log" USING btree ("tx_id","id");

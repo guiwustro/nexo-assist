@@ -1,9 +1,6 @@
-import { desc } from 'drizzle-orm';
-import { getDb } from '@/lib/db/client';
-import { eventLog } from '@/lib/db/schema';
 import { fail } from '@/lib/api/wrappers';
 import { readSession } from '@/lib/auth/session';
-import { readEventsSince } from '@/lib/event-log/read';
+import { formatCursor, initialCursor, parseCursor, readEventsAfter } from '@/lib/event-log/read';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,13 +13,7 @@ export async function GET(req: Request): Promise<Response> {
   if (!session) return fail('unauthorized', 'Faça login para continuar', 401);
 
   const header = req.headers.get('last-event-id') ?? new URL(req.url).searchParams.get('last_event_id');
-  let lastId: number;
-  if (header !== null && /^\d+$/.test(header)) {
-    lastId = Number(header);
-  } else {
-    const [max] = await getDb().select({ id: eventLog.id }).from(eventLog).orderBy(desc(eventLog.id)).limit(1);
-    lastId = max?.id ?? 0;
-  }
+  let cursor = parseCursor(header) ?? (await initialCursor());
 
   const enc = new TextEncoder();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -37,11 +28,11 @@ export async function GET(req: Request): Promise<Response> {
       const tick = async () => {
         if (fechado) return;
         try {
-          const rows = await readEventsSince(lastId, { role: session.role, user_id: session.user_id });
+          const rows = await readEventsAfter(cursor, { role: session.role, user_id: session.user_id });
           for (const r of rows) {
-            lastId = r.id;
+            cursor = { tx: r.tx_id, id: r.id };
             const data = { id: r.id, type: r.event_type, conversation_id: r.conversation_id, payload: r.payload, created_at: r.created_at };
-            send(`id: ${r.id}\nevent: ${r.event_type}\ndata: ${JSON.stringify(data)}\n\n`);
+            send(`id: ${formatCursor(cursor)}\nevent: ${r.event_type}\ndata: ${JSON.stringify(data)}\n\n`);
           }
           if (Date.now() - ultimoPing >= HEARTBEAT_MS) {
             send(`: ping\n\n`);

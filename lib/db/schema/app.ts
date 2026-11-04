@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   bigserial,
   check,
   index,
@@ -238,10 +239,18 @@ export const eventLog = pgTable(
     conversation_id: uuid('conversation_id'),
     actor_user_id: uuid('actor_user_id'),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    /**
+     * Transação que gravou o evento. O SSE lê em ordem (tx_id, id) e só até a transação aberta mais antiga:
+     * um id menor que commita depois de um maior não fica para trás do cursor.
+     */
+    tx_id: bigint('tx_id', { mode: 'number' })
+      .notNull()
+      .default(sql`(pg_current_xact_id()::text::bigint)`),
     created_at: createdAt(),
   },
   (t) => [
     index('event_log_conversation_idx').on(t.conversation_id, t.id),
+    index('event_log_tx_idx').on(t.tx_id, t.id),
     check('event_log_type_check', sql`${t.event_type} ~ '^[a-z_]+\\.[a-z_]+$'`),
   ],
 );
