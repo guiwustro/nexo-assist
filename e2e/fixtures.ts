@@ -19,7 +19,8 @@ export const test = base.extend<Fixtures>({
       await request.post(`http://127.0.0.1:${E2E_TICKETS_PORT}/_chaos/outage?seconds=0`, {
         headers: { 'x-internal-secret': E2E_SECRET },
       });
-      await request.post('/api/v1/_test/reset');
+      const reset = await request.post('/api/v1/e2e/reset');
+      expect(reset.ok(), `reset do web: ${reset.status()}`).toBeTruthy();
       await use(await resetAndSeed(E2E_DB, AGORA_E2E));
     },
     { auto: true },
@@ -38,7 +39,7 @@ export const test = base.extend<Fixtures>({
       const res = await page.request.post('/api/v1/auth/login', {
         data: { email: userByKey(who).email, password: 'senha-de-teste' },
       });
-      expect(res.ok()).toBeTruthy();
+      expect(res.ok(), `login de ${who}: ${res.status()} ${await res.text()}`).toBeTruthy();
       await page.goto(userByKey(who).role === 'analyst' ? '/console' : '/atendimento');
     });
   },
