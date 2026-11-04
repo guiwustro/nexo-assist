@@ -40,6 +40,24 @@ describe('getOrCreateCurrent', () => {
     expect(c3.id).toBe(c1.id);
     expect(c3.session_message_count).toBe(0);
   });
+
+  it('dois aparelhos alternando não zeram o contador; só um login mais novo zera', async () => {
+    const ana = t.seed.users.ana.id;
+    const loginA = new Date(Date.now() - 120_000);
+    const loginB = new Date(Date.now() - 60_000);
+    const a1 = await getOrCreateCurrent(ana, 'sid-a', loginA);
+    await registerEmployeeMessage(a1.id, 'oi do notebook', 30);
+    const b1 = await getOrCreateCurrent(ana, 'sid-b', loginB);
+    expect(b1.session_message_count).toBe(0);
+    await registerEmployeeMessage(b1.id, 'oi do celular', 30);
+    await registerEmployeeMessage(b1.id, 'de novo', 30);
+
+    const a2 = await getOrCreateCurrent(ana, 'sid-a', loginA);
+    expect(a2.session_message_count).toBe(2);
+    await registerEmployeeMessage(a2.id, 'voltei ao notebook', 30);
+    const b2 = await getOrCreateCurrent(ana, 'sid-b', loginB);
+    expect(b2.session_message_count).toBe(3);
+  });
 });
 
 describe('registerEmployeeMessage', () => {

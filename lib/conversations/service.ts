@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import { Conflict, Forbidden, NotFound } from '@/lib/api/errors';
 import { getDb, type DbOrTx, type Tx } from '@/lib/db/client';
 import { conversations, messages, users } from '@/lib/db/schema';
@@ -13,23 +13,32 @@ export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Actor = { user_id: string; role: 'employee' | 'analyst' };
 
-/** A conversa contínua do funcionário. `sid` novo (novo login) zera o contador da sessão. */
-export async function getOrCreateCurrent(employeeId: string, sid: string): Promise<Conversation> {
+/**
+ * A conversa contínua do funcionário. Um login mais novo que o início da sessão atual (`loginAt`, o `iat` do
+ * token) começa outra sessão e zera o contador; um aparelho com um login mais antigo continua a sessão vigente,
+ * para que alternar entre dois aparelhos não zere o limite.
+ */
+export async function getOrCreateCurrent(employeeId: string, sid: string, loginAt: Date = new Date()): Promise<Conversation> {
   const db = getDb();
   const now = new Date();
   await db
     .insert(conversations)
-    .values({ employee_id: employeeId, session_id: sid, session_started_at: now, session_message_count: 0 })
+    .values({ employee_id: employeeId, session_id: sid, session_started_at: loginAt, session_message_count: 0 })
     .onConflictDoNothing({ target: conversations.employee_id });
   const [atual] = await db.select().from(conversations).where(eq(conversations.employee_id, employeeId));
   if (!atual) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
   if (atual.session_id === sid) return atual;
   const [nova] = await db
     .update(conversations)
-    .set({ session_id: sid, session_started_at: now, session_message_count: 0, updated_at: now })
-    .where(eq(conversations.id, atual.id))
+    .set({ session_id: sid, session_started_at: loginAt, session_message_count: 0, updated_at: now })
+    .where(
+      and(
+        eq(conversations.id, atual.id),
+        or(isNull(conversations.session_started_at), lt(conversations.session_started_at, loginAt)),
+      ),
+    )
     .returning();
-  return nova!;
+  return nova ?? atual;
 }
 
 export async function getConversation(db: DbOrTx, id: string): Promise<Conversation | null> {

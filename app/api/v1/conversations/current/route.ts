@@ -1,5 +1,6 @@
 import { ok, withRoute } from '@/lib/api/wrappers';
 import { env } from '@/lib/env';
+import { loginAt } from '@/lib/auth/session';
 import { getOrCreateCurrent } from '@/lib/conversations/service';
 import { listMessages } from '@/lib/conversations/queries';
 import { toApiConversation } from '@/lib/conversations/serialize';
@@ -7,7 +8,7 @@ import { toApiConversation } from '@/lib/conversations/serialize';
 export const dynamic = 'force-dynamic';
 
 export const GET = withRoute({ role: 'employee' }, async ({ session, requestId }) => {
-  const conv = await getOrCreateCurrent(session.user_id, session.sid);
+  const conv = await getOrCreateCurrent(session.user_id, session.sid, loginAt(session));
   const { messages, next_cursor } = await listMessages(conv.id, { limit: 50 });
   return ok(
     {

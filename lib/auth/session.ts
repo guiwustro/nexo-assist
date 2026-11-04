@@ -10,14 +10,22 @@ export const SessionSchema = z.object({
   role: z.enum(['employee', 'analyst']),
   name: z.string(),
   sid: z.string().min(1),
+  /** Emissão do token (segundos), preenchida na leitura: marca o login. */
+  iat: z.number().int().optional(),
 });
 export type Session = z.infer<typeof SessionSchema>;
+
+/** Quando a pessoa entrou com esta sessão (o `iat` do token). */
+export function loginAt(s: Session): Date {
+  return s.iat ? new Date(s.iat * 1000) : new Date();
+}
 
 const key = () => new TextEncoder().encode(env.SESSION_SECRET);
 
 export async function createSessionToken(s: Session, opts: { now?: Date } = {}): Promise<string> {
   const iat = Math.floor((opts.now ?? new Date()).getTime() / 1000);
-  return new SignJWT({ ...s })
+  const { iat: _, ...claims } = s;
+  return new SignJWT({ ...claims })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt(iat)
     .setExpirationTime(iat + SESSION_TTL_S)

@@ -11,7 +11,7 @@ import { toApiMessage } from '@/lib/conversations/serialize';
 import { runTurn } from '@/lib/agent-engine/agent/run-turn';
 import type { NexoUIMessage } from '@/lib/contracts/ui';
 import type { ConversationStatus } from '@/lib/contracts/enums';
-import type { Session } from '@/lib/auth/session';
+import { loginAt, type Session } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -60,7 +60,7 @@ export const POST = withRoute({ role: 'any', params: Params, body: Body }, async
   }
 
   // Funcionário: a conversa é sempre a dele (a da sessão); outra → 404.
-  const conv = await getOrCreateCurrent(session.user_id, session.sid);
+  const conv = await getOrCreateCurrent(session.user_id, session.sid, loginAt(session));
   if (conv.id !== params.id) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
   if (conv.session_message_count >= env.SESSION_MESSAGE_LIMIT && !comAnalista(conv.status as ConversationStatus)) {
     throw new Conflict('session_limit_reached', `Limite de ${env.SESSION_MESSAGE_LIMIT} mensagens nesta sessão`);
