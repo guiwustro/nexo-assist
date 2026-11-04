@@ -118,23 +118,14 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         },
       },
     );
-    const caso = await resumoDoCaso(i.conversation_id, run_id);
     await createHandoff(
       {
         conversation_id: i.conversation_id,
-        ticket_code: reg.conversation.focus_ticket_code,
         origin: 'session_limit',
         reason_code: 'session_limit',
         level: 'N1',
         employee_words: i.text,
-        agent_reading: [
-          `A sessão chegou a ${limit} mensagens sem resolver.`,
-          caso.resumos.length ? `Assuntos dos últimos turnos: ${caso.resumos.map((r) => `"${r}"`).join('; ')}.` : '',
-          reg.conversation.focus_ticket_code ? `Chamado em foco: ${reg.conversation.focus_ticket_code}.` : '',
-        ]
-          .filter(Boolean)
-          .join(' '),
-        attempts: caso.tentativas,
+        ...(await casoSemModelo(`A sessão chegou a ${limit} mensagens sem resolver.`, reg.conversation, run_id)),
       },
       now,
     );
@@ -205,8 +196,7 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         reason_code: 'budget_exceeded',
         level: 'N1',
         employee_words: i.text,
-        agent_reading: 'O assistente atingiu o limite de uso de hoje e não leu esta mensagem; confira o histórico.',
-        attempts: [],
+        ...(await casoSemModelo('O assistente atingiu o limite de uso de hoje e não leu esta mensagem.', reg.conversation, run_id)),
       },
       now,
     );
@@ -487,8 +477,23 @@ async function transferirSeComAgent(input: Parameters<typeof createHandoff>[0], 
   }
 }
 
+/** Leitura, tentativas e chamado em foco de uma passagem feita sem o modelo (limite da sessão, teto de gasto). */
+async function casoSemModelo(
+  motivo: string,
+  conv: { id: string; focus_ticket_code: string | null },
+  runId: string,
+): Promise<{ agent_reading: string; attempts: ActionTrace[]; ticket_code: string | null }> {
+  const caso = await resumoDoCaso(conv.id, runId);
+  const leitura = [
+    motivo,
+    caso.resumos.length ? `Assuntos dos últimos turnos: ${caso.resumos.map((r) => `"${r}"`).join('; ')}.` : '',
+    conv.focus_ticket_code ? `Chamado em foco: ${conv.focus_ticket_code}.` : '',
+  ];
+  return { agent_reading: leitura.filter(Boolean).join(' '), attempts: caso.tentativas, ticket_code: conv.focus_ticket_code };
+}
+
 /**
- * Resumo do caso para a passagem sem modelo (limite da sessão): o que o agent entendeu nos últimos turnos e o que
+ * Resumo do caso para a passagem sem modelo: o que o agent entendeu nos últimos turnos e o que
  * ele já fez, a partir dos runs gravados. Sem chamada ao modelo, para não gastar token numa sessão já no limite.
  */
 async function resumoDoCaso(conversationId: string, exceptRunId: string): Promise<{ resumos: string[]; tentativas: ActionTrace[] }> {

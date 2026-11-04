@@ -90,6 +90,24 @@ describe('teto diário de gasto com o modelo', () => {
     expect(fila[0]?.tag.label).toBe('Transferida · limite de uso do assistente');
   });
 
+  it('a passagem pelo teto leva o resumo do caso e o chamado em foco', async () => {
+    const conv = await getOrCreateCurrent(ana().user_id, 'sid-b');
+    await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Meu notebook não conecta na VPN, erro 809', writer: writer().w, now: t.agora });
+    const [antes] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.conversation_id, conv.id));
+    await t.db.update(conversations).set({ focus_ticket_code: 'INC-20298' }).where(eq(conversations.id, conv.id));
+    process.env.LLM_DAILY_BUDGET_CENTS = '100';
+    process.env.LLM_PRICE_IN_CENTS_PER_MTOK = '30';
+    process.env.LLM_PRICE_OUT_CENTS_PER_MTOK = '120';
+    resetEnvCache();
+    await gastoDeHoje(120);
+
+    await runTurn({ conversation_id: conv.id, employee: ana(), text: 'e agora?', writer: writer().w, now: t.agora });
+    const [h] = await t.db.select().from(handoffs).where(eq(handoffs.conversation_id, conv.id));
+    expect(h?.agent_reading).toContain(antes!.decision!.understanding.summary);
+    expect(h?.attempts.length).toBeGreaterThan(0);
+    expect(h?.ticket_code).toBe('INC-20298');
+  });
+
   it('abaixo do orçamento: segue normal', async () => {
     process.env.LLM_DAILY_BUDGET_CENTS = '100';
     process.env.LLM_PRICE_IN_CENTS_PER_MTOK = '30';
