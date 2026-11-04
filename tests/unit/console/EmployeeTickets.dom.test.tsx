@@ -37,7 +37,8 @@ function renderPanel() {
       employeeName="Ana Souza"
       data={data}
       error={false}
-      focusCode={null}
+      conversationId="00000000-0000-4000-8000-000000000010"
+      conversationCodes={[]}
       lastEvent={null}
       onRetry={() => {}}
       onClose={() => {}}
@@ -58,9 +59,20 @@ describe('EmployeeTickets (painel do console)', () => {
           data: {
             ticket: { ...base, overdue: false, overdue_label: null },
             events: [
-              { kind: 'created', body: 'Chamado aberto', actor: 'Ana Souza', created_at: '2026-11-02T12:00:00.000Z' },
-              { kind: 'comment', body: 'Continua lento hoje', actor: 'funcionário', created_at: '2026-11-03T12:00:00.000Z' },
+              {
+                kind: 'created',
+                body: 'Chamado aberto',
+                actor: 'Ana Souza',
+                created_at: '2026-11-02T12:00:00.000Z',
+              },
+              {
+                kind: 'comment',
+                body: 'Continua lento hoje',
+                actor: 'funcionário',
+                created_at: '2026-11-03T12:00:00.000Z',
+              },
             ],
+            attendances: [],
           },
         }),
         { status: 200 },
@@ -79,7 +91,9 @@ describe('EmployeeTickets (painel do console)', () => {
 
   it('falha ao carregar o detalhe mostra aviso com Tentar de novo', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ error: { code: 'tickets_unavailable', message: 'fora' } }), { status: 503 }),
+      new Response(JSON.stringify({ error: { code: 'tickets_unavailable', message: 'fora' } }), {
+        status: 503,
+      }),
     );
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: /Notebook lento ao abrir o ERP/ }));

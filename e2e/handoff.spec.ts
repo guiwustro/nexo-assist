@@ -27,7 +27,10 @@ test('Ana pede um analista, Rafael assume, responde, devolve e encerra', async (
   await rafael.goto('/console');
   await expect(rafael.getByTestId('filter-for_you')).toContainText('3');
   await rafael.getByTestId('filter-for_you').click();
-  const itemAna = rafael.getByTestId('conversation-item').filter({ hasText: 'Ana Souza' });
+  const itemAna = rafael
+    .getByTestId('conversation-item')
+    .filter({ hasText: 'Ana Souza' })
+    .filter({ hasText: 'Transferida' });
   await expect(itemAna).toContainText('Transferida');
   await expect(rafael.getByTestId('conversation-item').filter({ hasText: 'Bruno Tavares' })).toContainText(
     'Agent pediu ajuda · confiança 41%',
@@ -105,7 +108,11 @@ test('painel de chamados, filtro vazio e busca', async ({ browser }) => {
   await send(ana, 'quero falar com um analista');
 
   await rafael.goto('/console');
-  await rafael.getByTestId('conversation-item').filter({ hasText: 'Ana Souza' }).click();
+  await rafael
+    .getByTestId('conversation-item')
+    .filter({ hasText: 'Ana Souza' })
+    .filter({ hasText: 'INC-20311' })
+    .click();
   const panel = rafael.getByTestId('employee-tickets');
   await expect(panel).toContainText('Chamados da Ana');
   await expect(panel).toContainText('3 abertos · 3 encerrados');

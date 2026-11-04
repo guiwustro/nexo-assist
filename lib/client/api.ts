@@ -2,11 +2,25 @@
 
 import type { ApiMessage } from '@/lib/conversations/serialize';
 
+export type AttendanceSummary = {
+  id: string;
+  status: 'ai_handling' | 'pending' | 'claimed' | 'closed';
+  label: string;
+  analyst_name: string | null;
+  focus_ticket_code: string | null;
+  ticket_codes: string[];
+  started_at: string;
+  last_message_at: string | null;
+  last_message_preview: string | null;
+  closed_reason: 'analyst' | 'resolved' | 'merged' | null;
+};
+
 export type CurrentData = {
-  conversation: { id: string; status: 'ai_handling' | 'pending' | 'claimed' | 'closed'; focus_ticket_code: string | null };
+  conversation: AttendanceSummary;
   messages: ApiMessage[];
   next_cursor: string | null;
   session: { count: number; limit: number };
+  others: AttendanceSummary[];
 };
 
 export class ApiFailure extends Error {
@@ -25,7 +39,10 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 /** Como `api`, mas devolve também o `meta` do envelope (ex.: `next_cursor` da paginação). */
-export async function apiWithMeta<T>(url: string, init?: RequestInit): Promise<{ data: T; meta: Record<string, unknown> }> {
+export async function apiWithMeta<T>(
+  url: string,
+  init?: RequestInit,
+): Promise<{ data: T; meta: Record<string, unknown> }> {
   let res: Response;
   try {
     res = await fetch(url, {

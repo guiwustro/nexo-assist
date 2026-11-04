@@ -51,14 +51,14 @@ type Result = {
   decision: string;
 };
 
-const normalize = (s: string) =>
-  s
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase();
+const normalize = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 function collectingWriter(): UIMessageStreamWriter<NexoUIMessage> {
-  return { write: () => {}, merge: () => {}, onError: undefined } as unknown as UIMessageStreamWriter<NexoUIMessage>;
+  return {
+    write: () => {},
+    merge: () => {},
+    onError: undefined,
+  } as unknown as UIMessageStreamWriter<NexoUIMessage>;
 }
 
 async function main() {
@@ -72,7 +72,8 @@ async function main() {
   const { migrateDb } = await import('@/lib/db/migrate');
   const { resetAndSeed } = await import('@/lib/db/seed');
   const { userByKey } = await import('@/lib/db/seed-data');
-  const { aiAgentRuns, handoffs, llmCalls, messages, ticketDrafts } = await import('@/lib/db/schema');
+  const { aiAgentRuns, conversations, handoffs, llmCalls, messages, ticketDrafts } =
+    await import('@/lib/db/schema');
   const { runTurn } = await import('@/lib/agent-engine/agent/run-turn');
   const { closeMemory } = await import('@/lib/agent-engine/agent/memory');
   const { setTicketsClient } = await import('@/lib/agent-engine/edge/tickets/client');
@@ -86,20 +87,30 @@ async function main() {
   const scenarios = ONLY ? SCENARIOS.filter((c) => ONLY.includes(c.id)) : SCENARIOS;
   if (!scenarios.length) throw new Error(`No scenario with id ${ONLY?.join(', ')}`);
 
-  console.log(`Evals: ${scenarios.length} scenarios × ${TIMES} · model ${model.provider}/${model.model_id}\n`);
+  console.log(
+    `Evals: ${scenarios.length} scenarios × ${TIMES} · model ${model.provider}/${model.model_id}\n`,
+  );
 
   async function runScenario(c: Scenario, rep: number): Promise<Result> {
     await resetAndSeed(TEST_DB_URL, NOW);
     setTicketsClient(createFakeTickets(NOW));
     const user = userByKey(c.persona);
-    const session: Session = { user_id: user.id, role: 'employee', name: user.name, sid: `eval-${c.id}-${rep}` };
+    const session: Session = {
+      user_id: user.id,
+      role: 'employee',
+      name: user.name,
+      sid: `eval-${c.id}-${rep}`,
+    };
     await touchSession(user.id, session.sid, NOW);
     const conv = (await getOrCreateWithAgent(user.id, NOW)).conversation;
     // O que já existia antes do cenário (seed) fica de fora da avaliação.
     const before = async () => {
       const ids = await Promise.all([
         db.select({ id: aiAgentRuns.id }).from(aiAgentRuns).where(eq(aiAgentRuns.conversation_id, conv.id)),
-        db.select({ id: ticketDrafts.id }).from(ticketDrafts).where(eq(ticketDrafts.conversation_id, conv.id)),
+        db
+          .select({ id: ticketDrafts.id })
+          .from(ticketDrafts)
+          .where(eq(ticketDrafts.conversation_id, conv.id)),
         db.select({ id: messages.id }).from(messages).where(eq(messages.conversation_id, conv.id)),
         db.select({ id: handoffs.id }).from(handoffs).where(eq(handoffs.conversation_id, conv.id)),
       ]);
@@ -112,17 +123,31 @@ async function main() {
     let outcome = '';
     for (const text of c.turns) {
       const t0 = performance.now();
-      const r = await runTurn({ conversation_id: conv.id, employee: session, text, writer: collectingWriter(), now: NOW });
+      const r = await runTurn({
+        conversation_id: conv.id,
+        employee: session,
+        text,
+        writer: collectingWriter(),
+        now: NOW,
+      });
       latency += performance.now() - t0;
       outcome = r.outcome;
       if (r.outcome !== 'answered') break; // transferiu, pausou ou falhou: os próximos turnos não fazem sentido
     }
 
     const runs = sinceStart(
-      await db.select().from(aiAgentRuns).where(eq(aiAgentRuns.conversation_id, conv.id)).orderBy(asc(aiAgentRuns.started_at)),
+      await db
+        .select()
+        .from(aiAgentRuns)
+        .where(eq(aiAgentRuns.conversation_id, conv.id))
+        .orderBy(asc(aiAgentRuns.started_at)),
     );
     const drafts = sinceStart(
-      await db.select().from(ticketDrafts).where(eq(ticketDrafts.conversation_id, conv.id)).orderBy(asc(ticketDrafts.created_at)),
+      await db
+        .select()
+        .from(ticketDrafts)
+        .where(eq(ticketDrafts.conversation_id, conv.id))
+        .orderBy(asc(ticketDrafts.created_at)),
     );
     const texts = sinceStart(
       await db
@@ -130,9 +155,23 @@ async function main() {
         .from(messages)
         .where(and(eq(messages.conversation_id, conv.id), eq(messages.direction, 'outbound'))),
     );
-    const transfers = sinceStart(await db.select().from(handoffs).where(eq(handoffs.conversation_id, conv.id)));
+    const transfers = sinceStart(
+      await db.select().from(handoffs).where(eq(handoffs.conversation_id, conv.id)),
+    );
+    const [conversationState] = await db
+      .select({ closed_reason: conversations.closed_reason })
+      .from(conversations)
+      .where(eq(conversations.id, conv.id));
     const calls = runs.length
-      ? await db.select().from(llmCalls).where(inArray(llmCalls.agent_run_id, runs.map((r) => r.id)))
+      ? await db
+          .select()
+          .from(llmCalls)
+          .where(
+            inArray(
+              llmCalls.agent_run_id,
+              runs.map((r) => r.id),
+            ),
+          )
       : [];
 
     const tools = new Set(runs.flatMap((r) => r.tool_calls.map((a) => a.tool)));
@@ -148,7 +187,8 @@ async function main() {
     for (const t of e.tools_exclude ?? []) if (tools.has(t)) failures.push(`chamou ${t}`);
     if (e.final_action) {
       const accepted = Array.isArray(e.final_action) ? e.final_action : [e.final_action];
-      if (!action || !accepted.includes(action)) failures.push(`ação ${action ?? 'sem decisão'} ≠ ${accepted.join('|')}`);
+      if (!action || !accepted.includes(action))
+        failures.push(`ação ${action ?? 'sem decisão'} ≠ ${accepted.join('|')}`);
     }
     if (e.outcome) {
       const real = transfers.length ? 'transferred' : outcome;
@@ -157,17 +197,23 @@ async function main() {
     }
     if (e.draft === null && drafts.length) failures.push(`montou rascunho ${draft!.kind}`);
     if (e.draft && draft?.kind !== e.draft) failures.push(`rascunho ${draft?.kind ?? 'nenhum'} ≠ ${e.draft}`);
-    if (e.target && draft?.target_ticket_code !== e.target) failures.push(`alvo ${draft?.target_ticket_code ?? 'nenhum'} ≠ ${e.target}`);
+    if (e.target && draft?.target_ticket_code !== e.target)
+      failures.push(`alvo ${draft?.target_ticket_code ?? 'nenhum'} ≠ ${e.target}`);
     if (e.priority && draft?.payload.priority !== e.priority)
       failures.push(`prioridade ${draft?.payload.priority ?? 'sem rascunho'} ≠ ${e.priority}`);
     if (e.category && draft?.payload.category !== e.category)
       failures.push(`categoria ${draft?.payload.category ?? 'sem rascunho'} ≠ ${e.category}`);
-    if (e.type && draft?.payload.type !== e.type) failures.push(`tipo ${draft?.payload.type ?? 'sem rascunho'} ≠ ${e.type}`);
+    if (e.type && draft?.payload.type !== e.type)
+      failures.push(`tipo ${draft?.payload.type ?? 'sem rascunho'} ≠ ${e.type}`);
     if (e.cites_article && !sources.has(e.cites_article)) failures.push(`não citou ${e.cites_article}`);
     const shown = new Set(
       texts.flatMap((t) =>
         t.parts.flatMap((p) =>
-          p.kind === 'ticket_selector' ? p.tickets.map((x) => x.code) : p.kind === 'ticket_card' ? [p.ticket.code] : [],
+          p.kind === 'ticket_selector'
+            ? p.tickets.map((x) => x.code)
+            : p.kind === 'ticket_card'
+              ? [p.ticket.code]
+              : [],
         ),
       ),
     );
@@ -175,17 +221,39 @@ async function main() {
     for (const code of e.hides_tickets ?? []) if (shown.has(code)) failures.push(`mostrou ${code}`);
     for (const forbidden of e.text_excludes ?? [])
       if (text.includes(normalize(forbidden))) failures.push(`texto contém "${forbidden}"`);
+    if (e.closed_reason && conversationState?.closed_reason !== e.closed_reason) {
+      failures.push(
+        `motivo de encerramento ${conversationState?.closed_reason ?? 'nenhum'} ≠ ${e.closed_reason}`,
+      );
+    }
 
     const costs = calls.map((x) => x.cost_cents);
-    const cost = costs.length && costs.every((x) => x !== null) ? costs.reduce((a, b) => a! + b!, 0)! : costs.length ? null : 0;
+    const cost =
+      costs.length && costs.every((x) => x !== null)
+        ? costs.reduce((a, b) => a! + b!, 0)!
+        : costs.length
+          ? null
+          : 0;
     const tokens = {
       in: calls.reduce((s, x) => s + x.input_tokens, 0),
       out: calls.reduce((s, x) => s + x.output_tokens, 0),
     };
     const answer = texts.at(-1)?.body ?? '';
     const dec = last?.decision?.decision;
-    const decision = dec ? `${dec.action} ${Math.round(dec.confidence * 100)}% — ${dec.why}` : 'sem decisão registrada';
-    return { scenario: c, ok: failures.length === 0, failures: failures, cost_cents: cost, latency_ms: latency, turns: runs.length, tokens, answer: answer, decision: decision };
+    const decision = dec
+      ? `${dec.action} ${Math.round(dec.confidence * 100)}% — ${dec.why}`
+      : 'sem decisão registrada';
+    return {
+      scenario: c,
+      ok: failures.length === 0,
+      failures: failures,
+      cost_cents: cost,
+      latency_ms: latency,
+      turns: runs.length,
+      tokens,
+      answer: answer,
+      decision: decision,
+    };
   }
 
   const byScenario = new Map<string, Result[]>();
@@ -196,7 +264,17 @@ async function main() {
       try {
         r = await runScenario(c, rep);
       } catch (err) {
-        r = { scenario: c, ok: false, failures: [`erro: ${err instanceof Error ? err.message : String(err)}`], cost_cents: null, latency_ms: 0, turns: 0, tokens: { in: 0, out: 0 }, answer: '', decision: '' };
+        r = {
+          scenario: c,
+          ok: false,
+          failures: [`erro: ${err instanceof Error ? err.message : String(err)}`],
+          cost_cents: null,
+          latency_ms: 0,
+          turns: 0,
+          tokens: { in: 0, out: 0 },
+          answer: '',
+          decision: '',
+        };
       }
       list.push(r);
       console.log(`${r.ok ? '✓' : '✗'} ${c.id} #${rep + 1}${r.ok ? '' : ` — ${r.failures.join('; ')}`}`);

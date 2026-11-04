@@ -8,6 +8,7 @@ import { LoadOlderButton } from '@/components/ui/LoadOlderButton';
 import { api, ApiFailure, apiWithMeta } from '@/lib/client/api';
 import { mergeLatest, prependOlder } from '@/lib/client/message-pages';
 import { useConversationScroller } from '@/lib/client/use-keep-scroll';
+import { useJumpToMessage } from '@/lib/client/use-jump-to-message';
 import { useEvents } from '@/lib/client/use-events';
 import type { QueueItem } from '@/lib/conversations/queries';
 import type { ApiMessage } from '@/lib/conversations/serialize';
@@ -23,9 +24,18 @@ import { TakeoverBar, type TakeoverMode } from './TakeoverBar';
 
 type State = { item: QueueItem; messages: ApiMessage[]; handoffs: HandoffView[]; nextCursor: string | null };
 
-const cursorOf = (meta: Record<string, unknown>) => (typeof meta.next_cursor === 'string' ? meta.next_cursor : null);
+const cursorOf = (meta: Record<string, unknown>) =>
+  typeof meta.next_cursor === 'string' ? meta.next_cursor : null;
 
-export function ConsoleConversation({ id, me }: { id: string; me: { id: string; name: string } }) {
+export function ConsoleConversation({
+  id,
+  me,
+  jumpTo = null,
+}: {
+  id: string;
+  me: { id: string; name: string };
+  jumpTo?: string | null;
+}) {
   const [state, setState] = useState<State | null>(null);
   const [tickets, setTickets] = useState<EmployeeTicketsData | null>(null);
   const [ticketsError, setTicketsError] = useState(false);
@@ -57,18 +67,40 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
     setState((prev) => {
       if (!prev) return { item, messages: page.data, handoffs, nextCursor: cursorOf(page.meta) };
       const messages = mergeLatest(prev.messages, page.data);
-      return { item, messages, handoffs, nextCursor: messages.length > page.data.length ? prev.nextCursor : cursorOf(page.meta) };
+      return {
+        item,
+        messages,
+        handoffs,
+        nextCursor: messages.length > page.data.length ? prev.nextCursor : cursorOf(page.meta),
+      };
     });
     return item;
   }, [id]);
 
-  const loadOlder = async () => {
+  const loadOlder = async (): Promise<boolean> => {
     const cursor = state?.nextCursor;
-    if (!cursor) return;
+    if (!cursor) return false;
     keepScroll();
-    const page = await apiWithMeta<ApiMessage[]>(`/api/v1/conversations/${id}/messages?cursor=${encodeURIComponent(cursor)}`);
-    setState((prev) => (prev ? { ...prev, messages: prependOlder(prev.messages, page.data), nextCursor: cursorOf(page.meta) } : prev));
+    const page = await apiWithMeta<ApiMessage[]>(
+      `/api/v1/conversations/${id}/messages?cursor=${encodeURIComponent(cursor)}`,
+    );
+    setState((prev) =>
+      prev
+        ? { ...prev, messages: prependOlder(prev.messages, page.data), nextCursor: cursorOf(page.meta) }
+        : prev,
+    );
+    return page.data.length > 0;
   };
+
+  const hasMessage = useCallback(
+    (messageId: string) => state?.messages.some((message) => message.id === messageId) ?? false,
+    [state?.messages],
+  );
+  const { highlighted } = useJumpToMessage(state ? jumpTo : null, {
+    has: hasMessage,
+    loadOlder,
+    maxPages: 10,
+  });
 
   useEffect(() => {
     let alive = true;
@@ -84,7 +116,8 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
   useEvents((e) => {
     if (e.type === 'poll' || ('conversation_id' in e && e.conversation_id === id)) {
       void load().catch(() => null);
-      if (e.type === 'ticket.created' || e.type === 'ticket.updated') void loadTickets(state?.item.employee.id ?? '');
+      if (e.type === 'ticket.created' || e.type === 'ticket.updated')
+        void loadTickets(state?.item.employee.id ?? '');
     }
   });
 
@@ -96,9 +129,11 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
   /** Resultados da busca, da mensagem mais recente para a mais antiga (o primeiro é o que está mais perto do fim). */
   const results = useMemo(() => {
     if (!searchQuery?.trim() || !state) return [];
-    return [...state.messages]
-      .reverse()
-      .flatMap((m) => findMatches(m.body, searchQuery).map((_, k) => ({ id: m.id, k })).reverse());
+    return [...state.messages].reverse().flatMap((m) =>
+      findMatches(m.body, searchQuery)
+        .map((_, k) => ({ id: m.id, k }))
+        .reverse(),
+    );
   }, [searchQuery, state]);
   const active = results.length > 0 ? (results[Math.min(searchIndex, results.length - 1)] ?? null) : null;
 
@@ -112,7 +147,11 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
   }, []);
 
   if (!state) {
-    return <div className="flex flex-1 items-center justify-center bg-thread text-body text-ink-3">Carregando conversa…</div>;
+    return (
+      <div className="flex flex-1 items-center justify-center bg-thread text-body text-ink-3">
+        Carregando conversa…
+      </div>
+    );
   }
 
   const { item } = state;
@@ -139,19 +178,30 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
   };
 
   const send = async (text: string) => {
-    await api(`/api/v1/conversations/${id}/messages`, { method: 'POST', body: JSON.stringify({ text }) }).catch((e: unknown) =>
-      setToast(e instanceof Error ? e.message : 'Não foi possível enviar'),
-    );
+    await api(`/api/v1/conversations/${id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }).catch((e: unknown) => setToast(e instanceof Error ? e.message : 'Não foi possível enviar'));
     await load().catch(() => null);
   };
 
   const lastClaim = [...state.messages].reverse().find((m) => m.type === 'system' && /assumiu/.test(m.body));
-  const lastHandoff = [...state.messages].reverse().find((m) => m.type === 'system' && /^Transferida/.test(m.body));
+  const lastHandoff = [...state.messages]
+    .reverse()
+    .find((m) => m.type === 'system' && /^Transferida/.test(m.body));
   const lastEvent =
     item.status === 'claimed' && lastClaim
-      ? { kind: 'claim' as const, text: `Assumido por ${item.assigned_to?.name ?? ''}`, time: time(lastClaim.created_at) }
+      ? {
+          kind: 'claim' as const,
+          text: `Assumido por ${item.assigned_to?.name ?? ''}`,
+          time: time(lastClaim.created_at),
+        }
       : lastHandoff
-        ? { kind: 'transfer' as const, text: 'Transferido para um analista', time: time(lastHandoff.created_at) }
+        ? {
+            kind: 'transfer' as const,
+            text: 'Transferido para um analista',
+            time: time(lastHandoff.created_at),
+          }
         : null;
   const meta = ['online', item.employee.department, item.focus_ticket_code].filter(Boolean).join(' · ');
 
@@ -161,7 +211,9 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
         <header className="flex h-16 shrink-0 items-center gap-3 border-b border-rule bg-paper pr-4 pl-5">
           <Avatar name={item.employee.name} size={40} />
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="truncate text-[15.5px] font-semibold whitespace-nowrap text-ink">{item.employee.name}</span>
+            <span className="truncate text-[15.5px] font-semibold whitespace-nowrap text-ink">
+              {item.employee.name}
+            </span>
             <span className="truncate text-label text-ink-3">{meta}</span>
           </div>
           {mode === 'mine' ? (
@@ -233,17 +285,27 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
         )}
         <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto px-10 pt-5 pb-4">
           <div className="mt-auto">
-            {state.nextCursor && <LoadOlderButton onLoad={loadOlder} />}
-            <ConsoleThread messages={state.messages} handoffs={state.handoffs} employeeName={item.employee.name} onWhy={setWhy}
+            {state.nextCursor && <LoadOlderButton onLoad={async () => void (await loadOlder())} />}
+            <ConsoleThread
+              messages={state.messages}
+              handoffs={state.handoffs}
+              employeeName={item.employee.name}
+              onWhy={setWhy}
               highlight={searchQuery ? { term: searchQuery, active: active } : undefined}
+              highlightedMessage={highlighted}
             />
           </div>
         </div>
         <TakeoverBar
           mode={mode}
           firstName={firstName}
-          dueLabel={item.handoff ? formatShortDeadline(new Date(item.handoff.due_at), new Date()).replace('resposta até', 'até') : null}
+          dueLabel={
+            item.handoff
+              ? formatShortDeadline(new Date(item.handoff.due_at), new Date()).replace('resposta até', 'até')
+              : null
+          }
           otherName={item.assigned_to?.name ?? null}
+          employeeHasAgentAttendance={item.employee_has_agent_attendance}
           onClaim={() => action('claim')}
           onRelease={() => action('release')}
           onSend={send}
@@ -255,7 +317,8 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
           employeeName={item.employee.name}
           data={tickets}
           error={ticketsError}
-          focusCode={item.focus_ticket_code}
+          conversationId={item.id}
+          conversationCodes={item.ticket_codes}
           lastEvent={lastEvent}
           onRetry={() => void loadTickets(item.employee.id)}
           onClose={() => setPanel(false)}

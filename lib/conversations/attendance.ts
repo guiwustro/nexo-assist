@@ -2,8 +2,11 @@ import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { NotFound } from '@/lib/api/errors';
 import { noteToMemory } from '@/lib/agent-engine/agent/memory';
 import { getDb } from '@/lib/db/client';
-import { conversations, employeeSessions, ticketDrafts, type EmployeeSession } from '@/lib/db/schema';
-import { applyTransition, type Conversation } from './service';
+import { conversations, employeeSessions, ticketDrafts, users, type EmployeeSession } from '@/lib/db/schema';
+import type { ConversationStatus } from '@/lib/contracts/enums';
+import { timeInSaoPaulo } from '@/lib/rules/deadline';
+import { appendMessage, applyTransition, type Actor, type Conversation } from './service';
+import { writeReleaseNote } from './release-note';
 
 export async function touchSession(employeeId: string, sid: string, loginAt: Date): Promise<EmployeeSession> {
   return getDb().transaction(async (tx) => {
@@ -41,7 +44,10 @@ export async function touchSession(employeeId: string, sid: string, loginAt: Dat
 }
 
 export async function getSession(employeeId: string): Promise<EmployeeSession | null> {
-  const [session] = await getDb().select().from(employeeSessions).where(eq(employeeSessions.employee_id, employeeId));
+  const [session] = await getDb()
+    .select()
+    .from(employeeSessions)
+    .where(eq(employeeSessions.employee_id, employeeId));
   return session ?? null;
 }
 
@@ -66,7 +72,10 @@ export async function getOrCreateWithAgent(
     .select()
     .from(conversations)
     .where(and(eq(conversations.employee_id, employeeId), eq(conversations.status, 'ai_handling')))
-    .orderBy(desc(sql`coalesce(${conversations.last_message_at}, ${conversations.created_at})`), desc(conversations.created_at))
+    .orderBy(
+      desc(sql`coalesce(${conversations.last_message_at}, ${conversations.created_at})`),
+      desc(conversations.created_at),
+    )
     .limit(1);
   if (!conversation) throw new NotFound('conversation_not_found', 'Atendimento com o agent não encontrado');
 
@@ -83,8 +92,16 @@ export async function getCurrentForEmployee(employeeId: string, now: Date): Prom
   const [open] = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.employee_id, employeeId), eq(conversations.status, 'ai_handling')))
-    .orderBy(desc(sql`coalesce(${conversations.last_message_at}, ${conversations.created_at})`), desc(conversations.created_at))
+    .where(
+      and(
+        eq(conversations.employee_id, employeeId),
+        inArray(conversations.status, ['ai_handling', 'pending', 'claimed']),
+      ),
+    )
+    .orderBy(
+      desc(sql`coalesce(${conversations.last_message_at}, ${conversations.created_at})`),
+      desc(conversations.created_at),
+    )
     .limit(1);
   if (open) return open;
 
@@ -93,7 +110,9 @@ export async function getCurrentForEmployee(employeeId: string, now: Date): Prom
     .from(conversations)
     .where(and(eq(conversations.employee_id, employeeId), eq(conversations.status, 'closed')))
     .orderBy(
-      desc(sql`coalesce(${conversations.closed_at}, ${conversations.last_message_at}, ${conversations.created_at})`),
+      desc(
+        sql`coalesce(${conversations.closed_at}, ${conversations.last_message_at}, ${conversations.created_at})`,
+      ),
       desc(conversations.created_at),
     )
     .limit(1);
@@ -121,7 +140,9 @@ export async function previousAttendanceNote(employeeId: string, excludeId: stri
       ),
     )
     .orderBy(
-      desc(sql`coalesce(${conversations.closed_at}, ${conversations.last_message_at}, ${conversations.created_at})`),
+      desc(
+        sql`coalesce(${conversations.closed_at}, ${conversations.last_message_at}, ${conversations.created_at})`,
+      ),
       desc(conversations.created_at),
     )
     .limit(3);
@@ -135,7 +156,8 @@ export async function previousAttendanceNote(employeeId: string, excludeId: stri
   });
   const lines = rows.map((row) => {
     const closedAt = row.closed_at ?? row.last_message_at ?? row.created_at;
-    const preview = (row.last_message_preview ?? 'sem mensagens').replace(/\s+/g, ' ').trim() || 'sem mensagens';
+    const preview =
+      (row.last_message_preview ?? 'sem mensagens').replace(/\s+/g, ' ').trim() || 'sem mensagens';
     const codes = ticketCodes.get(row.id) ?? [];
     return `Atendimento de ${dateFormat.format(closedAt)} (${closedLabel(row.closed_reason)}): ${preview}; chamados: ${codes.join(', ') || 'nenhum'}`;
   });
@@ -165,6 +187,73 @@ export async function resolveConversation(conversationId: string, now: Date): Pr
       { expectedStatus: 'ai_handling', now, tx },
     );
   });
+}
+
+export async function releaseOrMerge(
+  conversationId: string,
+  actor: Actor,
+  now: Date,
+): Promise<{ conversation: Conversation; merged_into: string | null }> {
+  const db = getDb();
+  const result = await db.transaction(async (tx) => {
+    const [source] = await tx
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .for('update');
+    if (!source) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
+
+    const [active] = await tx
+      .select()
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.employee_id, source.employee_id),
+          eq(conversations.status, 'ai_handling'),
+          ne(conversations.id, source.id),
+        ),
+      )
+      .for('update');
+
+    if (!active) {
+      const conversation = await applyTransition(conversationId, 'release', actor, {
+        expectedStatus: source.status as ConversationStatus,
+        now,
+        tx,
+      });
+      return { conversation, merged_into: null, source_id: source.id, employee_id: source.employee_id };
+    }
+
+    const conversation = await applyTransition(conversationId, 'merge', actor, {
+      expectedStatus: source.status as ConversationStatus,
+      now,
+      tx,
+    });
+    const [analyst] = await tx.select({ name: users.name }).from(users).where(eq(users.id, actor.user_id));
+    const topic = source.focus_ticket_code ?? 'outro assunto';
+    await appendMessage(tx, {
+      conversation_id: active.id,
+      direction: 'outbound',
+      type: 'system',
+      sent_via: 'system',
+      sent_by_user_id: actor.user_id,
+      body: `${analyst?.name ?? 'Analista'} devolveu um atendimento sobre ${topic} · o Nexo já sabe o que foi feito · ${timeInSaoPaulo(now)}`,
+      metadata: { event: 'merge', merged_from: source.id },
+    });
+    return { conversation, merged_into: active.id, source_id: source.id, employee_id: source.employee_id };
+  });
+
+  try {
+    const [analyst] = await db.select({ name: users.name }).from(users).where(eq(users.id, actor.user_id));
+    await writeReleaseNote(result.source_id, result.merged_into ?? result.source_id, result.employee_id, {
+      id: actor.user_id,
+      name: analyst?.name ?? 'Analista',
+    });
+  } catch (error) {
+    console.warn('[release] memory note failed', error);
+  }
+
+  return { conversation: result.conversation, merged_into: result.merged_into };
 }
 
 export async function ticketCodesOf(conversationIds: string[]): Promise<Map<string, string[]>> {

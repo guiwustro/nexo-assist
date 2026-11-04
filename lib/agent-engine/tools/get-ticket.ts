@@ -4,6 +4,7 @@ import { STATUS_LABEL } from '@/lib/contracts/enums';
 import { TicketCodeSchema } from '@/lib/contracts/tickets';
 import { describeOverdue } from '@/lib/rules/overdue';
 import { computeDeadline } from '@/lib/rules/deadline';
+import { findAnalystAttendanceFor } from '@/lib/conversations/ticket-elsewhere';
 import { defineTool } from './types';
 
 export const getTicketTool = defineTool({
@@ -15,8 +16,14 @@ export const getTicketTool = defineTool({
   async run(ctx, input) {
     try {
       const ticket = await ctx.tickets.get(input.code, ctx.employee_id);
+      const withAnalyst = await findAnalystAttendanceFor(ctx.employee_id, ticket.code, ctx.conversation_id);
       const delay = describeOverdue(ticket, ctx.now);
-      ctx.emitPart({ kind: 'ticket_card', ticket, overdue: delay !== null, ...(delay ? { overdue_label: delay } : {}) });
+      ctx.emitPart({
+        kind: 'ticket_card',
+        ticket,
+        overdue: delay !== null,
+        ...(delay ? { overdue_label: delay } : {}),
+      });
       if (ctx.turn) {
         ctx.turn.sources.push({ kind: 'ticket', id: ticket.code, title: ticket.title });
         ctx.turn.focus_ticket_code = ticket.code;
@@ -28,6 +35,9 @@ export const getTicketTool = defineTool({
         overdue: delay !== null,
         overdue_label: delay,
         sla_rule: computeDeadline(ticket.priority, new Date(ticket.last_update_at)).rule,
+        with_analyst: withAnalyst
+          ? { analyst_name: withAnalyst.analyst_name, conversation_id: withAnalyst.conversation_id }
+          : null,
       };
     } catch (e) {
       if (e instanceof TicketsNotFoundError) return { found: false };

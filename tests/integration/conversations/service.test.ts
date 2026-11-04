@@ -3,10 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { useTestDb } from '@/tests/helpers/db';
 import { conversations, employeeSessions, eventLog, handoffs, messages } from '@/lib/db/schema';
 import { getOrCreateWithAgent, touchSession } from '@/lib/conversations/attendance';
-import {
-  applyTransition,
-  registerEmployeeMessage,
-} from '@/lib/conversations/service';
+import { applyTransition, registerEmployeeMessage } from '@/lib/conversations/service';
 import { createHandoff } from '@/lib/conversations/handoff';
 import { countsForAnalyst, listForAnalyst, listMessages } from '@/lib/conversations/queries';
 import { AppError } from '@/lib/api/errors';
@@ -16,7 +13,10 @@ const rafael = () => ({ user_id: t.seed.users.rafael.id, role: 'analyst' as cons
 const juliana = () => ({ user_id: t.seed.users.juliana.id, role: 'analyst' as const });
 
 async function errorOf(p: Promise<unknown>): Promise<AppError> {
-  const e = await p.then(() => null, (x: unknown) => x);
+  const e = await p.then(
+    () => null,
+    (x: unknown) => x,
+  );
   if (!(e instanceof AppError)) throw new Error(`esperava AppError, veio ${String(e)}`);
   return e;
 }
@@ -29,7 +29,10 @@ async function events(conversationId: string, type: string) {
 }
 
 async function sessionCount(employeeId: string) {
-  const [session] = await t.db.select().from(employeeSessions).where(eq(employeeSessions.employee_id, employeeId));
+  const [session] = await t.db
+    .select()
+    .from(employeeSessions)
+    .where(eq(employeeSessions.employee_id, employeeId));
   return session?.message_count ?? 0;
 }
 
@@ -75,7 +78,10 @@ describe('sessão do funcionário', () => {
 describe('registerEmployeeMessage', () => {
   it('a 30ª atinge o limite e a 31ª é recusada', async () => {
     const conv = await agentAttendance(t.seed.users.ana.id, 'sid-a');
-    await t.db.update(employeeSessions).set({ message_count: 29 }).where(eq(employeeSessions.employee_id, t.seed.users.ana.id));
+    await t.db
+      .update(employeeSessions)
+      .set({ message_count: 29 })
+      .where(eq(employeeSessions.employee_id, t.seed.users.ana.id));
     const r = await registerEmployeeMessage(conv.id, 'trigésima', 30);
     expect(r).toMatchObject({ count: 30, reached_limit: true });
     const e = await errorOf(registerEmployeeMessage(conv.id, 'trigésima primeira', 30));
@@ -85,7 +91,14 @@ describe('registerEmployeeMessage', () => {
 
   it('com o analista, a mensagem passa do limite: o limite vale só para o agent', async () => {
     const carla = t.seed.conversations.carla!; // pendente, esperando um analista
-    await t.db.insert(employeeSessions).values({ employee_id: t.seed.users.carla.id, session_id: 'sid-c', session_started_at: t.now, message_count: 30 });
+    await t.db
+      .insert(employeeSessions)
+      .values({
+        employee_id: t.seed.users.carla.id,
+        session_id: 'sid-c',
+        session_started_at: t.now,
+        message_count: 30,
+      });
     const r = await registerEmployeeMessage(carla, 'ainda estou aqui', 30);
     expect(r.message.body).toBe('ainda estou aqui');
     await applyTransition(carla, 'claim', rafael());
@@ -122,14 +135,18 @@ describe('registerEmployeeMessage', () => {
 describe('applyTransition', () => {
   it('dois analistas assumem ao mesmo tempo: só um vence', async () => {
     const carla = t.seed.conversations.carla!;
-    const rs = await Promise.allSettled([applyTransition(carla, 'claim', rafael()), applyTransition(carla, 'claim', juliana())]);
+    const rs = await Promise.allSettled([
+      applyTransition(carla, 'claim', rafael()),
+      applyTransition(carla, 'claim', juliana()),
+    ]);
     const ok = rs.filter((r) => r.status === 'fulfilled');
     const ko = rs.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
     expect(ok).toHaveLength(1);
     expect(ko).toHaveLength(1);
     expect((ko[0]!.reason as AppError).code).toBe('conversation_already_claimed');
     const [row] = await t.db.select().from(conversations).where(eq(conversations.id, carla));
-    const winner = (ok[0] as PromiseFulfilledResult<{ assigned_to_user_id: string | null }>).value.assigned_to_user_id;
+    const winner = (ok[0] as PromiseFulfilledResult<{ assigned_to_user_id: string | null }>).value
+      .assigned_to_user_id;
     expect(row?.assigned_to_user_id).toBe(winner);
     expect(row?.status).toBe('claimed');
   });
@@ -218,7 +235,7 @@ describe('fila do analista', () => {
       t.now,
     );
     const counts = await countsForAnalyst(t.seed.users.rafael.id);
-    expect(counts).toEqual({ all: 7, for_you: 3, with_agent: 2, mine: 0 });
+    expect(counts).toEqual({ all: 8, for_you: 3, with_agent: 2, mine: 0 });
     const forYou = await listForAnalyst(t.seed.users.rafael.id, { filter: 'for_you', now: t.now });
     expect(forYou.map((c) => c.employee.name)).toContain('Ana Souza');
     const bruno = forYou.find((c) => c.employee.name === 'Bruno Tavares');
@@ -232,11 +249,15 @@ describe('fila do analista', () => {
   });
 
   it('busca por nome, preview e chamado em foco', async () => {
-    expect((await listForAnalyst(t.seed.users.rafael.id, { q: 'carla' })).map((c) => c.employee.name)).toEqual([
-      'Carla Mendes',
-    ]);
-    expect((await listForAnalyst(t.seed.users.rafael.id, { q: 'INC-20519' }))[0]?.employee.name).toBe('Elisa Prado');
-    expect((await listForAnalyst(t.seed.users.rafael.id, { q: 'wi-fi' }))[0]?.employee.name).toBe('Gabriela Rocha');
+    expect(
+      (await listForAnalyst(t.seed.users.rafael.id, { q: 'carla' })).map((c) => c.employee.name),
+    ).toEqual(['Carla Mendes']);
+    expect((await listForAnalyst(t.seed.users.rafael.id, { q: 'INC-20519' }))[0]?.employee.name).toBe(
+      'Elisa Prado',
+    );
+    expect((await listForAnalyst(t.seed.users.rafael.id, { q: 'wi-fi' }))[0]?.employee.name).toBe(
+      'Gabriela Rocha',
+    );
   });
 
   describe('busca da fila', () => {
@@ -269,7 +290,7 @@ describe('fila do analista', () => {
 
     it('"ana" acha a Ana pelo nome e não quem só escreveu "analista"', async () => {
       await anaTalkedAboutVpn();
-      expect(names(await listForAnalyst(rafa(), { q: 'ana' }))).toEqual(['Ana Souza']);
+      expect(names(await listForAnalyst(rafa(), { q: 'ana' }))).toEqual(['Ana Souza', 'Ana Souza']);
       expect(names(await listForAnalyst(rafa(), { q: 'analis' }))).toEqual(['Carla Mendes', 'Bruno Tavares']);
     });
 
@@ -295,9 +316,13 @@ describe('fila do analista', () => {
     });
 
     it('combina com os filtros', async () => {
-      expect(names(await listForAnalyst(rafa(), { filter: 'for_you', q: 'carla' }))).toEqual(['Carla Mendes']);
+      expect(names(await listForAnalyst(rafa(), { filter: 'for_you', q: 'carla' }))).toEqual([
+        'Carla Mendes',
+      ]);
       expect(await listForAnalyst(rafa(), { filter: 'with_agent', q: 'carla' })).toEqual([]);
-      expect(names(await listForAnalyst(rafa(), { filter: 'with_agent', q: 'figma' }))).toEqual(['Diego Ramos']);
+      expect(names(await listForAnalyst(rafa(), { filter: 'with_agent', q: 'figma' }))).toEqual([
+        'Diego Ramos',
+      ]);
     });
 
     it('sem busca não há motivo', async () => {

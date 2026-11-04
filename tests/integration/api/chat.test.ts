@@ -12,9 +12,24 @@ import { closeMemory } from '@/lib/agent-engine/agent/memory';
 import type { Session } from '@/lib/auth/session';
 
 const t = useTestDb();
-const ana = (): Session => ({ user_id: t.seed.users.ana.id, role: 'employee', name: 'Ana Souza', sid: 'sid-ana' });
-const carla = (): Session => ({ user_id: t.seed.users.carla.id, role: 'employee', name: 'Carla Mendes', sid: 'sid-carla' });
-const rafael = (): Session => ({ user_id: t.seed.users.rafael.id, role: 'analyst', name: 'Rafael Lima', sid: 'sid-r' });
+const ana = (): Session => ({
+  user_id: t.seed.users.ana.id,
+  role: 'employee',
+  name: 'Ana Souza',
+  sid: 'sid-ana',
+});
+const carla = (): Session => ({
+  user_id: t.seed.users.carla.id,
+  role: 'employee',
+  name: 'Carla Mendes',
+  sid: 'sid-carla',
+});
+const rafael = (): Session => ({
+  user_id: t.seed.users.rafael.id,
+  role: 'analyst',
+  name: 'Rafael Lima',
+  sid: 'sid-r',
+});
 
 beforeEach(() => setTicketsClient(createFakeTickets(t.now)));
 afterAll(async () => {
@@ -22,7 +37,13 @@ afterAll(async () => {
   await closeMemory();
 });
 
-type Current = { data: { conversation: { id: string; status: string }; messages: unknown[]; session: { count: number; limit: number } } };
+type Current = {
+  data: {
+    conversation: { id: string; status: string };
+    messages: unknown[];
+    session: { count: number; limit: number };
+  };
+};
 
 async function anaConversation(): Promise<string> {
   const r = await json<Current>(await call(current, { session: ana() }));
@@ -30,9 +51,10 @@ async function anaConversation(): Promise<string> {
 }
 
 describe('chat', () => {
-  it('GET current cria a conversa da Ana e mostra o contador', async () => {
+  it('GET current devolve o atendimento encerrado mais recente da Ana e mostra o contador', async () => {
     const r = await json<Current>(await call(current, { session: ana() }));
-    expect(r.data.conversation.status).toBe('ai_handling');
+    expect(r.data.conversation.status).toBe('closed');
+    expect(r.data.conversation.id).toBe(t.seed.conversations.ana);
     expect(r.data.session).toEqual({ count: 0, limit: 30 });
   });
 
@@ -53,17 +75,33 @@ describe('chat', () => {
 
   it('31ª mensagem pela API → 409', async () => {
     const id = await anaConversation();
-    await t.db.update(employeeSessions).set({ message_count: 30 }).where(eq(employeeSessions.employee_id, t.seed.users.ana.id));
-    const res = await call(postMessage, { session: ana(), method: 'POST', params: { id }, body: { text: 'oi' } });
+    await t.db
+      .update(employeeSessions)
+      .set({ message_count: 30 })
+      .where(eq(employeeSessions.employee_id, t.seed.users.ana.id));
+    const res = await call(postMessage, {
+      session: ana(),
+      method: 'POST',
+      params: { id },
+      body: { text: 'oi' },
+    });
     expect(res.status).toBe(409);
     expect((await json(res)).error?.code).toBe('session_limit_reached');
   });
 
   it('depois da transferência pelo limite, o funcionário continua falando com o analista', async () => {
     const id = await anaConversation();
-    await t.db.update(employeeSessions).set({ message_count: 30 }).where(eq(employeeSessions.employee_id, t.seed.users.ana.id));
+    await t.db
+      .update(employeeSessions)
+      .set({ message_count: 30 })
+      .where(eq(employeeSessions.employee_id, t.seed.users.ana.id));
     await t.db.update(conversations).set({ status: 'pending' }).where(eq(conversations.id, id));
-    const res = await call(postMessage, { session: ana(), method: 'POST', params: { id }, body: { text: 'ainda preciso de ajuda' } });
+    const res = await call(postMessage, {
+      session: ana(),
+      method: 'POST',
+      params: { id },
+      body: { text: 'ainda preciso de ajuda' },
+    });
     expect(res.status).toBe(200);
     await res.text();
     const ms = await t.db.select().from(messages).where(eq(messages.conversation_id, id));
@@ -72,7 +110,12 @@ describe('chat', () => {
 
   it('texto vazio → 400', async () => {
     const id = await anaConversation();
-    const res = await call(postMessage, { session: ana(), method: 'POST', params: { id }, body: { text: '' } });
+    const res = await call(postMessage, {
+      session: ana(),
+      method: 'POST',
+      params: { id },
+      body: { text: '' },
+    });
     expect(res.status).toBe(400);
   });
 
@@ -86,6 +129,9 @@ describe('chat', () => {
     });
     expect(res.status).toBe(200);
     const body = await res.text();
+    const responseId = res.headers.get('x-conversation-id');
+    expect(responseId).toBeTruthy();
+    expect(responseId).not.toBe(id);
     expect(body).toContain('"type":"data-action"');
     expect(body).toContain('"type":"data-card"');
     const runId = body.match(/"run_id":"([0-9a-f-]{36})"/)?.[1];
@@ -93,7 +139,9 @@ describe('chat', () => {
 
     const requestSeq = await call(getRun, { session: ana(), params: { id: runId! } });
     expect(requestSeq.status).toBe(200);
-    const detail = await json<{ data: { decision: unknown; tool_calls: unknown[]; cost: { model: string; cost_cents: number | null } } }>(requestSeq);
+    const detail = await json<{
+      data: { decision: unknown; tool_calls: unknown[]; cost: { model: string; cost_cents: number | null } };
+    }>(requestSeq);
     expect(detail.data.tool_calls.length).toBeGreaterThan(0);
     expect(detail.data.cost.cost_cents).toBeNull();
     expect(detail.data.decision).not.toBeNull();
@@ -101,7 +149,9 @@ describe('chat', () => {
     expect((await call(getRun, { session: carla(), params: { id: runId! } })).status).toBe(404);
     expect((await call(getRun, { session: rafael(), params: { id: runId! } })).status).toBe(200);
 
-    const hist = await json<{ data: Array<{ direction: string }> }>(await call(listMessages, { session: ana(), params: { id } }));
+    const hist = await json<{ data: Array<{ direction: string }> }>(
+      await call(listMessages, { session: ana(), params: { id: responseId! } }),
+    );
     expect(hist.data.map((m) => m.direction)).toEqual(['inbound', 'outbound']);
   });
 

@@ -4,7 +4,7 @@ import { useTestDb } from '@/tests/helpers/db';
 import { getAgentAttendance } from '@/tests/helpers/attendance';
 import { createFakeTickets } from '@/tests/helpers/fake-tickets';
 import { runTool, type ToolCtx } from '@/lib/agent-engine/tools';
-import { ticketDrafts } from '@/lib/db/schema';
+import { conversations, ticketDrafts } from '@/lib/db/schema';
 import { computeDeadline } from '@/lib/rules/deadline';
 import { SEED_ARTICLES } from '@/lib/db/seed-data';
 import type { MessagePart } from '@/lib/contracts/parts';
@@ -58,14 +58,19 @@ describe('build_draft', () => {
     const [row] = await t.db.select().from(ticketDrafts).where(eq(ticketDrafts.code, 'D-381'));
     expect(row?.status).toBe('pending');
     expect(row?.idempotency_key).toBeTruthy();
-    expect(parts[0]).toMatchObject({ kind: 'draft_card', code: 'D-381', draft_kind: 'create', status: 'pending' });
+    expect(parts[0]).toMatchObject({
+      kind: 'draft_card',
+      code: 'D-381',
+      draft_kind: 'create',
+      status: 'pending',
+    });
   });
 
   it('reabrir INC-19877 (60 dias) → reopen_window_expired', async () => {
     const { c } = await ctx();
     const out = await runTool(c, 'build_draft', { kind: 'reopen', target_code: 'INC-19877', ...base });
     expect(out).toMatchObject({ ok: false, error: 'reopen_window_expired' });
-    expect(await t.db.$count(ticketDrafts)).toBe(0);
+    expect(await t.db.$count(ticketDrafts, eq(ticketDrafts.conversation_id, c.conversation_id))).toBe(0);
   });
 
   it('reabrir INC-20150 (4 dias) → rascunho de reabertura', async () => {
@@ -76,7 +81,12 @@ describe('build_draft', () => {
 
   it('atualizar chamado da Carla → found:false', async () => {
     const { c } = await ctx();
-    const out = await runTool(c, 'build_draft', { kind: 'update', target_code: 'INC-20388', ...base, comment: 'x' });
+    const out = await runTool(c, 'build_draft', {
+      kind: 'update',
+      target_code: 'INC-20388',
+      ...base,
+      comment: 'x',
+    });
     expect(out).toEqual({ found: false });
   });
 
@@ -86,21 +96,66 @@ describe('build_draft', () => {
     expect(out).toMatchObject({ ok: false, error: 'target_code_required' });
   });
 
+  it('recusa atualizar chamado que está com analista em outro atendimento', async () => {
+    const { c } = await ctx();
+    const [source] = await t.db
+      .insert(conversations)
+      .values({ employee_id: c.employee_id, status: 'pending', focus_ticket_code: 'INC-20311' })
+      .returning();
+
+    const out = await runTool(c, 'build_draft', {
+      kind: 'update',
+      target_code: 'INC-20311',
+      ...base,
+      comment: 'O erro continua aparecendo',
+    });
+
+    expect(out).toMatchObject({
+      ok: false,
+      reason: 'ticket_with_analyst',
+      analyst_name: null,
+      conversation_id: source!.id,
+    });
+    expect(await t.db.$count(ticketDrafts, eq(ticketDrafts.conversation_id, c.conversation_id))).toBe(0);
+  });
+
+  it('get_ticket aponta o atendimento com analista para o mesmo chamado', async () => {
+    const { c } = await ctx();
+    const [source] = await t.db
+      .insert(conversations)
+      .values({ employee_id: c.employee_id, status: 'pending', focus_ticket_code: 'INC-20311' })
+      .returning();
+
+    const out = await runTool(c, 'get_ticket', { code: 'INC-20311' });
+    expect(out).toMatchObject({
+      found: true,
+      with_analyst: { analyst_name: null, conversation_id: source!.id },
+    });
+  });
+
   describe('chamado aberto na mesma categoria', () => {
     const sharepoint = { ...base, title: 'Pasta Financeiro no SharePoint não abre', category: 'access' };
 
     it('criar com um aberto na mesma categoria → possible_duplicate, sem rascunho', async () => {
       const { c, parts, actions } = await ctx();
       const out = await runTool(c, 'build_draft', { kind: 'create', ...sharepoint });
-      expect(out).toMatchObject({ ok: false, error: 'possible_duplicate', open_tickets: [{ code: 'INC-20298' }] });
-      expect(await t.db.$count(ticketDrafts)).toBe(0);
+      expect(out).toMatchObject({
+        ok: false,
+        error: 'possible_duplicate',
+        open_tickets: [{ code: 'INC-20298' }],
+      });
+      expect(await t.db.$count(ticketDrafts, eq(ticketDrafts.conversation_id, c.conversation_id))).toBe(0);
       expect(parts).toHaveLength(0);
       expect(actions.find((a) => a.result !== 'running')?.summary).toMatch(/INC-20298/);
     });
 
     it('o agent confirma que é outro problema (distinct_from) → cria o rascunho', async () => {
       const { c } = await ctx();
-      const out = await runTool(c, 'build_draft', { kind: 'create', ...sharepoint, distinct_from: ['INC-20298'] });
+      const out = await runTool(c, 'build_draft', {
+        kind: 'create',
+        ...sharepoint,
+        distinct_from: ['INC-20298'],
+      });
       expect(out).toMatchObject({ ok: true, draft_code: 'D-381' });
     });
 

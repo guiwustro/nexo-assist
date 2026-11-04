@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import type { UIMessageStreamWriter } from 'ai';
 import { useTestDb } from '@/tests/helpers/db';
 import { getAgentAttendance } from '@/tests/helpers/attendance';
@@ -27,19 +27,31 @@ function collector() {
   return { writer, chunks };
 }
 
-const ana = (): Session => ({ user_id: t.seed.users.ana.id, role: 'employee', name: 'Ana Souza', sid: 'sid-1' });
+const ana = (): Session => ({
+  user_id: t.seed.users.ana.id,
+  role: 'employee',
+  name: 'Ana Souza',
+  sid: 'sid-1',
+});
 
 async function runTurnFor(text: string, conversationId?: string) {
-  const conv = conversationId ? { id: conversationId } : await getAgentAttendance(ana().user_id, 'sid-1', t.now);
+  const conv = conversationId
+    ? { id: conversationId }
+    : await getAgentAttendance(ana().user_id, 'sid-1', t.now);
   const c = collector();
   const employee = conversationId
-    ? { ...ana(), user_id: (await t.db.select().from(conversations).where(eq(conversations.id, conversationId)))[0]!.employee_id }
+    ? {
+        ...ana(),
+        user_id: (await t.db.select().from(conversations).where(eq(conversations.id, conversationId)))[0]!
+          .employee_id,
+      }
     : ana();
   const r = await runTurn({ conversation_id: conv.id, employee, text, writer: c.writer, now: t.now });
   return { ...r, run_id: r.run_id ?? '00000000-0000-4000-8000-000000000000', ...c, conversation_id: conv.id };
 }
 
-const statusOf = async (id: string) => (await t.db.select().from(conversations).where(eq(conversations.id, id)))[0]!.status;
+const statusOf = async (id: string) =>
+  (await t.db.select().from(conversations).where(eq(conversations.id, id)))[0]!.status;
 
 beforeEach(() => {
   fake = createFakeTickets(t.now);
@@ -53,6 +65,70 @@ afterAll(async () => {
 });
 
 describe('runTurn', () => {
+  it('encerra depois da resposta quando o funcionário confirma que resolveu', async () => {
+    const r = await runTurnFor('Isso resolveu, obrigado!');
+    const [conversation] = await t.db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, r.conversation_id));
+    expect(conversation).toMatchObject({ status: 'closed', closed_reason: 'resolved' });
+
+    const rows = await t.db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversation_id, r.conversation_id))
+      .orderBy(asc(messages.created_at));
+    const answerIndex = rows.findIndex((message) => message.sent_via === 'ai');
+    const resolvedIndex = rows.findIndex(
+      (message) => message.type === 'system' && message.body.startsWith('Atendimento resolvido ·'),
+    );
+    expect(answerIndex).toBeGreaterThanOrEqual(0);
+    expect(resolvedIndex).toBeGreaterThan(answerIndex);
+  });
+
+  it('transferência vence quando o mesmo turno também marca resolução', async () => {
+    setModelForTests(undefined, undefined, [
+      {
+        id: 'transfer-and-resolve',
+        match: /transfira e resolva/i,
+        steps: [
+          {
+            tool_calls: [
+              {
+                name: 'transfer_to_analyst',
+                args: { reason: 'requested_human', reading: 'A funcionária pediu um analista.' },
+              },
+              { name: 'mark_resolved', args: { summary: 'A funcionária também confirmou que resolveu.' } },
+            ],
+          },
+          { text: 'Certo, transferi para um analista continuar este atendimento.' },
+        ],
+        decision: {
+          understanding: {
+            intent: 'talk_to_human',
+            summary: 'Pediu atendimento humano',
+            evidence: 'transfira e resolva',
+          },
+          decision: {
+            action: 'transfer',
+            confidence: 0.9,
+            why: 'A funcionária pediu um analista.',
+            rules_applied: [],
+            sources: [],
+          },
+        },
+      },
+    ]);
+
+    const r = await runTurnFor('transfira e resolva, por favor');
+    const [conversation] = await t.db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, r.conversation_id));
+    expect(r.outcome).toBe('transferred');
+    expect(conversation).toMatchObject({ status: 'pending', closed_reason: null });
+  });
+
   it('VPN 809: responde com trilha, opções rápidas e decisão registrada', async () => {
     const r = await runTurnFor('Meu notebook não conecta na VPN, erro 809');
     expect(r.outcome).toBe('answered');
@@ -64,7 +140,9 @@ describe('runTurn', () => {
     expect(run!.tool_calls.every((a) => a.result !== 'running')).toBe(true);
     expect(run?.decision?.understanding.evidence.length).toBeGreaterThan(0);
     expect(run?.tokens_in).toBeGreaterThan(0);
-    const cards = r.chunks.filter((c) => c.type === 'data-card').map((c) => c.data as { kind: string; options?: string[] });
+    const cards = r.chunks
+      .filter((c) => c.type === 'data-card')
+      .map((c) => c.data as { kind: string; options?: string[] });
     expect(cards.find((c) => c.kind === 'quick_replies')?.options).toEqual(['Windows 10', 'Windows 11']);
     expect(r.chunks.some((c) => c.type === 'text-delta')).toBe(true);
     const out = await t.db
@@ -84,7 +162,9 @@ describe('runTurn', () => {
     const r = await runTurnFor('alguém aí?', carla);
     expect(r.outcome).toBe('paused');
     expect(await t.db.$count(llmCalls)).toBe(0);
-    expect(await t.db.$count(messages, and(eq(messages.conversation_id, carla), eq(messages.body, 'alguém aí?')))).toBe(1);
+    expect(
+      await t.db.$count(messages, and(eq(messages.conversation_id, carla), eq(messages.body, 'alguém aí?'))),
+    ).toBe(1);
     expect(r.chunks.some((c) => c.type === 'data-system')).toBe(true);
   });
 
@@ -99,7 +179,10 @@ describe('runTurn', () => {
 
   it('a 30ª mensagem transfere por limite da sessão', async () => {
     const conv = await getAgentAttendance(ana().user_id, 'sid-1', t.now);
-    await t.db.update(employeeSessions).set({ message_count: 29 }).where(eq(employeeSessions.employee_id, ana().user_id));
+    await t.db
+      .update(employeeSessions)
+      .set({ message_count: 29 })
+      .where(eq(employeeSessions.employee_id, ana().user_id));
     const r = await runTurnFor('mais uma pergunta');
     expect(r.outcome).toBe('limit');
     expect(await t.db.$count(llmCalls)).toBe(0);
@@ -111,8 +194,14 @@ describe('runTurn', () => {
     const vpn = await runTurnFor('Meu notebook não conecta na VPN, erro 809');
     const [before] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.id, vpn.run_id));
     const summary = before!.decision!.understanding.summary;
-    await t.db.update(employeeSessions).set({ message_count: 29 }).where(eq(employeeSessions.employee_id, ana().user_id));
-    await t.db.update(conversations).set({ focus_ticket_code: 'INC-20298' }).where(eq(conversations.id, vpn.conversation_id));
+    await t.db
+      .update(employeeSessions)
+      .set({ message_count: 29 })
+      .where(eq(employeeSessions.employee_id, ana().user_id));
+    await t.db
+      .update(conversations)
+      .set({ focus_ticket_code: 'INC-20298' })
+      .where(eq(conversations.id, vpn.conversation_id));
 
     const r = await runTurnFor('mais uma pergunta');
     expect(r.outcome).toBe('limit');
@@ -156,7 +245,8 @@ describe('runTurn', () => {
     const conv = await getAgentAttendance(ana().user_id, 'sid-1', t.now);
     setModelForTests({
       onStep: async (_id, step) => {
-        if (step === 0) await applyTransition(conv.id, 'claim', { user_id: t.seed.users.rafael.id, role: 'analyst' });
+        if (step === 0)
+          await applyTransition(conv.id, 'claim', { user_id: t.seed.users.rafael.id, role: 'analyst' });
       },
     });
     const r = await runTurnFor('não sei explicar o que houve com o sistema');
@@ -187,7 +277,11 @@ describe('runTurn', () => {
             tool_calls: [
               {
                 name: 'transfer_to_analyst',
-                args: { reason: 'overdue_ticket', reading: 'INC-20311 vencido, quer escalar', ticket_code: 'INC-20311' },
+                args: {
+                  reason: 'overdue_ticket',
+                  reading: 'INC-20311 vencido, quer escalar',
+                  ticket_code: 'INC-20311',
+                },
               },
             ],
           },
@@ -269,7 +363,11 @@ describe('runTurn', () => {
           { text: 'Montei o complemento do INC-20298. Confira e clique em Confirmar.' },
         ],
         decision: {
-          understanding: { intent: 'complement', summary: 'Complemento do INC-20298', evidence: 'acesso negado agora' },
+          understanding: {
+            intent: 'complement',
+            summary: 'Complemento do INC-20298',
+            evidence: 'acesso negado agora',
+          },
           decision: { action: 'draft_create', confidence: 0.9, why: 'x', rules_applied: [], sources: [] },
         },
       },
@@ -341,7 +439,10 @@ describe('runTurn', () => {
       .from(messages)
       .where(and(eq(messages.agent_run_id, r.run_id), eq(messages.direction, 'outbound')));
     expect(out?.body).toBe('Deixa eu conferir.\n\nAchei seus chamados.');
-    const deltas = r.chunks.filter((c) => c.type === 'text-delta').map((c) => c.delta).join('');
+    const deltas = r.chunks
+      .filter((c) => c.type === 'text-delta')
+      .map((c) => c.delta)
+      .join('');
     expect(deltas).toBe('Deixa eu conferir.\n\nAchei seus chamados.');
   });
 
@@ -362,6 +463,8 @@ describe('runTurn', () => {
       .select()
       .from(messages)
       .where(and(eq(messages.conversation_id, r.conversation_id), eq(messages.type, 'system')));
-    expect(sys.some((m) => m.body === 'O chamado ainda não foi criado — confira o rascunho e confirme.')).toBe(true);
+    expect(
+      sys.some((m) => m.body === 'O chamado ainda não foi criado — confira o rascunho e confirme.'),
+    ).toBe(true);
   });
 });

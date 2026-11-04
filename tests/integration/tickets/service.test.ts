@@ -153,15 +153,25 @@ describe('serviço de chamados', () => {
     });
     const res = await req(`/tickets/INC-20298/events?requester_id=${t.seed.users.ana.id}`);
     expect(res.status).toBe(200);
-    const { data } = (await res.json()) as { data: Array<{ kind: string; body: string; actor: string; created_at: string }> };
-    expect(data.map((e) => e.kind)).toEqual(['created', 'comment']);
-    expect(data[1]).toMatchObject({ body: 'continua lento', actor: 'funcionário', created_at: clock.now.toISOString() });
+    const { data } = (await res.json()) as {
+      data: Array<{ kind: string; body: string; actor: string; created_at: string }>;
+    };
+    expect(data.map((e) => e.kind)).toEqual(['created', 'comment', 'status_changed', 'comment']);
+    expect(data[3]).toMatchObject({
+      body: 'continua lento',
+      actor: 'funcionário',
+      created_at: clock.now.toISOString(),
+    });
   });
 
   it('busca de chamados por código ou título, sem acento, de todos os solicitantes', async () => {
     const { req } = setup();
     const hits = async (q: string) =>
-      ((await (await req(`/tickets/search?q=${encodeURIComponent(q)}`)).json()) as { data: Array<{ code: string; requester_id: string; title: string }> }).data;
+      (
+        (await (await req(`/tickets/search?q=${encodeURIComponent(q)}`)).json()) as {
+          data: Array<{ code: string; requester_id: string; title: string }>;
+        }
+      ).data;
     expect((await hits('REQ-10460')).map((h) => h.code)).toEqual(['REQ-10460']);
     expect((await hits('REQ-10460'))[0]?.requester_id).toBe(t.seed.users.carla.id);
     expect((await hits('diretoria')).map((h) => h.code)).toEqual(['INC-20388']);
@@ -201,7 +211,9 @@ describe('serviço de chamados', () => {
     const onOutsideClick = await req(`/tickets?requester_id=${t.seed.users.ana.id}`);
     expect(onOutsideClick.status).toBe(503);
     expect(onOutsideClick.headers.get('retry-after')).toBe('10');
-    expect(((await onOutsideClick.json()) as { error: { code: string } }).error.code).toBe('tickets_unavailable');
+    expect(((await onOutsideClick.json()) as { error: { code: string } }).error.code).toBe(
+      'tickets_unavailable',
+    );
     clock.now = new Date(t.now.getTime() + 11_000);
     expect((await req(`/tickets?requester_id=${t.seed.users.ana.id}`)).status).toBe(200);
   });

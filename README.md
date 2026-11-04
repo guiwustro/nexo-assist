@@ -26,7 +26,8 @@ pnpm dev                      # web em http://localhost:3000 + serviço de chama
 Porta 3000 ocupada? `PORT=3005 pnpm dev`.
 
 **Com o modelo real:** no `.env`, `LLM_PROVIDER=deepseek` e `DEEPSEEK_API_KEY=...`. Para medir custo, preencha
-`LLM_PRICE_IN_CENTS_PER_MTOK=30` e `LLM_PRICE_OUT_CENTS_PER_MTOK=120` (preço oficial do `deepseek-flash`, ver §6).
+`LLM_PRICE_IN_CENTS_PER_MTOK` e `LLM_PRICE_OUT_CENTS_PER_MTOK` com os preços atuais do provedor, em centavos
+por milhão de tokens. Eles ficam vazios no `.env.example`; sem os dois valores, o custo não é calculado.
 
 **Tudo em containers** (web + chamados + banco, como em produção):
 
@@ -39,17 +40,21 @@ pnpm smoke http://localhost:3000 --restart    # login, conversa, rascunho e pers
 
 Todos os usuários do seed entram com a senha **`nexo2026`**.
 
-| Pessoa | E-mail | Papel | O que tem no seed |
-|---|---|---|---|
-| Ana Souza | `ana.souza@nexo.com.br` | Funcionária (Financeiro) | INC-20311 vencido, INC-20298 aberto (SharePoint), REQ-10442 (monitor), chamados antigos resolvidos |
-| Carla Mendes | `carla.mendes@nexo.com.br` | Funcionária (Comercial) | Conversa já transferida, esperando um analista |
-| Diego Ramos | `diego.ramos@nexo.com.br` | Funcionário (Marketing) | Sem histórico — bom para começar do zero |
-| Rafael Lima | `rafael.lima@nexo.com.br` | Analista N2 | Console do analista |
-| Juliana Costa | `juliana.costa@nexo.com.br` | Analista N1 | Console do analista |
+| Pessoa         | E-mail                        | Papel                     | O que tem no seed                                                                                                      |
+| -------------- | ----------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Ana Souza      | `ana.souza@nexo.com.br`       | Funcionária (Financeiro)  | INC-20311 vencido, INC-20298 aberto (SharePoint), REQ-10442 (monitor), atendimento resolvido sobre o Outlook há 3 dias |
+| Carla Mendes   | `carla.mendes@nexo.com.br`    | Funcionária (Comercial)   | Conversa transferida, esperando uma analista                                                                           |
+| Bruno Tavares  | `bruno.tavares@nexo.com.br`   | Funcionário (Operações)   | Conversa transferida por baixa confiança                                                                              |
+| Diego Ramos    | `diego.ramos@nexo.com.br`     | Funcionário (Marketing)   | Conversa com o agent sobre instalar o Figma                                                                            |
+| Elisa Prado    | `elisa.prado@nexo.com.br`    | Funcionária (Jurídico)    | Conversa com o agent que criou o INC-20519                                                                            |
+| Fábio Nunes    | `fabio.nunes@nexo.com.br`     | Funcionário (Logística)   | Atendimento resolvido pelo agent sobre a impressora                                                                    |
+| Gabriela Rocha | `gabriela.rocha@nexo.com.br`  | Funcionária (Comercial)   | Atendimento resolvido pelo agent sobre o Wi-Fi                                                                         |
+| Rafael Lima    | `rafael.lima@nexo.com.br`     | Analista N2               | Console do analista                                                                                                    |
+| Juliana Costa  | `juliana.costa@nexo.com.br`   | Analista N1               | Console do analista                                                                                                    |
 
-Roteiro curto para ver tudo: entre como **Ana** e mande *"Meu notebook não conecta na VPN, erro 809"* → responda
-*Windows 11* → *"Só eu, tenho reunião às 14h"*. Clique na linha de status do agent para abrir o painel
-**"Por que o Nexo fez isso?"**. Depois mande *"quero falar com um analista"*, entre como **Rafael** em outra
+Roteiro curto para ver tudo: entre como **Ana** e mande _"Meu notebook não conecta na VPN, erro 809"_ → responda
+_Windows 11_ → _"Só eu, tenho reunião às 14h"_. Clique na linha de status do agent para abrir o painel
+**"Por que o Nexo fez isso?"**. Depois mande _"quero falar com um analista"_, entre como **Rafael** em outra
 janela e assuma a conversa.
 
 ---
@@ -60,20 +65,22 @@ janela e assuma a conversa.
 ┌─────────────────────────────── web (Next.js 16, um processo) ───────────────────────────────┐
 │  UI (React)                  │  API /api/v1 (Route Handlers)         │  Agent (Mastra)        │
 │  /login                      │  POST conversations/:id/messages      │  runTurn               │
-│  /atendimento  (funcionário) │       → stream (AI SDK UI messages)   │   ├ tools (6)          │
-│  /perfil · /chamados         │  POST drafts/:id/confirm (idempotente)│   ├ decisão declarada  │
-│  /console      (analista)    │  GET  conversations (fila) · claim ·  │   ├ rules/ (puras)     │
-│                              │       release · close · handoffs      │   ├ triggers/          │
-│                              │  GET  events (SSE)  · ai/runs/:id     │   └ guardrails/        │
+│  /atendimento  (funcionário) │       → stream (AI SDK UI messages)   │   ├ tools (7)          │
+│  /atendimento/[id]           │  GET  me/conversations/:id            │   ├ decisão declarada  │
+│  /perfil · /chamados         │  POST drafts/:id/confirm (idempotente)│   ├ rules/ (puras)     │
+│  /console      (analista)    │  GET  conversations (fila) · claim ·  │   ├ triggers/          │
+│                              │       release · close · handoffs      │   └ guardrails/        │
+│                              │  GET  events (SSE)  · ai/runs/:id     │                       │
 └──────────────────────────────┴───────────────────────────────────────┴───────────┬────────────┘
              │ Drizzle                                                             │ HTTP tipado:
              ▼                                                                     │ retry curto +
    ┌──────────────────────────┐                        ┌───────────────────────────▼──────────┐
    │ Postgres                 │◄───── schema tickets ──│ services/tickets (Hono, processo     │
-   │  app: conversas, mensagens│                        │ próprio): GET/POST/PATCH /tickets,   │
-   │  rascunhos, passagens,   │                        │ /transfer, idempotência, falhas      │
-   │  ai_agent_runs, llm_calls│                        │ simuladas e /_chaos/outage           │
-   │  event_log · mastra      │                        └──────────────────────────────────────┘
+   │  app: atendimentos,       │                        │ próprio): GET/POST/PATCH /tickets,   │
+   │  mensagens, sessões,      │                        │ /transfer, idempotência, falhas      │
+   │  rascunhos, passagens,    │                        │ simuladas e /_chaos/outage           │
+   │  ai_agent_runs, llm_calls,│                        │                                      │
+   │  event_log · mastra       │                        └──────────────────────────────────────┘
    └──────────────────────────┘
 ```
 
@@ -82,8 +89,8 @@ janela e assuma a conversa.
   guardar o rascunho e confirmar depois. O agent só fala com ele pela borda `lib/agent-engine/edge/tickets`
   (retry curto, disjuntor, erros tipados).
 - **Pastas:** `lib/rules` (Anexo A em funções puras) · `lib/agent-engine` (agent, tools, `triggers`, guardrails,
-  borda do LLM e dos chamados) · `lib/conversations` (estado agent × analista, passagem) · `lib/contracts`
-  (Zod compartilhado entre API, UI e serviço) · `services/tickets` · `app/` (telas e rotas).
+  borda do LLM e dos chamados) · `lib/conversations` (`attendance.ts`: ciclo de vida e sessão; estado agent × analista)
+  · `lib/contracts` (Zod compartilhado entre API, UI e serviço) · `services/tickets` · `app/` (telas e rotas).
 - **Língua:** o código (nomes, arquivos, tools que o modelo vê, logs) é em inglês; o que a pessoa lê (telas,
   URLs, mensagens da API), o prompt do agent, os comentários e os nomes dos testes ficam em português.
 - **Tempo real do console:** SSE sobre o `event_log` (com `Last-Event-ID`), caindo para polling se o
@@ -95,17 +102,18 @@ janela e assuma a conversa.
 
 A divisão é: **o modelo interpreta, o código decide o que tem regra.**
 
-| Quem | Decide o quê |
-|---|---|
-| Modelo (DeepSeek) | O que o funcionário quer, que pergunta fazer, que artigo serve, que dados pôr no rascunho |
-| Código (`lib/rules`) | Prioridade e prazo (Anexo A), horário útil, chamado vencido, janela de reabertura de 7 dias, transições agent × analista |
-| Código (`triggers/`) | Quando transferir: pedido explícito, Crítica, confiança abaixo de 0,6, limite de 30 mensagens da sessão, teto de gasto do dia; oferta de analista para chamado vencido |
-| Código (`guardrails/`) | O agent prometeu um analista sem transferir → o sistema transfere. Disse que criou um chamado → aviso "o chamado ainda não foi criado". Fonte que nenhuma tool retornou → descartada. Rascunho de chamado novo com outro aberto na mesma categoria → recusado até o agent atualizar o existente ou dizer que é outro problema |
-| Funcionário | Criar, atualizar ou reabrir chamado: **só o clique em Confirmar** cria (idempotente) |
+| Quem                           | Decide o quê                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Modelo (DeepSeek)              | O que o funcionário quer, que pergunta fazer, que artigo serve, que dados pôr no rascunho                                                                                                                                                                                                                                                                                                                                                                               |
+| Código (`lib/rules`)           | Prioridade e prazo (Anexo A), horário útil, chamado vencido, janela de reabertura de 7 dias, transições agent × analista                                                                                                                                                                                                                                                                                                                                                |
+| Código (`triggers/`)           | Quando transferir: pedido explícito, Crítica, confiança abaixo de 0,6, limite de 30 mensagens da sessão, teto de gasto do dia; oferta de analista para chamado vencido                                                                                                                                                                                                                                                                                                  |
+| Código (`guardrails/` e tools) | O agent prometeu um analista sem transferir → o sistema transfere. Disse que criou um chamado → aviso "o chamado ainda não foi criado". Fonte que nenhuma tool retornou → descartada. Rascunho de chamado novo com outro aberto na mesma categoria → recusado até o agent atualizar o existente ou dizer que é outro problema. `build_draft` de atualização/reabertura é recusado como `ticket_with_analyst` quando o chamado já está com analista em outro atendimento |
+| Funcionário                    | Criar, atualizar ou reabrir chamado: **só o clique em Confirmar** cria (idempotente)                                                                                                                                                                                                                                                                                                                                                                                    |
 
 **Tools** (identidade sempre da sessão, nunca do modelo): `search_articles`, `list_my_tickets`,
-`get_ticket`, `build_draft` (o modelo informa *quem é afetado / impede de trabalhar / compromisso hoje*; a
-prioridade é calculada), `offer_options` (opções rápidas), `transfer_to_analyst`.
+`get_ticket`, `build_draft` (o modelo informa _quem é afetado / impede de trabalhar / compromisso hoje_; a
+prioridade é calculada), `offer_options` (opções rápidas), `transfer_to_analyst` e `mark_resolved` (encerra
+depois que o funcionário confirma que a resposta resolveu).
 
 **Um turno** (`lib/agent-engine/agent/run-turn.ts`):
 
@@ -129,33 +137,26 @@ Duas perguntas diferentes, dois instrumentos:
   um `LanguageModelV4` determinístico que segue roteiros por mensagem (inclusive tool calls, falhas e decisões
   inválidas). Ele existe para que unitários, integração e E2E rodem sem chave, sem custo e sem variação — eles
   provam regras, tools, guardrails, persistência e UI, não o julgamento do modelo.
-- **O modelo julga bem?** **Evals com o modelo real** (`evals/`): 14 cenários das histórias do PRD, cada um 3×,
+- **O modelo julga bem?** **Evals com o modelo real** (`evals/`): 15 cenários das histórias do PRD, cada um 3×,
   contra o pipeline real. Critérios verificáveis no banco (tools chamadas, ação, rascunho, prioridade, fontes,
   transferência) — sem juiz LLM.
 
 ### Pirâmide de testes
 
-| Camada | Comando | O que cobre | Resultado |
-|---|---|---|---|
-| Typecheck + lint | `pnpm typecheck && pnpm lint` | TS estrito, React hooks | 0 erros, 0 avisos |
-| Unitários | `pnpm test` | Anexo A, prazos em horário útil, reabertura, máquina de estados, gatilhos, guardrails, busca, contratos, componentes | **261/261** (31 arquivos) |
-| Integração | `pnpm test:int` (Postgres) | `runTurn` com memória e banco reais, API com sessão e papéis, serviço de chamados, idempotência, SSE | **134/134** (14 arquivos) |
-| E2E | `pnpm test:e2e` (Playwright) | As histórias do PRD de ponta a ponta: abrir, consultar, complementar, transparência, privacidade, fora de escopo, transferência e console, instabilidade do legado, limite da sessão, continuidade, conta e controles do console, histórico | **45/45** (~1,5 min) |
-| Evals | `pnpm eval` (DeepSeek) | Julgamento do modelo nas 14 histórias | **40/42 (95%)** |
+| Camada           | Comando                       | O que cobre                                                                                                                                                                                                                                 | Resultado                 |
+| ---------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| Typecheck + lint | `pnpm typecheck && pnpm lint` | TS estrito, React hooks                                                                                                                                                                                                                     | 0 erros, 0 avisos         |
+| Unitários        | `pnpm test`                   | Anexo A, prazos em horário útil, reabertura, máquina de estados, gatilhos, guardrails, busca, contratos, componentes                                                                                                                        | **279/279** (34 arquivos) |
+| Integração       | `pnpm test:int` (Postgres)    | `runTurn` com memória e banco reais, API com sessão e papéis, serviço de chamados, idempotência, SSE                                                                                                                                        | **172/172** (17 arquivos) |
+| E2E              | `pnpm test:e2e` (Playwright)  | As histórias do PRD de ponta a ponta: abrir, consultar, complementar, transparência, privacidade, fora de escopo, transferência e console, instabilidade do legado, limite da sessão, continuidade, conta e controles do console, histórico | **54/54** (~2 min)        |
+| Evals            | `pnpm eval` (DeepSeek)        | Julgamento do modelo nas 15 histórias                                                                                                                                                                                                       | **45/45 (100%)**          |
 
 `pnpm check` roda typecheck, lint e unitários juntos. Números da última rodada completa, em 04/11/2026.
 
-### Resultado dos evals (`deepseek-flash`, 14 cenários × 3)
+### Resultado dos evals (`deepseek-flash`, 15 cenários × 3)
 
-Primeira rodada: **30/39 (77%)**. Os erros viraram correções no código (com teste antes) e ajustes de prompt
-(um commit por ajuste, com antes/depois): fonte verificada num turno anterior passou a contar; ação da decisão
-passou a seguir o que as tools fizeram; update/reopen montam o rascunho sem perguntar; caso crítico transfere no
-mesmo turno. Com os 13 cenários originais chegou a **39/39 (100%)**; com o cenário novo `resolved-tickets`
-(histórico), **41/42 (98%)**. A rodada atual, depois da checagem de duplicidade e dos nomes das tools em inglês
-(`search_articles`, `build_draft`…), deu **40/42 (95%)**, com uma falha em cada um de dois cenários: em
-`vpn-809-win11` a chamada de decisão não devolveu JSON válido (o rascunho saiu certo), e em `monitor-request` o
-rascunho já tinha sido montado no turno anterior e o agent só confirmou os dados. Com 3 repetições por cenário,
-uma falha a mais está dentro da variação entre rodadas. Tabela completa em
+Rodada de 04/11/2026: **45/45 (100%)**, incluindo `duvida-resolvida` (3/3), que verifica o encerramento depois
+da confirmação do funcionário. Os cenários e os resultados de cada repetição estão em
 [`evals/resultados.md`](evals/resultados.md).
 
 ---
@@ -176,8 +177,8 @@ está tentando de novo. Clicar nela abre o painel **"Por que o Nexo fez isso?"**
 No **console do analista** a mesma trilha aparece em cada mensagem do agent, e a passagem vem com um briefing
 (palavras do funcionário, leitura do agent, o que já foi tentado, confiança, chamado em foco e prazo).
 
-| Painel de decisão | Console — conversa transferida |
-|---|---|
+| Painel de decisão                                   | Console — conversa transferida                                       |
+| --------------------------------------------------- | -------------------------------------------------------------------- |
 | ![Painel de decisão](docs/telas/painel-decisao.png) | ![Console, conversa transferida](docs/telas/console-transferida.png) |
 
 ---
@@ -187,17 +188,10 @@ No **console do analista** a mesma trilha aparece em cada mensagem do agent, e a
 **DeepSeek `deepseek-flash`** via `@ai-sdk/deepseek` no Mastra. Escolhido por custo baixo e bom uso de tools em
 português; `MODEL_ID` e `LLM_PROVIDER` são trocáveis por env (a borda `edge/llm` isola o provedor).
 
-Custo por conversa, medido nos evals: **≈ 11.800 tokens de entrada e 1.100 de saída** (média das 42 conversas,
-1 a 3 turnos cada, incluindo a chamada de decisão de cada turno). Com o preço oficial do `deepseek-flash`
-(nov/2026, horário de pico, entrada sem cache: US$ 0,30 / US$ 1,20 por milhão de tokens):
-
-| | Entrada | Saída | Total por conversa |
-|---|---|---|---|
-| Pico, sem cache (teto) | US$ 0,0035 | US$ 0,0013 | **≈ US$ 0,005 (0,49 ¢)** |
-| Fora do pico | US$ 0,0018 | US$ 0,0007 | ≈ US$ 0,0024 |
-
-O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real abaixo do teto. Com os preços no
-`.env`, cada chamada grava `cost_cents` em `llm_calls` e o painel mostra o custo do turno.
+Consumo médio nesta rodada: **13.044 tokens de entrada e 1.102 de saída** por execução (45 execuções, de 1 a 3
+turnos). O custo não foi medido porque `LLM_PRICE_IN_CENTS_PER_MTOK` e `LLM_PRICE_OUT_CENTS_PER_MTOK` não estavam
+configuradas. Com esses valores no `.env`, cada chamada grava `cost_cents` em `llm_calls` e o painel mostra o
+custo do turno.
 
 ---
 
@@ -212,9 +206,13 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
   trocar por um provedor com contrato de retenção zero (o provedor é uma env).
 - **Chamada extra de decisão por turno:** custa tokens a mais (já incluídos no custo da §6), mas garante uma decisão estruturada e
   validada em todo turno, em vez de depender de o modelo lembrar de chamar uma tool opcional.
-- **Sessão de 30 mensagens:** o limite existe para o custo do modelo. Ao bater 30, a conversa vai para um analista
-  com todo o histórico, e as mensagens para o analista não contam no limite — o funcionário não fica sem
-  atendimento.
+- **Atendimentos em paralelo:** cada funcionário pode ter vários atendimentos com analistas e, no máximo, um com
+  o agent. Se já houver outro atendimento com o agent, devolver o atendimento do analista junta os históricos e
+  registra uma nota com o que foi feito. O funcionário alterna entre os históricos pelo seletor e pode abrir outro
+  assunto quando um atendimento está com um analista.
+- **Sessão de 30 mensagens:** o limite existe para o custo do modelo e soma as mensagens do funcionário em todos
+  os atendimentos daquela sessão de login. Ao bater 30, o atendimento vai para um analista; mensagens para o
+  analista não contam no limite, e o funcionário pode abrir outro atendimento com o agent.
 - **Senhas:** o banco guarda só o hash (scrypt do `node:crypto`, salt de 16 bytes por usuário, formato
   `scrypt$N$r$p$salt$hash` na coluna `users.password_hash`). O login confere com `timingSafeEqual` e responde
   igual para e-mail inexistente e senha errada ("E-mail ou senha incorretos"), inclusive no tempo: e-mail
@@ -223,7 +221,9 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
   continuam simulados. Num banco anterior à coluna, o start do container define a senha de demonstração para os
   usuários do seed que estão sem hash.
 
-### Divergências do protótipo (`referencias/nexo.pen`)
+### Divergências e adições em relação ao protótipo e ao PRD
+
+Referências: [protótipo no Pencil](referencias/nexo.pen) e [PRD v5](referencias/Desafio_Tecnico_Nexo_Assist_PRD_v5.pdf).
 
 - "Encaminhei para o Suporte N2… em até **2 h úteis**" e "Agent pausado · até 12:05": seguimos o Anexo A — o
   prazo da passagem é o da prioridade do chamado em foco (sem chamado: Alta, 4 h úteis).
@@ -231,7 +231,8 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
   é ilustrativa, assim como os números dela ("8 s primeira resposta", "72% resolvidos sem fila", "6 analistas
   online").
 - A Tela 5 tem 1567 px de largura no protótipo (acidental); foi implementada no grid de 1440 px da Tela 4.
-- REQ-10442 aparece "há 2 dias" em vez de "há 1 semana", para não cair exatamente no limite do prazo.
+- No Anexo B do PRD, o REQ-10442 aparece atualizado "há 1 semana". O seed usa "há 2 dias" para não colocar o
+  chamado de prioridade Baixa exatamente no limite de 5 dias úteis.
 - O seletor de chamados ordena pela última atualização, não pela ordem ilustrativa do protótipo.
 - "digitando…" na lista do console não foi implementado.
 - **Adição:** no protótipo o avatar do analista, no rail do console, não faz nada. Aqui ele abre um menu com nome,
@@ -257,24 +258,28 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
   - no chat, "meus chamados resolvidos/antigos" lista só os encerrados (`status: closed` na tool);
   - "Carregar mensagens anteriores" no topo do chat e da conversa do console. O cursor é o id da mensagem, para não
     pular mensagens gravadas no mesmo instante.
+- **Adição — atendimentos separados:** o protótipo mostra uma conversa contínua. Esta implementação mantém vários
+  atendimentos com analistas e até um com o agent, com seletor, ligação aos chamados e junção ao devolver quando já
+  existe um atendimento ativo com o agent.
 - "Manter conectado neste computador" agora vale: desmarcado, o cookie é da sessão do navegador.
 
 ### Telas (capturas do E2E, `e2e/visual.spec.ts`)
 
-| Tela do protótipo | Implementação |
-|---|---|
-| 1 — Identificação | ![Login](docs/telas/login.png) |
-| 2 — Chat, novo chamado | ![Chat, novo chamado](docs/telas/chat-novo-chamado.png) |
-| 3 — Chat, consulta e transferência | ![Chat, consulta](docs/telas/chat-consulta.png) |
-| 4 — Console, conversa transferida | ![Console, transferida](docs/telas/console-transferida.png) |
-| 5 — Console, atendimento assumido | ![Console, assumida](docs/telas/console-assumida.png) |
-| 6 — Meu perfil | ![Meu perfil](docs/telas/perfil.png) |
-| Adição — menu do analista | ![Console, menu da conta](docs/telas/console-menu-conta.png) |
-| Adição — perfil do analista | ![Console, perfil](docs/telas/console-perfil.png) |
-| Adição — busca na lista e na conversa | ![Console, busca](docs/telas/console-busca.png) |
-| Adição — detalhe do chamado | ![Console, detalhe do chamado](docs/telas/console-detalhe-chamado.png) |
-| Adição — Meus chamados | ![Meus chamados](docs/telas/meus-chamados.png) |
-| Adição — detalhe de um chamado (funcionário) | ![Detalhe do chamado](docs/telas/meu-chamado-detalhe.png) |
+| Tela do protótipo                            | Implementação                                                          |
+| -------------------------------------------- | ---------------------------------------------------------------------- |
+| 1 — Identificação                            | ![Login](docs/telas/login.png)                                         |
+| 2 — Chat, novo chamado                       | ![Chat, novo chamado](docs/telas/chat-novo-chamado.png)                |
+| 3 — Chat, consulta e transferência           | ![Chat, consulta](docs/telas/chat-consulta.png)                        |
+| 4 — Console, conversa transferida            | ![Console, transferida](docs/telas/console-transferida.png)            |
+| 5 — Console, atendimento assumido            | ![Console, assumida](docs/telas/console-assumida.png)                  |
+| 6 — Meu perfil                               | ![Meu perfil](docs/telas/perfil.png)                                   |
+| Adição — menu do analista                    | ![Console, menu da conta](docs/telas/console-menu-conta.png)           |
+| Adição — perfil do analista                  | ![Console, perfil](docs/telas/console-perfil.png)                      |
+| Adição — busca na lista e na conversa        | ![Console, busca](docs/telas/console-busca.png)                        |
+| Adição — detalhe do chamado                  | ![Console, detalhe do chamado](docs/telas/console-detalhe-chamado.png) |
+| Adição — Meus chamados                       | ![Meus chamados](docs/telas/meus-chamados.png)                         |
+| Adição — detalhe de um chamado (funcionário) | ![Detalhe do chamado](docs/telas/meu-chamado-detalhe.png)              |
+| Adição — atendimentos do funcionário         | ![Atendimentos do funcionário](docs/telas/chat-atendimentos.png)       |
 
 ---
 

@@ -28,6 +28,7 @@ export type TurnSignals = {
   overdue_ticket_code?: string;
   focus_ticket_code?: string;
   handoff_created?: boolean;
+  resolved?: boolean;
   sources: Array<{ kind: 'article' | 'ticket'; id: string; title: string }>;
 };
 

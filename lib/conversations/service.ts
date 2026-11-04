@@ -80,7 +80,11 @@ export async function registerEmployeeMessage(
   limit: number,
 ): Promise<{ message: Message; count: number; reached_limit: boolean; conversation: Conversation }> {
   return getDb().transaction(async (tx) => {
-    const [conv] = await tx.select().from(conversations).where(eq(conversations.id, conversationId)).for('update');
+    const [conv] = await tx
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .for('update');
     if (!conv) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
     const r = transition(conv.status as ConversationStatus, 'employee_message');
     if (!r.ok) throw conflictFor(conv, 'employee_message');
@@ -114,7 +118,9 @@ export async function registerEmployeeMessage(
       .update(conversations)
       .set({
         updated_at: new Date(),
-        ...(next !== conv.status ? { status: next, status_changed_at: new Date(), assigned_to_user_id: null } : {}),
+        ...(next !== conv.status
+          ? { status: next, status_changed_at: new Date(), assigned_to_user_id: null }
+          : {}),
       })
       .where(eq(conversations.id, conversationId))
       .returning();
@@ -147,7 +153,8 @@ const TEXT_BY_TRANSITION: Partial<Record<ConversationEvent, (name: string, time:
   claim: (name, time) => `${name} assumiu · agent pausado · ${time}`,
   release: (name, time) => `${name} devolveu ao agent · ${time}`,
   close: (name, time) => `Atendimento encerrado por ${name} · ${time}`,
-  resolve: (_name, time) => `Atendimento resolvido pelo agent · ${time}`,
+  resolve: (_name, time) => `Atendimento resolvido · ${time}`,
+  merge: (name, time) => `${name} devolveu ao agent · juntado ao atendimento atual · ${time}`,
 };
 
 const EVENT_BY_TRANSITION: Partial<Record<ConversationEvent, `${string}.${string}`>> = {
@@ -155,6 +162,7 @@ const EVENT_BY_TRANSITION: Partial<Record<ConversationEvent, `${string}.${string
   release: 'conversation.released',
   close: 'conversation.closed',
   resolve: 'conversation.closed',
+  merge: 'conversation.closed',
 };
 
 /**
@@ -175,7 +183,7 @@ export async function applyTransition(
     const r = transition(read, event);
     if (!r.ok) throw conflictFor(conv, event);
     if (
-      (event === 'release' || event === 'close') &&
+      (event === 'release' || event === 'close' || event === 'merge') &&
       read === 'claimed' &&
       conv.assigned_to_user_id !== actor.user_id
     ) {
@@ -190,7 +198,10 @@ export async function applyTransition(
             assigned_to_user_id: null,
             assigned_at: null,
             ...(event === 'close' || event === 'resolve' || event === 'merge'
-              ? { closed_at: now, closed_reason: event === 'close' ? 'analyst' : event === 'resolve' ? 'resolved' : 'merged' }
+              ? {
+                  closed_at: now,
+                  closed_reason: event === 'close' ? 'analyst' : event === 'resolve' ? 'resolved' : 'merged',
+                }
               : {}),
           };
     const updated = await tx
@@ -216,7 +227,14 @@ export async function applyTransition(
     }
     const type = EVENT_BY_TRANSITION[event];
     if (type) {
-      const reason = event === 'close' ? 'analyst' : event === 'resolve' ? 'resolved' : undefined;
+      const reason =
+        event === 'close'
+          ? 'analyst'
+          : event === 'resolve'
+            ? 'resolved'
+            : event === 'merge'
+              ? 'merged'
+              : undefined;
       await emitEvent(tx, {
         type: type,
         conversation_id: conversationId,
@@ -242,7 +260,12 @@ async function withClaimerName(e: Conflict): Promise<Conflict> {
   const id = (e.details as { assigned_to_user_id?: string | null } | undefined)?.assigned_to_user_id;
   if (!id) return e;
   const [u] = await getDb().select({ name: users.name }).from(users).where(eq(users.id, id));
-  return u ? new Conflict(e.code, `${u.name} já assumiu esta conversa`, { ...(e.details as object), assigned_to_name: u.name }) : e;
+  return u
+    ? new Conflict(e.code, `${u.name} já assumiu esta conversa`, {
+        ...(e.details as object),
+        assigned_to_name: u.name,
+      })
+    : e;
 }
 
 function conflictFor(conv: Conversation, event: ConversationEvent): Conflict {

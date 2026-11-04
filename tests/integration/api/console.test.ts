@@ -4,9 +4,10 @@ import { useTestDb } from '@/tests/helpers/db';
 import { getAgentAttendance } from '@/tests/helpers/attendance';
 import { createFakeTickets, type FakeTickets } from '@/tests/helpers/fake-tickets';
 import { call, json } from '@/tests/helpers/api';
-import { conversations } from '@/lib/db/schema';
+import { conversations, messages } from '@/lib/db/schema';
 import { GET as list } from '@/app/api/v1/conversations/route';
 import { GET as counts } from '@/app/api/v1/conversations/counts/route';
+import { GET as conversationDetail } from '@/app/api/v1/conversations/[id]/route';
 import { POST as claim } from '@/app/api/v1/conversations/[id]/claim/route';
 import { POST as release } from '@/app/api/v1/conversations/[id]/release/route';
 import { POST as close } from '@/app/api/v1/conversations/[id]/close/route';
@@ -15,6 +16,7 @@ import { GET as employeeTickets } from '@/app/api/v1/employees/[id]/tickets/rout
 import { GET as employeeTicket } from '@/app/api/v1/employees/[id]/tickets/[code]/route';
 import { POST as postMessage } from '@/app/api/v1/conversations/[id]/messages/route';
 import { createHandoff } from '@/lib/conversations/handoff';
+import { getOrCreateWithAgent } from '@/lib/conversations/attendance';
 import { setTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import { closeMemory, getMemory } from '@/lib/agent-engine/agent/memory';
 import type { QueueItem } from '@/lib/conversations/queries';
@@ -23,8 +25,18 @@ import type { Session } from '@/lib/auth/session';
 const t = useTestDb();
 let fake: FakeTickets;
 const ana = (): Session => ({ user_id: t.seed.users.ana.id, role: 'employee', name: 'Ana Souza', sid: 's' });
-const rafael = (): Session => ({ user_id: t.seed.users.rafael.id, role: 'analyst', name: 'Rafael Lima', sid: 's' });
-const juliana = (): Session => ({ user_id: t.seed.users.juliana.id, role: 'analyst', name: 'Juliana Costa', sid: 's' });
+const rafael = (): Session => ({
+  user_id: t.seed.users.rafael.id,
+  role: 'analyst',
+  name: 'Rafael Lima',
+  sid: 's',
+});
+const juliana = (): Session => ({
+  user_id: t.seed.users.juliana.id,
+  role: 'analyst',
+  name: 'Juliana Costa',
+  sid: 's',
+});
 
 beforeEach(() => {
   fake = createFakeTickets(t.now);
@@ -65,15 +77,43 @@ describe('console do analista', () => {
   it('"Para você" mostra a Ana transferida com a tag certa e os contadores batem', async () => {
     const id = await transferAnaConversation();
     const { data } = await json<{ data: QueueItem[] }>(await queue('for_you'));
-    expect(data.find((c) => c.id === id)?.tag).toEqual({ kind: 'transferred', label: 'Transferida · INC-20311' });
+    expect(data.find((c) => c.id === id)?.tag).toEqual({
+      kind: 'transferred',
+      label: 'Transferida · INC-20311',
+    });
+    expect(data.find((c) => c.id === id)?.ticket_codes).toEqual(['INC-20311']);
     const c = await json<{ data: Record<string, number> }>(await call(counts, { session: rafael() }));
     expect(c.data).toMatchObject({ for_you: 3, mine: 0 });
   });
 
+  it('a fila esconde atendimentos vazios e a contagem acompanha', async () => {
+    const [empty] = await t.db
+      .insert(conversations)
+      .values({ employee_id: t.seed.users.ana.id, status: 'ai_handling' })
+      .returning();
+    const { data } = await json<{ data: QueueItem[] }>(await queue('with_agent'));
+    expect(data.map((item) => item.id)).not.toContain(empty!.id);
+    const { data: totals } = await json<{ data: Record<string, number> }>(
+      await call(counts, { session: rafael() }),
+    );
+    expect(totals.with_agent).toBe(data.length);
+  });
+
   it('busca por chamado', async () => {
     await transferAnaConversation();
-    const res = await call(list, { session: rafael(), url: 'http://x/api/v1/conversations?filter=all&q=INC-20311' });
+    const res = await call(list, {
+      session: rafael(),
+      url: 'http://x/api/v1/conversations?filter=all&q=INC-20311',
+    });
     expect((await json<{ data: QueueItem[] }>(res)).data.map((c) => c.employee.name)).toEqual(['Ana Souza']);
+  });
+
+  it('detalhe da fila indica quando o funcionário tem outro atendimento com o agent', async () => {
+    const id = await transferAnaConversation();
+    await getOrCreateWithAgent(t.seed.users.ana.id, t.now);
+    const response = await call(conversationDetail, { session: rafael(), params: { id } });
+    const { data } = await json<{ data: QueueItem }>(response);
+    expect(data.employee_has_agent_attendance).toBe(true);
   });
 
   it('assumir leva para "Minhas"; segundo analista recebe 409', async () => {
@@ -89,7 +129,12 @@ describe('console do analista', () => {
   it('devolver grava na memória do agent o que o analista disse', async () => {
     const id = await transferAnaConversation();
     await call(claim, { session: rafael(), method: 'POST', params: { id } });
-    await call(postMessage, { session: rafael(), method: 'POST', params: { id }, body: { text: 'Vou reiniciar seu perfil' } });
+    await call(postMessage, {
+      session: rafael(),
+      method: 'POST',
+      params: { id },
+      body: { text: 'Vou reiniciar seu perfil' },
+    });
     const res = await call(release, { session: rafael(), method: 'POST', params: { id } });
     expect(res.status).toBe(200);
     const [row] = await t.db.select().from(conversations).where(eq(conversations.id, id));
@@ -109,15 +154,20 @@ describe('console do analista', () => {
 
   it('briefings da passagem', async () => {
     const id = await transferAnaConversation();
-    const { data } = await json<{ data: Array<{ employee_words: string; agent_reading: string; reason_code: string }> }>(
-      await call(handoffsRoute, { session: rafael(), params: { id } }),
-    );
-    expect(data[0]).toMatchObject({ employee_words: 'quero falar com um analista', reason_code: 'requested_human' });
+    const { data } = await json<{
+      data: Array<{ employee_words: string; agent_reading: string; reason_code: string }>;
+    }>(await call(handoffsRoute, { session: rafael(), params: { id } }));
+    expect(data[0]).toMatchObject({
+      employee_words: 'quero falar com um analista',
+      reason_code: 'requested_human',
+    });
   });
 
   it('chamados da Ana: 6, com vencido marcado; nenhum da Carla', async () => {
     const res = await call(employeeTickets, { session: rafael(), params: { id: t.seed.users.ana.id } });
-    const { data } = await json<{ data: { tickets: Array<{ code: string; overdue: boolean }>; open: number; closed: number } }>(res);
+    const { data } = await json<{
+      data: { tickets: Array<{ code: string; overdue: boolean }>; open: number; closed: number };
+    }>(res);
     expect(data.tickets).toHaveLength(6);
     expect(data.tickets.find((x) => x.code === 'INC-20311')?.overdue).toBe(true);
     expect(data.tickets.some((x) => x.code === 'INC-20388')).toBe(false);
@@ -131,28 +181,64 @@ describe('console do analista', () => {
   });
 
   it('detalhe de um chamado da Ana: dados, vencido e histórico', async () => {
-    const res = await call(employeeTicket, { session: rafael(), params: { id: t.seed.users.ana.id, code: 'INC-20311' } });
+    const res = await call(employeeTicket, {
+      session: rafael(),
+      params: { id: t.seed.users.ana.id, code: 'INC-20311' },
+    });
     expect(res.status).toBe(200);
     const { data } = await json<{
-      data: { ticket: { code: string; description: string; overdue: boolean }; events: Array<{ kind: string }> };
+      data: {
+        ticket: { code: string; description: string; overdue: boolean };
+        events: Array<{ kind: string }>;
+      };
     }>(res);
     expect(data.ticket).toMatchObject({ code: 'INC-20311', overdue: true });
     expect(data.ticket.description.length).toBeGreaterThan(0);
     expect(data.events[0]?.kind).toBe('created');
   });
 
+  it('detalhe do INC-20519 liga o chamado ao card confirmado da Elisa', async () => {
+    const res = await call(employeeTicket, {
+      session: rafael(),
+      params: { id: t.seed.users.elisa.id, code: 'INC-20519' },
+    });
+    const { data } = await json<{
+      data: { attendances: Array<{ conversation_id: string; relation: string; message_id: string | null }> };
+    }>(res);
+    const [attendance] = data.attendances;
+    const cardMessage = (await t.db.select().from(messages)).find(
+      (row) =>
+        row.conversation_id === t.seed.conversations.elisa &&
+        row.parts.some((part) => part.kind === 'draft_card'),
+    );
+    expect(attendance).toMatchObject({
+      conversation_id: t.seed.conversations.elisa,
+      relation: 'created',
+      message_id: cardMessage?.id,
+    });
+  });
+
   it('detalhe de chamado de outra pessoa → 404', async () => {
-    const res = await call(employeeTicket, { session: rafael(), params: { id: t.seed.users.ana.id, code: 'INC-20388' } });
+    const res = await call(employeeTicket, {
+      session: rafael(),
+      params: { id: t.seed.users.ana.id, code: 'INC-20388' },
+    });
     expect(res.status).toBe(404);
   });
 
   it('funcionário não abre detalhe de chamado pelo console', async () => {
-    const res = await call(employeeTicket, { session: ana(), params: { id: t.seed.users.ana.id, code: 'INC-20311' } });
+    const res = await call(employeeTicket, {
+      session: ana(),
+      params: { id: t.seed.users.ana.id, code: 'INC-20311' },
+    });
     expect(res.status).toBe(403);
   });
 
   it('busca da fila pela API acha a Carla pelo título de um chamado dela', async () => {
-    const res = await call(list, { session: rafael(), url: 'http://localhost/api/v1/conversations?filter=all&q=Diretoria' });
+    const res = await call(list, {
+      session: rafael(),
+      url: 'http://localhost/api/v1/conversations?filter=all&q=Diretoria',
+    });
     const { data } = await json<{ data: QueueItem[] }>(res);
     expect(data.map((c) => c.employee.name)).toEqual(['Carla Mendes']);
     expect(data[0]?.match).toEqual({ kind: 'ticket', text: 'INC-20388 · Acesso à pasta da Diretoria' });
@@ -160,12 +246,19 @@ describe('console do analista', () => {
 
   it('busca com o sistema de chamados fora ainda acha por nome', async () => {
     fake.down = true;
-    const res = await call(list, { session: rafael(), url: 'http://localhost/api/v1/conversations?filter=all&q=carla' });
+    const res = await call(list, {
+      session: rafael(),
+      url: 'http://localhost/api/v1/conversations?filter=all&q=carla',
+    });
     expect(res.status).toBe(200);
-    expect((await json<{ data: QueueItem[] }>(res)).data.map((c) => c.employee.name)).toEqual(['Carla Mendes']);
+    expect((await json<{ data: QueueItem[] }>(res)).data.map((c) => c.employee.name)).toEqual([
+      'Carla Mendes',
+    ]);
   });
 
   it('funcionário não lista chamados de ninguém pelo console', async () => {
-    expect((await call(employeeTickets, { session: ana(), params: { id: t.seed.users.ana.id } })).status).toBe(403);
+    expect(
+      (await call(employeeTickets, { session: ana(), params: { id: t.seed.users.ana.id } })).status,
+    ).toBe(403);
   });
 });

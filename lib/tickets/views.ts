@@ -2,10 +2,11 @@ import { getTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import type { Ticket, TicketEvent } from '@/lib/contracts/tickets';
 import { serverNow } from '@/lib/env';
 import { describeOverdue, isOverdue } from '@/lib/rules/overdue';
+import { attendancesForTicket, type TicketAttendance } from '@/lib/conversations/ticket-attendances';
 
 export type TicketView = Ticket & { overdue: boolean; overdue_label: string | null };
 export type TicketList = { tickets: TicketView[]; open: number; closed: number };
-export type TicketDetail = { ticket: TicketView; events: TicketEvent[] };
+export type TicketDetail = { ticket: TicketView; events: TicketEvent[]; attendances: TicketAttendance[] };
 
 const CLOSED = new Set(['resolved', 'closed']);
 
@@ -26,6 +27,10 @@ export async function listTicketsOf(requesterId: string): Promise<TicketList> {
 /** Um chamado do solicitante com o histórico. Alheio ou inexistente → TicketsNotFoundError (404). */
 export async function getTicketDetailOf(requesterId: string, code: string): Promise<TicketDetail> {
   const tickets = getTicketsClient();
-  const [ticket, events] = await Promise.all([tickets.get(code, requesterId), tickets.events(code, requesterId)]);
-  return { ticket: toView(ticket, serverNow()), events };
+  const [ticket, events, attendances] = await Promise.all([
+    tickets.get(code, requesterId),
+    tickets.events(code, requesterId),
+    attendancesForTicket(requesterId, code),
+  ]);
+  return { ticket: toView(ticket, serverNow()), events, attendances };
 }

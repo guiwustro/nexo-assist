@@ -11,6 +11,7 @@ export function TakeoverBar({
   firstName,
   dueLabel,
   otherName,
+  employeeHasAgentAttendance,
   onClaim,
   onRelease,
   onSend,
@@ -19,6 +20,7 @@ export function TakeoverBar({
   firstName: string;
   dueLabel: string | null;
   otherName: string | null;
+  employeeHasAgentAttendance: boolean;
   onClaim: () => Promise<void>;
   onRelease: () => Promise<void>;
   onSend: (text: string) => Promise<void>;
@@ -45,6 +47,14 @@ export function TakeoverBar({
       });
     return (
       <div className="flex flex-col gap-2.5 border-t border-rule bg-paper px-5 pt-2.5 pb-3.5">
+        {employeeHasAgentAttendance && (
+          <p
+            data-testid="takeover-merge-warning"
+            className="rounded-bubble bg-warning-soft px-3 py-2 text-label text-warning-text"
+          >
+            {firstName} já tem outro atendimento com o agent: devolver junta os dois
+          </p>
+        )}
         <div className="flex h-11 items-center gap-3">
           <input
             data-testid="console-composer"
@@ -88,7 +98,10 @@ export function TakeoverBar({
           : 'Se o funcionário escrever de novo, o agent volta a atender';
 
   return (
-    <div data-testid="takeover-bar" className="flex flex-col gap-2.5 border-t border-rule bg-paper px-5 pt-3 pb-3.5">
+    <div
+      data-testid="takeover-bar"
+      className="flex flex-col gap-2.5 border-t border-rule bg-paper px-5 pt-3 pb-3.5"
+    >
       <div className="flex items-center gap-3">
         <span className="flex size-9 items-center justify-center rounded-full bg-warning-soft text-warning-text">
           <Hand size={17} />

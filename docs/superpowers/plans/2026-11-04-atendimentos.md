@@ -465,8 +465,8 @@ test('devolver com outro atendimento ativo junta', async ({ browser }) => { /* a
   - tabela de testes com os números novos.
 - Test: suíte inteira
 
-- [ ] **Step 1: Seed e `tests/integration/db/seed.test.ts`.** Novos asserts: a Ana tem 1 encerrado `resolved`, e o INC-20298 tem 3 eventos. `pnpm test:int -- seed`, que deve passar.
-- [ ] **Step 2: Suíte inteira:** `pnpm check && pnpm test:int && pnpm test:e2e`. Esperado: tudo verde. Anotar os números.
-- [ ] **Step 3: Evals (precisam da `DEEPSEEK_API_KEY`; sem ela, pular e dizer isso no README):** `pnpm eval`. Esperado: `duvida-resolvida` 3/3 e nenhum cenário antigo regredido. Atualizar `evals/resultados.md`.
-- [ ] **Step 4: README e capturas.**
+- [x] **Step 1: Seed e `tests/integration/db/seed.test.ts`.** Novos asserts: a Ana tem 1 encerrado `resolved`, e o INC-20298 tem 3 eventos. `pnpm test:int -- seed`, que deve passar.
+- [x] **Step 2: Suíte inteira:** `pnpm check && pnpm test:int && pnpm test:e2e`. Tudo verde: 279 unitários, 172 integração e 54 E2E.
+- [x] **Step 3: Evals:** 15 cenários × 3; `duvida-resolvida` 3/3 e nenhum cenário antigo regredido. `evals/resultados.md` atualizado.
+- [x] **Step 4: README e capturas.**
 - [ ] **Step 5: Commit** `docs: atendimentos separados no README, seed e evals`

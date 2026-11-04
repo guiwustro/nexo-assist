@@ -35,56 +35,74 @@ export const GET = withRoute({ role: 'any', params: Params }, async ({ req, sess
   return ok(page.messages, { requestId, meta: { next_cursor: page.next_cursor } });
 });
 
-export const POST = withRoute({ role: 'any', params: Params, body: Body }, async ({ session, params, body, requestId }) => {
-  if (session.role === 'analyst') {
-    const conv = await getVisibleConversation(params.id, session);
-    if (conv.status !== 'claimed' || conv.assigned_to_user_id !== session.user_id) {
-      throw new Conflict('not_claimed', 'Assuma o atendimento para responder');
+export const POST = withRoute(
+  { role: 'any', params: Params, body: Body },
+  async ({ session, params, body, requestId }) => {
+    if (session.role === 'analyst') {
+      const conv = await getVisibleConversation(params.id, session);
+      if (conv.status !== 'claimed' || conv.assigned_to_user_id !== session.user_id) {
+        throw new Conflict('not_claimed', 'Assuma o atendimento para responder');
+      }
+      const msg = await appendMessage(getDb(), {
+        conversation_id: conv.id,
+        direction: 'outbound',
+        sent_via: 'user',
+        sent_by_user_id: session.user_id,
+        body: body.text,
+      });
+      return ok(toApiMessage(msg, session.name, null, null), { status: 201, requestId });
     }
-    const msg = await appendMessage(getDb(), {
-      conversation_id: conv.id,
-      direction: 'outbound',
-      sent_via: 'user',
-      sent_by_user_id: session.user_id,
-      body: body.text,
+
+    // Rate limit por funcionário, antes de abrir o stream (o chat mostra um banner com a espera).
+    const slot = chatLimiter().take(session.user_id);
+    if (!slot.ok) {
+      return fail(
+        'rate_limited',
+        `Muitas mensagens em pouco tempo, aguarde ${slot.retry_after_s}s`,
+        429,
+        undefined,
+        {
+          requestId,
+          headers: { 'retry-after': String(slot.retry_after_s) },
+        },
+      );
+    }
+
+    // Funcionário: a conversa é sempre a dele (a da sessão); outra → 404.
+    await touchSession(session.user_id, session.sid, loginAt(session));
+    const requested = await getConversation(getDb(), params.id);
+    if (!requested || requested.employee_id !== session.user_id)
+      throw new NotFound('conversation_not_found', 'Conversa não encontrada');
+    const conv =
+      requested.status === 'closed'
+        ? (await getOrCreateWithAgent(session.user_id, serverNow())).conversation
+        : isWithAnalyst(requested.status as ConversationStatus)
+          ? requested
+          : (await getOrCreateWithAgent(session.user_id, serverNow())).conversation;
+    const employeeSession = await getSession(session.user_id);
+    if (
+      conv.status !== 'closed' &&
+      (employeeSession?.message_count ?? 0) >= env.SESSION_MESSAGE_LIMIT &&
+      !isWithAnalyst(conv.status as ConversationStatus)
+    ) {
+      throw new Conflict(
+        'session_limit_reached',
+        `Limite de ${env.SESSION_MESSAGE_LIMIT} mensagens nesta sessão`,
+      );
+    }
+
+    const stream = createUIMessageStream<NexoUIMessage>({
+      execute: async ({ writer }) => {
+        await runTurn({ conversation_id: conv.id, employee: session, text: body.text, writer });
+      },
+      onError: (e) => {
+        console.error(`[chat] turn failed request_id=${requestId}`, e);
+        return e instanceof Conflict ? e.code : 'turn_failed';
+      },
     });
-    return ok(toApiMessage(msg, session.name, null, null), { status: 201, requestId });
-  }
-
-  // Rate limit por funcionário, antes de abrir o stream (o chat mostra um banner com a espera).
-  const slot = chatLimiter().take(session.user_id);
-  if (!slot.ok) {
-    return fail('rate_limited', `Muitas mensagens em pouco tempo, aguarde ${slot.retry_after_s}s`, 429, undefined, {
-      requestId,
-      headers: { 'retry-after': String(slot.retry_after_s) },
+    return createUIMessageStreamResponse({
+      stream,
+      headers: { 'x-request-id': requestId, 'x-conversation-id': conv.id },
     });
-  }
-
-  // Funcionário: a conversa é sempre a dele (a da sessão); outra → 404.
-  await touchSession(session.user_id, session.sid, loginAt(session));
-  const requested = await getConversation(getDb(), params.id);
-  if (!requested || requested.employee_id !== session.user_id) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
-  const conv = isWithAnalyst(requested.status as ConversationStatus) || requested.status === 'closed'
-    ? requested
-    : (await getOrCreateWithAgent(session.user_id, serverNow())).conversation;
-  if (conv.id !== params.id) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
-  const employeeSession = await getSession(session.user_id);
-  if (
-    conv.status !== 'closed' &&
-    (employeeSession?.message_count ?? 0) >= env.SESSION_MESSAGE_LIMIT &&
-    !isWithAnalyst(conv.status as ConversationStatus)
-  ) {
-    throw new Conflict('session_limit_reached', `Limite de ${env.SESSION_MESSAGE_LIMIT} mensagens nesta sessão`);
-  }
-
-  const stream = createUIMessageStream<NexoUIMessage>({
-    execute: async ({ writer }) => {
-      await runTurn({ conversation_id: conv.id, employee: session, text: body.text, writer });
-    },
-    onError: (e) => {
-      console.error(`[chat] turn failed request_id=${requestId}`, e);
-      return e instanceof Conflict ? e.code : 'turn_failed';
-    },
-  });
-  return createUIMessageStreamResponse({ stream, headers: { 'x-request-id': requestId } });
-});
+  },
+);

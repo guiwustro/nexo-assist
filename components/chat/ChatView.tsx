@@ -3,11 +3,20 @@
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Banner } from '@/components/ui/Banner';
 import { LoadOlderButton } from '@/components/ui/LoadOlderButton';
-import { api, ApiFailure, apiWithMeta, parseChatError, type CurrentData } from '@/lib/client/api';
+import {
+  api,
+  ApiFailure,
+  apiWithMeta,
+  parseChatError,
+  type AttendanceSummary,
+  type CurrentData,
+} from '@/lib/client/api';
 import { mergeLatest, prependOlder } from '@/lib/client/message-pages';
 import { useConversationScroller } from '@/lib/client/use-keep-scroll';
+import { useJumpToMessage } from '@/lib/client/use-jump-to-message';
 import { useEvents } from '@/lib/client/use-events';
 import type { ActionTrace } from '@/lib/contracts/decision';
 import type { DraftEdit } from '@/lib/contracts/drafts';
@@ -20,26 +29,49 @@ import { DecisionPanel } from './DecisionPanel';
 import { UserBubble } from './MessageBubble';
 import { SystemEvent } from './SystemEvent';
 import { TicketCard } from './TicketCard';
+import { AttendanceSwitcher } from './AttendanceSwitcher';
 
 const TICKETS_DOWN_MESSAGE = 'O sistema de chamados está fora do ar agora. Seu rascunho está guardado.';
 
 function Skeleton() {
   return (
     <div data-testid="chat-loading" className="flex flex-col gap-5 px-[200px] py-7">
-      <div className="ml-auto h-11 w-72 rounded-bubble bg-desk" style={{ animation: 'nexo-pulse 1.4s ease-in-out infinite' }} />
-      <div className="h-20 w-[480px] rounded-bubble bg-desk" style={{ animation: 'nexo-pulse 1.4s ease-in-out infinite' }} />
-      <div className="ml-auto h-11 w-56 rounded-bubble bg-desk" style={{ animation: 'nexo-pulse 1.4s ease-in-out infinite' }} />
+      <div
+        className="ml-auto h-11 w-72 rounded-bubble bg-desk"
+        style={{ animation: 'nexo-pulse 1.4s ease-in-out infinite' }}
+      />
+      <div
+        className="h-20 w-[480px] rounded-bubble bg-desk"
+        style={{ animation: 'nexo-pulse 1.4s ease-in-out infinite' }}
+      />
+      <div
+        className="ml-auto h-11 w-56 rounded-bubble bg-desk"
+        style={{ animation: 'nexo-pulse 1.4s ease-in-out infinite' }}
+      />
     </div>
   );
 }
 
-export function ChatView({ aboutTicket }: { aboutTicket?: string } = {}) {
+export function ChatView({
+  aboutTicket,
+  conversationId,
+  jumpTo,
+}: {
+  aboutTicket?: string;
+  conversationId?: string;
+  jumpTo?: string | null;
+} = {}) {
+  const endpoint = conversationId
+    ? `/api/v1/me/conversations/${conversationId}`
+    : '/api/v1/conversations/current';
   const [data, setData] = useState<CurrentData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dataEndpoint, setDataEndpoint] = useState(endpoint);
+  const [errorEndpoint, setErrorEndpoint] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
-      const fresh = await api<CurrentData>('/api/v1/conversations/current');
+      const fresh = await api<CurrentData>(endpoint);
       // A janela nova são as últimas 50; o que já estava na tela e saiu dela (mais antigo) continua.
       setData((prev) => {
         if (!prev || prev.conversation.id !== fresh.conversation.id) return fresh;
@@ -48,27 +80,47 @@ export function ChatView({ aboutTicket }: { aboutTicket?: string } = {}) {
         return { ...fresh, messages, next_cursor: keptOlder ? prev.next_cursor : fresh.next_cursor };
       });
       setError(null);
+      setDataEndpoint(endpoint);
     } catch (e) {
       setError(e instanceof ApiFailure ? e.message : 'Não foi possível carregar a conversa');
+      setErrorEndpoint(endpoint);
     }
-  }, []);
+  }, [endpoint]);
 
   useEffect(() => {
     let alive = true;
-    api<CurrentData>('/api/v1/conversations/current')
-      .then((d) => alive && setData(d))
-      .catch((e: unknown) => alive && setError(e instanceof ApiFailure ? e.message : 'Não foi possível carregar a conversa'));
+    api<CurrentData>(endpoint)
+      .then((d) => {
+        if (!alive) return;
+        setData(d);
+        setDataEndpoint(endpoint);
+        setError(null);
+      })
+      .catch((e: unknown) => {
+        if (!alive) return;
+        setError(e instanceof ApiFailure ? e.message : 'Não foi possível carregar o atendimento');
+        setErrorEndpoint(endpoint);
+      });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [endpoint]);
 
-  if (!data) {
+  if (!data || dataEndpoint !== endpoint || (conversationId && data.conversation.id !== conversationId)) {
+    const currentError = errorEndpoint === endpoint ? error : null;
     return (
       <div className="flex h-full flex-col">
-        {error ? (
+        {currentError ? (
           <div className="px-[200px] py-7">
-            <Banner action={<button onClick={() => void reload()} className="font-semibold">Tentar de novo</button>}>{error}</Banner>
+            <Banner
+              action={
+                <button onClick={() => void reload()} className="font-semibold">
+                  Tentar de novo
+                </button>
+              }
+            >
+              {currentError}
+            </Banner>
           </div>
         ) : (
           <Skeleton />
@@ -76,22 +128,41 @@ export function ChatView({ aboutTicket }: { aboutTicket?: string } = {}) {
       </div>
     );
   }
-  const loadOlder = async () => {
+  const loadOlder = async (): Promise<boolean> => {
     const { id } = data.conversation;
-    if (!data.next_cursor) return;
+    if (!data.next_cursor) return false;
     const page = await apiWithMeta<ApiMessage[]>(
       `/api/v1/conversations/${id}/messages?cursor=${encodeURIComponent(data.next_cursor)}`,
     );
     const next = typeof page.meta.next_cursor === 'string' ? page.meta.next_cursor : null;
     setData((prev) =>
-      prev && prev.conversation.id === id ? { ...prev, messages: prependOlder(prev.messages, page.data), next_cursor: next } : prev,
+      prev && prev.conversation.id === id
+        ? { ...prev, messages: prependOlder(prev.messages, page.data), next_cursor: next }
+        : prev,
     );
+    return page.data.length > 0;
   };
 
-  return <ChatSession key={data.conversation.id} data={data} reload={reload} loadOlder={loadOlder} aboutTicket={aboutTicket} />;
+  return (
+    <ChatSession
+      key={data.conversation.id}
+      data={data}
+      reload={reload}
+      loadOlder={loadOlder}
+      aboutTicket={aboutTicket}
+      jumpTo={jumpTo ?? null}
+    />
+  );
 }
 
-type Live = { text: string; parts: MessagePart[]; actions: ActionTrace[]; systems: string[]; runId: string | null; decisionReady: boolean };
+type Live = {
+  text: string;
+  parts: MessagePart[];
+  actions: ActionTrace[];
+  systems: string[];
+  runId: string | null;
+  decisionReady: boolean;
+};
 
 function fromUI(m: NexoUIMessage): Live {
   const live: Live = { text: '', parts: [], actions: [], systems: [], runId: null, decisionReady: false };
@@ -116,12 +187,15 @@ function ChatSession({
   reload,
   loadOlder,
   aboutTicket,
+  jumpTo,
 }: {
   data: CurrentData;
   reload: () => Promise<void>;
-  loadOlder: () => Promise<void>;
+  loadOlder: () => Promise<boolean>;
   aboutTicket?: string;
+  jumpTo: string | null;
 }) {
+  const router = useRouter();
   const convId = data.conversation.id;
   const [now, setNow] = useState(() => new Date());
   const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
@@ -130,6 +204,8 @@ function ChatSession({
   const [prefill, setPrefill] = useState<{ text: string; n: number } | undefined>(() =>
     aboutTicket ? { text: `Sobre o ${aboutTicket}: `, n: 1 } : undefined,
   );
+  const [openingAnother, setOpeningAnother] = useState(false);
+  const responseConversationId = useRef<string | null>(null);
   // O ?sobre= já virou rascunho no composer: tira da URL para um recarregar não escrever de novo.
   useEffect(() => {
     if (aboutTicket) window.history.replaceState(null, '', '/atendimento');
@@ -143,6 +219,11 @@ function ChatSession({
     () =>
       new DefaultChatTransport<NexoUIMessage>({
         api: `/api/v1/conversations/${convId}/messages`,
+        fetch: async (input, init) => {
+          const response = await fetch(input, init);
+          responseConversationId.current = response.headers.get('x-conversation-id');
+          return response;
+        },
         prepareSendMessagesRequest: ({ messages }) => {
           const last = messages[messages.length - 1];
           return { body: { text: last ? userText(last) : '' } };
@@ -155,6 +236,12 @@ function ChatSession({
     id: convId,
     transport,
     onFinish: async () => {
+      const nextId = responseConversationId.current;
+      responseConversationId.current = null;
+      if (nextId && nextId !== convId) {
+        router.replace(`/atendimento/${nextId}`);
+        return;
+      }
       await reload();
       chat.setMessages([]);
     },
@@ -201,7 +288,6 @@ function ChatSession({
     scrollToBottom();
   }, [lastId, chat.messages, failed]); // eslint-disable-line react-hooks/exhaustive-deps -- scrollToBottom só lê o ref
 
-
   const drafts: DraftHandlers = {
     errors: draftErrors,
     confirm: async (id) => {
@@ -210,7 +296,12 @@ function ChatSession({
         setDraftErrors(({ [id]: _, ...rest }) => rest);
         await reload();
       } catch (e) {
-        const msg = e instanceof ApiFailure && e.status === 503 ? TICKETS_DOWN_MESSAGE : e instanceof Error ? e.message : 'Erro';
+        const msg =
+          e instanceof ApiFailure && e.status === 503
+            ? TICKETS_DOWN_MESSAGE
+            : e instanceof Error
+              ? e.message
+              : 'Erro';
         setDraftErrors((d) => ({ ...d, [id]: msg }));
         if (e instanceof ApiFailure && e.status !== 503) await reload();
       }
@@ -234,6 +325,24 @@ function ChatSession({
     else send(action);
   };
 
+  const hasMessage = useCallback(
+    (id: string) => data.messages.some((message) => message.id === id),
+    [data.messages],
+  );
+  const { highlighted } = useJumpToMessage(jumpTo, { has: hasMessage, loadOlder, maxPages: 10 });
+  const startAnother = async () => {
+    if (openingAnother) return;
+    setOpeningAnother(true);
+    try {
+      const next = await api<AttendanceSummary>('/api/v1/conversations', { method: 'POST' });
+      router.push(`/atendimento/${next.id}`);
+    } catch (e) {
+      setBanner(e instanceof ApiFailure ? e.message : 'Não foi possível abrir outro atendimento');
+    } finally {
+      setOpeningAnother(false);
+    }
+  };
+
   const isWithAnalyst = data.conversation.status === 'pending' || data.conversation.status === 'claimed';
   const historico = data.messages;
   const live = chat.messages;
@@ -243,6 +352,14 @@ function ChatSession({
 
   return (
     <div className="flex h-full flex-col">
+      <AttendanceSwitcher key={data.conversation.id} current={data.conversation} />
+      {data.conversation.status === 'closed' && (
+        <div className="px-[200px] pt-3">
+          <Banner tone="primary" testId="closed-attendance-banner">
+            Este atendimento foi encerrado
+          </Banner>
+        </div>
+      )}
       <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="mt-auto flex flex-col gap-5 px-[200px] pt-7 pb-1">
           {data.next_cursor && (
@@ -258,11 +375,17 @@ function ChatSession({
               key={m.id}
               m={m}
               now={now}
-              isLast={!hasLive && !failed && m.id === lastAgentId && historico[historico.length - 1]?.sent_via !== 'user'}
+              isLast={
+                !hasLive &&
+                !failed &&
+                m.id === lastAgentId &&
+                historico[historico.length - 1]?.sent_via !== 'user'
+              }
               onSend={send}
               onOverdueAction={onOverdueAction}
               drafts={drafts}
               onOpenRun={setOpenRun}
+              highlighted={highlighted === m.id}
             />
           ))}
           {live.map((m, i) =>
@@ -282,7 +405,16 @@ function ChatSession({
             ),
           )}
           {busy && !isWithAnalyst && live[live.length - 1]?.role === 'user' && (
-            <AgentMessage text="" parts={[]} actions={[]} streaming isLast={false} now={now} onSend={send} drafts={drafts} />
+            <AgentMessage
+              text=""
+              parts={[]}
+              actions={[]}
+              streaming
+              isLast={false}
+              now={now}
+              onSend={send}
+              drafts={drafts}
+            />
           )}
           {failed && (
             <UserBubble failed onRetry={() => send(failed)}>
@@ -296,7 +428,17 @@ function ChatSession({
         <div className="flex flex-col gap-2 px-[200px] pt-2">
           {isWithAnalyst && (
             <Banner tone="primary" testId="analyst-banner">
-              Um analista vai continuar este atendimento
+              <span className="flex items-center justify-between gap-3">
+                <span>Um analista vai continuar este atendimento</span>
+                <button
+                  type="button"
+                  disabled={openingAnother}
+                  onClick={() => void startAnother()}
+                  className="shrink-0 font-semibold underline disabled:opacity-60"
+                >
+                  {openingAnother ? 'Abrindo…' : 'Falar de outro assunto'}
+                </button>
+              </span>
             </Banner>
           )}
           {banner && <Banner testId="rate-banner">{banner}</Banner>}
@@ -372,6 +514,7 @@ function HistoryItem({
   onOverdueAction,
   drafts,
   onOpenRun,
+  highlighted,
 }: {
   m: ApiMessage;
   now: Date;
@@ -380,30 +523,50 @@ function HistoryItem({
   onOverdueAction: (a: string, code: string) => void;
   drafts: DraftHandlers;
   onOpenRun: (id: string) => void;
+  highlighted: boolean;
 }) {
+  const wrapper = {
+    'data-message-id': m.id,
+    'data-testid': highlighted ? 'message-highlight' : undefined,
+    className: `max-w-full ${m.type === 'system' ? 'self-center' : m.direction === 'inbound' ? 'ml-auto' : ''} ${highlighted ? 'rounded-bubble ring-2 ring-primary ring-offset-2' : ''}`,
+  };
   if (m.type === 'system') {
     const card = m.parts.find((p) => p.kind === 'ticket_card');
     return (
-      <>
+      <div {...wrapper}>
         <SystemEvent text={m.body} />
-        {card && <TicketCard ticket={card.ticket} overdue={card.overdue} overdueLabel={card.overdue_label} now={now} />}
-      </>
+        {card && (
+          <TicketCard
+            ticket={card.ticket}
+            overdue={card.overdue}
+            overdueLabel={card.overdue_label}
+            now={now}
+          />
+        )}
+      </div>
     );
   }
-  if (m.direction === 'inbound') return <UserBubble>{m.body}</UserBubble>;
+  if (m.direction === 'inbound')
+    return (
+      <div {...wrapper}>
+        <UserBubble>{m.body}</UserBubble>
+      </div>
+    );
   return (
-    <AgentMessage
-      text={m.body}
-      parts={m.parts}
-      actions={m.actions}
-      decision={m.agent_run_id ? 'ready' : 'none'}
-      onOpenDecision={m.agent_run_id ? () => onOpenRun(m.agent_run_id!) : undefined}
-      isLast={isLast}
-      now={now}
-      onSend={onSend}
-      onOverdueAction={onOverdueAction}
-      drafts={drafts}
-      senderName={m.sent_via === 'user' ? (m.sender_name ?? 'Analista') : null}
-    />
+    <div {...wrapper}>
+      <AgentMessage
+        text={m.body}
+        parts={m.parts}
+        actions={m.actions}
+        decision={m.agent_run_id ? 'ready' : 'none'}
+        onOpenDecision={m.agent_run_id ? () => onOpenRun(m.agent_run_id!) : undefined}
+        isLast={isLast}
+        now={now}
+        onSend={onSend}
+        onOverdueAction={onOverdueAction}
+        drafts={drafts}
+        senderName={m.sent_via === 'user' ? (m.sender_name ?? 'Analista') : null}
+      />
+    </div>
   );
 }

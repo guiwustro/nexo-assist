@@ -41,7 +41,10 @@ export const SCRIPTS: Script[] = [
             : [
                 {
                   name: 'offer_options',
-                  args: { question: 'Qual é o sistema do seu notebook?', options: ['Windows 10', 'Windows 11'] },
+                  args: {
+                    question: 'Qual é o sistema do seu notebook?',
+                    options: ['Windows 10', 'Windows 11'],
+                  },
                 },
               ],
         text: (c) => (isDown(c) ? TICKETS_DOWN_MESSAGE : ''),
@@ -58,7 +61,10 @@ export const SCRIPTS: Script[] = [
         'ask',
         0.82,
         'O artigo do erro 809 só resolve no Windows 10; preciso saber o sistema antes de abrir chamado.',
-        ['Central de ajuda: o artigo do erro 809 vale apenas para Windows 10', 'Sem duplicidade: nenhum chamado aberto sobre VPN'],
+        [
+          'Central de ajuda: o artigo do erro 809 vale apenas para Windows 10',
+          'Sem duplicidade: nenhum chamado aberto sobre VPN',
+        ],
         [{ kind: 'article', id: 'vpn-erro-809', title: 'VPN com erro 809' }],
       ),
   },
@@ -71,9 +77,16 @@ export const SCRIPTS: Script[] = [
       },
     ],
     decision: ({ text }) =>
-      d('question', 'VPN com erro 809 no Windows 10', text, 'answer', 0.9, 'O artigo da central resolve o erro 809 no Windows 10.', [], [
-        { kind: 'article', id: 'vpn-erro-809', title: 'VPN com erro 809' },
-      ]),
+      d(
+        'question',
+        'VPN com erro 809 no Windows 10',
+        text,
+        'answer',
+        0.9,
+        'O artigo da central resolve o erro 809 no Windows 10.',
+        [],
+        [{ kind: 'article', id: 'vpn-erro-809', title: 'VPN com erro 809' }],
+      ),
   },
   {
     id: 'win11',
@@ -83,16 +96,25 @@ export const SCRIPTS: Script[] = [
         tool_calls: [
           {
             name: 'offer_options',
-            args: { question: 'Quem mais está sem VPN?', options: ['Só eu', 'Minha equipe', 'Toda a empresa', 'Não sei'] },
+            args: {
+              question: 'Quem mais está sem VPN?',
+              options: ['Só eu', 'Minha equipe', 'Toda a empresa', 'Não sei'],
+            },
           },
         ],
       },
       { text: 'Certo: no Windows 11 o artigo não resolve, então vamos abrir um chamado.' },
     ],
     decision: ({ text }) =>
-      d('open_ticket', 'VPN com erro 809 no Windows 11', text, 'ask', 0.85, 'Para calcular a prioridade preciso saber quem está afetado.', [
-        'Anexo A: a prioridade combina impacto (quantas pessoas) e urgência',
-      ]),
+      d(
+        'open_ticket',
+        'VPN com erro 809 no Windows 11',
+        text,
+        'ask',
+        0.85,
+        'Para calcular a prioridade preciso saber quem está afetado.',
+        ['Anexo A: a prioridade combina impacto (quantas pessoas) e urgência'],
+      ),
   },
   {
     id: 'only-me',
@@ -131,7 +153,34 @@ export const SCRIPTS: Script[] = [
         'draft_create',
         0.88,
         'Impede uma pessoa de trabalhar e há compromisso no mesmo dia: prioridade Alta.',
-        ['Anexo A · Alta: impede uma pessoa de trabalhar ou há compromisso no mesmo dia (4 horas úteis)', 'Rascunho antes de criar: o chamado só é aberto com a sua confirmação'],
+        [
+          'Anexo A · Alta: impede uma pessoa de trabalhar ou há compromisso no mesmo dia (4 horas úteis)',
+          'Rascunho antes de criar: o chamado só é aberto com a sua confirmação',
+        ],
+      ),
+  },
+  {
+    id: 'resolve-current',
+    match: /\b(isso )?resolveu\b|sim, resolveu/i,
+    steps: [
+      {
+        tool_calls: [
+          {
+            name: 'mark_resolved',
+            args: { summary: 'O funcionário confirmou que o problema foi resolvido.' },
+          },
+        ],
+      },
+      { text: 'Que bom! Vou encerrar este atendimento. Se precisar, é só escrever.' },
+    ],
+    decision: ({ text }) =>
+      d(
+        'question',
+        'O funcionário confirmou a resolução',
+        text,
+        'answer',
+        0.94,
+        'O funcionário confirmou que resolveu.',
       ),
   },
   {
@@ -142,7 +191,8 @@ export const SCRIPTS: Script[] = [
       {
         text: (c) => {
           if (isDown(c)) return TICKETS_DOWN_MESSAGE;
-          const r = c.results.find((x) => x.toolName === 'list_my_tickets')?.output as { tickets?: unknown[] } | undefined;
+          const r = c.results.find((x) => x.toolName === 'list_my_tickets')?.output as
+            { tickets?: unknown[] } | undefined;
           const n = r?.tickets?.length ?? 0;
           if (n === 0) return 'Você ainda não tem chamados resolvidos.';
           return `Estes são os seus ${n === 1 ? 'chamado resolvido' : `${n} chamados resolvidos`}. Todos ficam também em "Meus chamados", no menu ao lado.`;
@@ -150,7 +200,14 @@ export const SCRIPTS: Script[] = [
       },
     ],
     decision: ({ text }) =>
-      d('status', 'Quer ver os chamados já resolvidos', text, 'answer', 0.86, 'Listei os chamados resolvidos e encerrados.'),
+      d(
+        'status',
+        'Quer ver os chamados já resolvidos',
+        text,
+        'answer',
+        0.86,
+        'Listei os chamados resolvidos e encerrados.',
+      ),
   },
   {
     id: 'status',
@@ -160,7 +217,8 @@ export const SCRIPTS: Script[] = [
       {
         text: (c) => {
           if (isDown(c)) return TICKETS_DOWN_MESSAGE;
-          const r = c.results.find((x) => x.toolName === 'list_my_tickets')?.output as { tickets?: unknown[] } | undefined;
+          const r = c.results.find((x) => x.toolName === 'list_my_tickets')?.output as
+            { tickets?: unknown[] } | undefined;
           const n = r?.tickets?.length ?? 0;
           if (n === 0) return 'Você não tem chamados abertos agora.';
           if (n === 1) return 'Este é o seu chamado aberto:';
@@ -169,34 +227,57 @@ export const SCRIPTS: Script[] = [
       },
     ],
     decision: ({ text }) =>
-      d('status', 'Quer saber o status de um chamado sem informar o número', text, 'ask', 0.86, 'Listei os chamados abertos para a pessoa escolher.'),
+      d(
+        'status',
+        'Quer saber o status de um chamado sem informar o número',
+        text,
+        'ask',
+        0.86,
+        'Listei os chamados abertos para a pessoa escolher.',
+      ),
   },
   {
     id: 'ticket-by-code',
     match: /^(INC|REQ)-\d+/i,
-    steps: [{ tool_calls: [{ name: 'get_ticket', args: (c: StepCtx) => ({ code: c.match[0].toUpperCase() }) }] }, {
-      text: (c) => {
-        if (isDown(c)) return TICKETS_DOWN_MESSAGE;
-        const r = c.results.find((x) => x.toolName === 'get_ticket')?.output as
-          | { found?: boolean; overdue?: boolean; overdue_label?: string; sla_rule?: string; ticket?: { code: string; priority: string } }
-          | undefined;
-        if (!r || r.found === false || !r.ticket) {
-          return 'Não encontrei esse chamado entre os seus. Só consigo mostrar chamados abertos por você.';
-        }
-        if (r.overdue) {
-          const ago = r.overdue_label?.split(' · ')[0] ?? 'há dias';
-          const [prio, deadline] = (r.sla_rule ?? '').split(': ');
-          const shortDeadline = deadline?.replace(/ \(.*\)$/, '') ?? 'o prazo';
-          return `Está sem atualização ${ago}, acima do prazo de ${shortDeadline} para prioridade ${prio?.toLowerCase() ?? ''}. Quer que eu chame um analista?`;
-        }
-        return `Aqui está o ${r.ticket.code}. Está dentro do prazo.`;
+    steps: [
+      { tool_calls: [{ name: 'get_ticket', args: (c: StepCtx) => ({ code: c.match[0].toUpperCase() }) }] },
+      {
+        text: (c) => {
+          if (isDown(c)) return TICKETS_DOWN_MESSAGE;
+          const r = c.results.find((x) => x.toolName === 'get_ticket')?.output as
+            | {
+                found?: boolean;
+                overdue?: boolean;
+                overdue_label?: string;
+                sla_rule?: string;
+                ticket?: { code: string; priority: string };
+              }
+            | undefined;
+          if (!r || r.found === false || !r.ticket) {
+            return 'Não encontrei esse chamado entre os seus. Só consigo mostrar chamados abertos por você.';
+          }
+          if (r.overdue) {
+            const ago = r.overdue_label?.split(' · ')[0] ?? 'há dias';
+            const [prio, deadline] = (r.sla_rule ?? '').split(': ');
+            const shortDeadline = deadline?.replace(/ \(.*\)$/, '') ?? 'o prazo';
+            return `Está sem atualização ${ago}, acima do prazo de ${shortDeadline} para prioridade ${prio?.toLowerCase() ?? ''}. Quer que eu chame um analista?`;
+          }
+          return `Aqui está o ${r.ticket.code}. Está dentro do prazo.`;
+        },
       },
-    }],
+    ],
     decision: ({ text }) => {
       const code = text.match(/^(INC|REQ)-\d+/i)?.[0]?.toUpperCase() ?? text;
-      return d('status', `Consultar o chamado ${code}`, text, 'answer', 0.9, 'Consultei o chamado pelo código, só entre os da própria pessoa.', [
-        'Privacidade: só mostro chamados abertos por quem pergunta',
-      ], [{ kind: 'ticket', id: code, title: code }]);
+      return d(
+        'status',
+        `Consultar o chamado ${code}`,
+        text,
+        'answer',
+        0.9,
+        'Consultei o chamado pelo código, só entre os da própria pessoa.',
+        ['Privacidade: só mostro chamados abertos por quem pergunta'],
+        [{ kind: 'ticket', id: code, title: code }],
+      );
     },
   },
   {
@@ -208,28 +289,52 @@ export const SCRIPTS: Script[] = [
       },
     ],
     decision: ({ text }) =>
-      d('out_of_scope', 'Pergunta de RH, fora do escopo de TI', text, 'redirect', 0.95, 'O Nexo Assist atende só TI; RH fica no Portal do Colaborador.', [
-        'Escopo: apenas assuntos de TI; RH, financeiro e facilities são redirecionados',
-      ]),
+      d(
+        'out_of_scope',
+        'Pergunta de RH, fora do escopo de TI',
+        text,
+        'redirect',
+        0.95,
+        'O Nexo Assist atende só TI; RH fica no Portal do Colaborador.',
+        ['Escopo: apenas assuntos de TI; RH, financeiro e facilities são redirecionados'],
+      ),
   },
   {
     id: 'hours-question',
     match: /hor[áa]rio/i,
     steps: [
       { tool_calls: [{ name: 'search_articles', args: { query: 'horário do service desk' } }] },
-      { text: 'O service desk atende de segunda a sexta, das 8h às 18h. Chamados críticos têm plantão 24 horas.' },
+      {
+        text: 'O service desk atende de segunda a sexta, das 8h às 18h. Chamados críticos têm plantão 24 horas.',
+      },
     ],
     decision: ({ text }) =>
-      d('question', 'Quer saber o horário do service desk', text, 'answer', 0.93, 'A central de ajuda tem o horário oficial.', [], [
-        { kind: 'article', id: 'horario-service-desk', title: 'Horário do service desk' },
-      ]),
+      d(
+        'question',
+        'Quer saber o horário do service desk',
+        text,
+        'answer',
+        0.93,
+        'A central de ajuda tem o horário oficial.',
+        [],
+        [{ kind: 'article', id: 'horario-service-desk', title: 'Horário do service desk' }],
+      ),
   },
   {
     id: 'uncertain',
     match: /n[ãa]o sei explicar/i,
-    steps: [{ text: 'Não tenho certeza do que está acontecendo. Vou chamar um analista para olhar isso com você.' }],
+    steps: [
+      { text: 'Não tenho certeza do que está acontecendo. Vou chamar um analista para olhar isso com você.' },
+    ],
     decision: ({ text }) =>
-      d('other', 'Problema que a pessoa não consegue descrever', text, 'transfer', 0.41, 'Sem informação suficiente nem artigo relacionado.'),
+      d(
+        'other',
+        'Problema que a pessoa não consegue descrever',
+        text,
+        'transfer',
+        0.41,
+        'Sem informação suficiente nem artigo relacionado.',
+      ),
   },
   {
     id: 'promise',
@@ -247,6 +352,14 @@ export const SCRIPTS: Script[] = [
     id: 'fallback',
     match: /[\s\S]*/,
     steps: [{ text: 'Entendi. Pode me contar um pouco mais sobre o que está acontecendo?' }],
-    decision: ({ text }) => d('other', 'Mensagem sem informação suficiente', text || '—', 'ask', 0.7, 'Pedi mais detalhes antes de agir.'),
+    decision: ({ text }) =>
+      d(
+        'other',
+        'Mensagem sem informação suficiente',
+        text || '—',
+        'ask',
+        0.7,
+        'Pedi mais detalhes antes de agir.',
+      ),
   },
 ];

@@ -7,6 +7,7 @@ import { createDraft } from '@/lib/drafts/service';
 import { computeDeadline, formatShortDeadline } from '@/lib/rules/deadline';
 import { computePriority } from '@/lib/rules/priority';
 import { canReopen } from '@/lib/rules/reopening';
+import { findAnalystAttendanceFor } from '@/lib/conversations/ticket-elsewhere';
 import { defineTool } from './types';
 
 export const buildDraftTool = defineTool({
@@ -24,7 +25,9 @@ export const buildDraftTool = defineTool({
     target_code: TicketCodeSchema.optional().describe('obrigatório em update e reopen'),
     title: z.string().min(3).max(120),
     description: z.string().min(3).max(2000),
-    type: TicketTypeSchema.describe('incident = algo parou/não funciona; request = pedido de acesso, equipamento ou software'),
+    type: TicketTypeSchema.describe(
+      'incident = algo parou/não funciona; request = pedido de acesso, equipamento ou software',
+    ),
     category: CategorySchema,
     affected: AffectedSchema.describe('me = só a pessoa; team = a equipe; company = a empresa'),
     blocks_work: z.boolean().describe('impede de trabalhar (sem alternativa)?'),
@@ -41,6 +44,19 @@ export const buildDraftTool = defineTool({
     if (input.target_code) {
       try {
         const target = await ctx.tickets.get(input.target_code, ctx.employee_id);
+        const withAnalyst = await findAnalystAttendanceFor(
+          ctx.employee_id,
+          input.target_code,
+          ctx.conversation_id,
+        );
+        if (withAnalyst) {
+          return {
+            ok: false,
+            reason: 'ticket_with_analyst',
+            analyst_name: withAnalyst.analyst_name,
+            conversation_id: withAnalyst.conversation_id,
+          };
+        }
         if (input.kind === 'reopen') {
           const r = canReopen(target, ctx.now);
           if (!r.ok) return { ok: false, error: 'reopen_window_expired', rule: r.rule };
@@ -115,6 +131,7 @@ export const buildDraftTool = defineTool({
       priority?: keyof typeof PRIORITY_LABEL;
       due_at?: string;
       error?: string;
+      reason?: string;
       found?: boolean;
       open_tickets?: Array<{ code: string }>;
     };
@@ -122,7 +139,9 @@ export const buildDraftTool = defineTool({
     if (o.error === 'possible_duplicate') {
       return `já existe chamado aberto nesta categoria: ${o.open_tickets!.map((t) => t.code).join(', ')}`;
     }
-    if (o.error) return o.error === 'reopen_window_expired' ? 'fora da janela de 7 dias para reabrir' : o.error;
+    if (o.reason === 'ticket_with_analyst') return 'o chamado está com um analista em outro atendimento';
+    if (o.error)
+      return o.error === 'reopen_window_expired' ? 'fora da janela de 7 dias para reabrir' : o.error;
     return `${o.draft_code} · ${PRIORITY_LABEL[o.priority!]} · ${formatShortDeadline(new Date(o.due_at!), ctx.now)}`;
   },
 });
@@ -138,9 +157,11 @@ async function openInCategory(
 ): Promise<Array<{ code: string; title: string; status: string }>> {
   try {
     const OPEN_STATUSES = await ctx.tickets.listByRequester(ctx.employee_id, 'open');
-    return OPEN_STATUSES
-      .filter((t) => t.category === category && !checked.includes(t.code))
-      .map((t) => ({ code: t.code, title: t.title, status: t.status }));
+    return OPEN_STATUSES.filter((t) => t.category === category && !checked.includes(t.code)).map((t) => ({
+      code: t.code,
+      title: t.title,
+      status: t.status,
+    }));
   } catch (e) {
     if (e instanceof TicketsTransportError) return [];
     throw e;

@@ -4,13 +4,18 @@ import { messages } from '@/lib/db/schema';
 import { noteToMemory } from '@/lib/agent-engine/agent/memory';
 
 /** Ao devolver, o agent fica sabendo o que o analista disse (texto literal, até 3 mensagens). */
-export async function writeReleaseNote(conversationId: string, employeeId: string, analyst: { id: string; name: string }) {
+export async function writeReleaseNote(
+  sourceId: string,
+  targetId: string,
+  employeeId: string,
+  analyst: { id: string; name: string },
+) {
   const recent = await getDb()
     .select({ body: messages.body })
     .from(messages)
     .where(
       and(
-        eq(messages.conversation_id, conversationId),
+        eq(messages.conversation_id, sourceId),
         eq(messages.sent_by_user_id, analyst.id),
         eq(messages.sent_via, 'user'),
         eq(messages.type, 'text'),
@@ -20,5 +25,5 @@ export async function writeReleaseNote(conversationId: string, employeeId: strin
     .limit(3);
   const utterances = recent.reverse().map((m) => `"${m.body}"`);
   const summary = utterances.length ? utterances.join(' / ') : 'sem mensagens para o funcionário';
-  await noteToMemory(conversationId, employeeId, `O analista ${analyst.name} atendeu e devolveu: ${summary}`);
+  await noteToMemory(targetId, employeeId, `O analista ${analyst.name} atendeu e devolveu: ${summary}`);
 }

@@ -80,6 +80,17 @@ test.describe('capturas das telas', () => {
     await page.screenshot({ path: 'test-results/telas/chat-consulta.png' });
   });
 
+  test('chat-atendimentos', async ({ page, loginAs }) => {
+    await loginAs(page, 'ana');
+    await send(page, 'quero falar com um analista');
+    await expect(page.getByTestId('analyst-banner')).toBeVisible();
+    await page.getByRole('button', { name: 'Falar de outro assunto' }).click();
+    await expect(page).toHaveURL(/\/atendimento\/[0-9a-f-]{36}$/);
+    await page.getByTestId('attendance-switcher').click();
+    await expect(page.getByTestId('attendance-item')).toHaveCount(3);
+    await page.screenshot({ path: 'test-results/telas/chat-atendimentos.png' });
+  });
+
   test('painel-decisao', async ({ page, loginAs }) => {
     await loginAs(page, 'ana');
     await send(page, 'Meu notebook não conecta na VPN, erro 809');
@@ -100,7 +111,9 @@ test.describe('capturas das telas', () => {
     await loginAs(page, 'rafael');
     await page.goto(`/console/${seed.conversations.carla}`);
     await page.getByTestId('takeover-claim').click();
-    await page.getByTestId('console-composer').fill('Oi, Carla! Aqui é o Rafael. Vou liberar o acesso agora.');
+    await page
+      .getByTestId('console-composer')
+      .fill('Oi, Carla! Aqui é o Rafael. Vou liberar o acesso agora.');
     await page.getByTestId('console-send').click();
     await expect(page.getByTestId('human-message')).toBeVisible();
     await page.screenshot({ path: 'test-results/telas/console-assumida.png' });

@@ -11,6 +11,7 @@ import { offerOptionsTool } from './offer-options';
 import { transferToAnalystTool } from './transfer-to-analyst';
 import type { ToolCtx, ToolDef } from './types';
 import { getTicketTool } from './get-ticket';
+import { markResolvedTool } from './mark-resolved';
 
 export type { ToolCtx } from './types';
 
@@ -21,6 +22,7 @@ export const TOOL_DEFS = {
   build_draft: buildDraftTool,
   offer_options: offerOptionsTool,
   transfer_to_analyst: transferToAnalystTool,
+  mark_resolved: markResolvedTool,
 } as const satisfies Record<string, ToolDef>;
 
 export type ToolName = keyof typeof TOOL_DEFS;
@@ -32,7 +34,8 @@ export type ToolName = keyof typeof TOOL_DEFS;
 export async function runTool(ctx: ToolCtx, name: ToolName, rawInput: unknown): Promise<unknown> {
   const def = TOOL_DEFS[name] as unknown as ToolDef;
   const parsed = def.inputSchema.safeParse(rawInput ?? {});
-  if (!parsed.success) return { ok: false, error: 'invalid_input', details: parsed.error.issues.map((i) => i.message) };
+  if (!parsed.success)
+    return { ok: false, error: 'invalid_input', details: parsed.error.issues.map((i) => i.message) };
   const input = parsed.data;
   const id = randomUUID();
   const t0 = Date.now();
@@ -44,7 +47,8 @@ export async function runTool(ctx: ToolCtx, name: ToolName, rawInput: unknown): 
     );
 
   emit(running, 'running', '');
-  ctx.retry.current = (attempt) => emit(running, 'retried', `sistema de chamados lento, tentativa ${attempt + 1}`);
+  ctx.retry.current = (attempt) =>
+    emit(running, 'retried', `sistema de chamados lento, tentativa ${attempt + 1}`);
   let output: unknown;
   try {
     output = await def.run(ctx, input);

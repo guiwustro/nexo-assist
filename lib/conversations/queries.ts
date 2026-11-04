@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getDb } from '@/lib/db/client';
 import { aiAgentRuns, conversations, handoffs, messages as messagesTable, users } from '@/lib/db/schema';
@@ -7,6 +7,7 @@ import { serverNow } from '@/lib/env';
 import type { TicketHit } from '@/lib/contracts/tickets';
 import { searchPattern, unaccented, isShortTerm } from '@/lib/db/search';
 import { findMatches } from '@/lib/text/matches';
+import { closedLabel, ticketCodesOf } from './attendance';
 
 export type QueueFilter = 'all' | 'for_you' | 'with_agent' | 'mine';
 
@@ -29,6 +30,8 @@ export type QueueItem = {
   last_message_at: string | null;
   unread: number;
   focus_ticket_code: string | null;
+  ticket_codes: string[];
+  employee_has_agent_attendance: boolean;
   handoff: { reason_code: string; support_level: string; due_at: string; confidence: number | null } | null;
   /** Com busca: por que a conversa apareceu (nome, chamado ou trecho de mensagem). Sem busca: null. */
   match: { kind: 'name' | 'ticket' | 'message'; text: string } | null;
@@ -51,7 +54,8 @@ const MATCH_KIND_ORDER = { name: 0, ticket: 1, message: 2 } as const;
 export function snippetAround(text: string, term: string, before = 30, after = 70): string {
   const cleaned = text.replace(/\s+/g, ' ').trim();
   const snippets = findMatches(cleaned, term);
-  const [a, b] = snippets.find(([i]) => i === 0 || !/[\p{L}\p{N}]/u.test(cleaned[i - 1]!)) ?? snippets[0] ?? [0, 0];
+  const [a, b] = snippets.find(([i]) => i === 0 || !/[\p{L}\p{N}]/u.test(cleaned[i - 1]!)) ??
+    snippets[0] ?? [0, 0];
   const from = Math.max(0, a - before);
   const to = Math.min(cleaned.length, b + after);
   return `${from > 0 ? '…' : ''}${cleaned.slice(from, to).trim()}${to < cleaned.length ? '…' : ''}`;
@@ -87,6 +91,7 @@ export function tagFor(
     assignee_name: string | null;
     had_analyst: boolean;
     focus_ticket_code: string | null;
+    closed_reason: string | null;
     handoff: QueueItem['handoff'];
   },
   analystId: string,
@@ -99,7 +104,10 @@ export function tagFor(
   }
   if (row.status === 'pending') {
     if (row.handoff?.reason_code === 'low_confidence' && row.handoff.confidence !== null) {
-      return { kind: 'agent_asked_help', label: `Agent pediu ajuda · confiança ${Math.round(row.handoff.confidence * 100)}%` };
+      return {
+        kind: 'agent_asked_help',
+        label: `Agent pediu ajuda · confiança ${Math.round(row.handoff.confidence * 100)}%`,
+      };
     }
     if (row.handoff?.reason_code === 'session_limit') {
       return { kind: 'transferred', label: 'Transferida · limite da sessão' };
@@ -115,7 +123,9 @@ export function tagFor(
     };
   }
   if (row.status === 'closed') {
-    return row.had_analyst ? { kind: 'closed', label: 'Encerrada' } : { kind: 'resolved_by_agent', label: 'Resolvida pelo agent' };
+    return row.closed_reason === 'resolved'
+      ? { kind: 'resolved_by_agent', label: closedLabel(row.closed_reason) }
+      : { kind: 'closed', label: closedLabel(row.closed_reason) };
   }
   return { kind: 'agent_handling', label: 'Agent atendendo' };
 }
@@ -142,13 +152,20 @@ export async function listForAnalyst(analystId: string, opts: ListOptions = {}):
   const textPattern = searchPattern(term, { wholeWord: isShortTerm(term) });
   const ticketOwners = [...new Set(ticketHits.map((h) => h.requester_id))];
   const matchesName = namePattern ? sql`${unaccented(users.name)} ~ ${namePattern}` : null;
-  const matchesFocus = namePattern ? sql`coalesce(${unaccented(conversations.focus_ticket_code)} ~ ${namePattern}, false)` : null;
+  const matchesFocus = namePattern
+    ? sql`coalesce(${unaccented(conversations.focus_ticket_code)} ~ ${namePattern}, false)`
+    : null;
   const matchesMessage = textPattern
     ? sql`(select m.body from messages m where m.conversation_id = ${conversations.id} and ${unaccented(sql`m.body`)} ~ ${textPattern} order by m.created_at desc limit 1)`
     : null;
   const searchQuery =
     matchesName && matchesFocus && matchesMessage
-      ? or(matchesName, matchesFocus, sql`${matchesMessage} is not null`, ticketOwners.length ? inArray(users.id, ticketOwners) : undefined)
+      ? or(
+          matchesName,
+          matchesFocus,
+          sql`${matchesMessage} is not null`,
+          ticketOwners.length ? inArray(users.id, ticketOwners) : undefined,
+        )
       : undefined;
 
   const rows = await db
@@ -158,6 +175,13 @@ export async function listForAnalyst(analystId: string, opts: ListOptions = {}):
       assigned_to_user_id: conversations.assigned_to_user_id,
       assignee_name: assignee.name,
       focus_ticket_code: conversations.focus_ticket_code,
+      closed_reason: conversations.closed_reason,
+      employee_has_agent_attendance: sql<boolean>`exists (
+        select 1 from conversations active
+        where active.employee_id = ${conversations.employee_id}
+          and active.status = 'ai_handling'
+          and active.id <> ${conversations.id}
+      )`,
       last_message_preview: conversations.last_message_preview,
       last_message_at: conversations.last_message_at,
       unread: conversations.unread_count_for_assignee,
@@ -177,11 +201,41 @@ export async function listForAnalyst(analystId: string, opts: ListOptions = {}):
     .innerJoin(users, eq(users.id, conversations.employee_id))
     .leftJoin(assignee, eq(assignee.id, conversations.assigned_to_user_id))
     .leftJoin(latest, eq(latest.conversation_id, conversations.id))
-    .where(and(filterCondition(analystId, filter), searchQuery, onlyId ? eq(conversations.id, onlyId) : undefined))
+    .where(
+      and(
+        isNotNull(conversations.last_message_at),
+        filterCondition(analystId, filter),
+        searchQuery,
+        onlyId ? eq(conversations.id, onlyId) : undefined,
+      ),
+    )
     .orderBy(sql`${conversations.last_message_at} desc nulls last`);
 
+  const ticketCodes = await ticketCodesOf(rows.map((row) => row.id));
+  const employeesWithTicketAttendance = new Set<string>();
+  for (const row of rows) {
+    const codes = ticketCodes.get(row.id) ?? [];
+    if (ticketHits.some((hit) => hit.requester_id === row.employee_id && codes.includes(hit.code))) {
+      employeesWithTicketAttendance.add(row.employee_id);
+    }
+  }
+  const fallbackTicketConversation = new Map<string, string>();
+  for (const row of rows) {
+    if (
+      !employeesWithTicketAttendance.has(row.employee_id) &&
+      ticketHits.some((hit) => hit.requester_id === row.employee_id) &&
+      !fallbackTicketConversation.has(row.employee_id)
+    ) {
+      fallbackTicketConversation.set(row.employee_id, row.id);
+    }
+  }
   const itens = rows.map((r) => {
-    const hit = ticketHits.find((h) => h.requester_id === r.employee_id);
+    const rowTicketCodes = ticketCodes.get(r.id) ?? [];
+    const hit =
+      ticketHits.find((h) => h.requester_id === r.employee_id && rowTicketCodes.includes(h.code)) ??
+      (fallbackTicketConversation.get(r.employee_id) === r.id
+        ? ticketHits.find((h) => h.requester_id === r.employee_id)
+        : undefined);
     const match: QueueItem['match'] = !term
       ? null
       : r.by_name
@@ -213,6 +267,7 @@ export async function listForAnalyst(analystId: string, opts: ListOptions = {}):
           assignee_name: r.assignee_name,
           had_analyst: r.had_analyst,
           focus_ticket_code: r.focus_ticket_code,
+          closed_reason: r.closed_reason,
           handoff,
         },
         analystId,
@@ -222,12 +277,21 @@ export async function listForAnalyst(analystId: string, opts: ListOptions = {}):
       last_message_at: r.last_message_at?.toISOString() ?? null,
       unread: r.assigned_to_user_id === analystId || r.status === 'pending' ? r.unread : 0,
       focus_ticket_code: r.focus_ticket_code,
+      ticket_codes: rowTicketCodes,
+      employee_has_agent_attendance: r.employee_has_agent_attendance,
       handoff,
       match,
     };
   });
   // Com busca, o nome vem antes de chamado e de conteúdo; dentro de cada grupo, a ordem da fila (sort é estável).
-  return term ? itens.sort((a, b) => MATCH_KIND_ORDER[a.match?.kind ?? 'message'] - MATCH_KIND_ORDER[b.match?.kind ?? 'message']) : itens;
+  return term
+    ? itens
+        .filter((item) => item.match)
+        .sort(
+          (a, b) =>
+            MATCH_KIND_ORDER[a.match?.kind ?? 'message'] - MATCH_KIND_ORDER[b.match?.kind ?? 'message'],
+        )
+    : itens;
 }
 
 export async function countsForAnalyst(analystId: string): Promise<Record<QueueFilter, number>> {
@@ -238,12 +302,16 @@ export async function countsForAnalyst(analystId: string): Promise<Record<QueueF
       with_agent: sql<number>`count(*) filter (where ${conversations.status} = 'ai_handling')::int`,
       mine: sql<number>`count(*) filter (where ${conversations.status} = 'claimed' and ${conversations.assigned_to_user_id} = ${analystId})::int`,
     })
-    .from(conversations);
+    .from(conversations)
+    .where(isNotNull(conversations.last_message_at));
   return { all: r?.all ?? 0, for_you: r?.for_you ?? 0, with_agent: r?.with_agent ?? 0, mine: r?.mine ?? 0 };
 }
 
 /** Mensagens mais recentes primeiro na consulta, devolvidas em ordem cronológica. `cursor` = created_at ISO. */
-export async function listMessages(conversationId: string, opts: { limit?: number; cursor?: string } = {}): Promise<{
+export async function listMessages(
+  conversationId: string,
+  opts: { limit?: number; cursor?: string } = {},
+): Promise<{
   messages: ApiMessage[];
   next_cursor: string | null;
 }> {

@@ -16,8 +16,9 @@ test.describe('controles do console', () => {
     await expect(itens.first().getByTestId('conversation-match')).toContainText('INC-20388 · Acesso à pasta da Diretoria');
 
     await page.getByTestId('console-search').fill('ana');
-    await expect(itens).toHaveCount(0);
-    await expect(page.getByText('Nada encontrado para “ana”')).toBeVisible();
+    await expect(itens).toHaveCount(1);
+    await expect(itens.first()).toContainText('Ana Souza');
+    await expect(page.getByText('Nada encontrado para “ana”')).toHaveCount(0);
   });
 
   test('linha de "Outros chamados" abre o detalhe com histórico e Voltar retorna', async ({ page, loginAs, seed }) => {

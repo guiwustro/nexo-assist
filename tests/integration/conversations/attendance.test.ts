@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { useTestDb } from '@/tests/helpers/db';
 import { getMemory } from '@/lib/agent-engine/agent/memory';
@@ -9,11 +9,12 @@ import {
   getCurrentForEmployee,
   getOrCreateWithAgent,
   getSession,
+  releaseOrMerge,
   resolveConversation,
   ticketCodesOf,
   touchSession,
 } from '@/lib/conversations/attendance';
-import { registerEmployeeMessage } from '@/lib/conversations/service';
+import { applyTransition, registerEmployeeMessage } from '@/lib/conversations/service';
 
 const t = useTestDb();
 
@@ -54,7 +55,12 @@ async function insertClosedAttendance(
 
 async function insertDraft(
   conversationId: string,
-  values: { code: string; status: 'pending' | 'confirmed' | 'cancelled'; target?: string | null; result?: string | null },
+  values: {
+    code: string;
+    status: 'pending' | 'confirmed' | 'cancelled';
+    target?: string | null;
+    result?: string | null;
+  },
 ) {
   const [draft] = await t.db
     .insert(ticketDrafts)
@@ -81,7 +87,11 @@ describe('getOrCreateWithAgent', () => {
 
   it('um atendimento novo recebe a nota dos anteriores na memória', async () => {
     const ana = t.seed.users.ana.id;
-    await insertClosedAttendance(ana, { focus: 'INC-20311', closedAt: t.now, preview: 'VPN voltou a funcionar.' });
+    await insertClosedAttendance(ana, {
+      focus: 'INC-20311',
+      closedAt: t.now,
+      preview: 'VPN voltou a funcionar.',
+    });
 
     const { conversation, created } = await getOrCreateWithAgent(ana, t.now);
     expect(created).toBe(true);
@@ -123,6 +133,7 @@ describe('getCurrentForEmployee', () => {
 
   it('cria um atendimento vazio quando o funcionário ainda não tem histórico', async () => {
     const ana = t.seed.users.ana.id;
+    await t.db.delete(conversations).where(eq(conversations.id, t.seed.conversations.ana!));
     const current = await getCurrentForEmployee(ana, t.now);
     expect(current).toMatchObject({ employee_id: ana, status: 'ai_handling', last_message_at: null });
   });
@@ -159,11 +170,17 @@ describe('sessão do funcionário', () => {
     const ana = t.seed.users.ana.id;
     const firstLogin = new Date(t.now.getTime() - 60_000);
     await touchSession(ana, 'sid-a', firstLogin);
-    await t.db.update(employeeSessions).set({ message_count: 4 }).where(eq(employeeSessions.employee_id, ana));
+    await t.db
+      .update(employeeSessions)
+      .set({ message_count: 4 })
+      .where(eq(employeeSessions.employee_id, ana));
 
     await touchSession(ana, 'sid-b', t.now);
     expect(await getSession(ana)).toMatchObject({ session_id: 'sid-b', message_count: 0 });
-    await t.db.update(employeeSessions).set({ message_count: 2 }).where(eq(employeeSessions.employee_id, ana));
+    await t.db
+      .update(employeeSessions)
+      .set({ message_count: 2 })
+      .where(eq(employeeSessions.employee_id, ana));
     await touchSession(ana, 'sid-a', firstLogin);
     expect(await getSession(ana)).toMatchObject({ session_id: 'sid-b', message_count: 2 });
   });
@@ -173,7 +190,11 @@ describe('sessão do funcionário', () => {
     await touchSession(carla, 'sid-c', t.now);
     const active = await getOrCreateWithAgent(carla, t.now);
     await registerEmployeeMessage(t.seed.conversations.carla!, 'mensagem no atendimento pendente', 30);
-    const result = await registerEmployeeMessage(active.conversation.id, 'mensagem no atendimento do agent', 30);
+    const result = await registerEmployeeMessage(
+      active.conversation.id,
+      'mensagem no atendimento do agent',
+      30,
+    );
     expect(result.count).toBe(2);
     expect(await getSession(carla)).toMatchObject({ message_count: 2 });
   });
@@ -204,12 +225,77 @@ describe('resolveConversation', () => {
       .select()
       .from(messages)
       .where(and(eq(messages.conversation_id, conversation.id), eq(messages.type, 'system')));
-    expect(systemMessage?.body).toContain('Atendimento resolvido pelo agent');
+    expect(systemMessage?.body).toContain('Atendimento resolvido ·');
     const [closedEvent] = await t.db
       .select()
       .from(eventLog)
-      .where(and(eq(eventLog.conversation_id, conversation.id), eq(eventLog.event_type, 'conversation.closed')));
+      .where(
+        and(eq(eventLog.conversation_id, conversation.id), eq(eventLog.event_type, 'conversation.closed')),
+      );
     expect(closedEvent?.payload).toMatchObject({ reason: 'resolved' });
+  });
+});
+
+describe('releaseOrMerge', () => {
+  it('devolve ao agent quando não existe outro atendimento ativo', async () => {
+    const ana = t.seed.users.ana.id;
+    const [source] = await t.db
+      .insert(conversations)
+      .values({ employee_id: ana, status: 'pending' })
+      .returning();
+    const actor = { user_id: t.seed.users.rafael.id, role: 'analyst' as const };
+    await applyTransition(source!.id, 'claim', actor, { now: t.now });
+
+    const result = await releaseOrMerge(source!.id, actor, t.now);
+    expect(result).toMatchObject({
+      merged_into: null,
+      conversation: { id: source!.id, status: 'ai_handling' },
+    });
+  });
+
+  it('junta ao atendimento ativo e transfere a nota do analista para a memória dele', async () => {
+    const ana = t.seed.users.ana.id;
+    const [source] = await t.db
+      .insert(conversations)
+      .values({ employee_id: ana, status: 'pending', focus_ticket_code: 'INC-20311' })
+      .returning();
+    const actor = { user_id: t.seed.users.rafael.id, role: 'analyst' as const };
+    await applyTransition(source!.id, 'claim', actor, { now: t.now });
+    await t.db.insert(messages).values({
+      conversation_id: source!.id,
+      direction: 'outbound',
+      sent_via: 'user',
+      sent_by_user_id: actor.user_id,
+      body: 'Vou reiniciar seu perfil',
+    });
+    const { conversation: active } = await getOrCreateWithAgent(ana, t.now);
+
+    const result = await releaseOrMerge(source!.id, actor, t.now);
+    expect(result.merged_into).toBe(active.id);
+    expect(result.conversation).toMatchObject({ status: 'closed', closed_reason: 'merged' });
+    const [sourceSystemMessage] = await t.db
+      .select()
+      .from(messages)
+      .where(and(eq(messages.conversation_id, source!.id), eq(messages.type, 'system')))
+      .orderBy(desc(messages.created_at));
+    expect(sourceSystemMessage?.body).toContain(
+      'Rafael Lima devolveu ao agent · juntado ao atendimento atual',
+    );
+    const [systemMessage] = await t.db
+      .select()
+      .from(messages)
+      .where(and(eq(messages.conversation_id, active.id), eq(messages.type, 'system')));
+    expect(systemMessage?.body).toContain(
+      'Rafael Lima devolveu um atendimento sobre INC-20311 · o Nexo já sabe o que foi feito',
+    );
+    const [closedEvent] = await t.db
+      .select()
+      .from(eventLog)
+      .where(and(eq(eventLog.conversation_id, source!.id), eq(eventLog.event_type, 'conversation.closed')));
+    expect(closedEvent?.payload).toMatchObject({ reason: 'merged' });
+    const { messages: memoryMessages } = await getMemory().recall({ threadId: active.id });
+    expect(JSON.stringify(memoryMessages)).toContain('O analista Rafael Lima atendeu e devolveu');
+    expect(JSON.stringify(memoryMessages)).toContain('Vou reiniciar seu perfil');
   });
 });
 

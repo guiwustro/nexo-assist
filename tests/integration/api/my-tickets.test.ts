@@ -11,7 +11,18 @@ import type { TicketDetail, TicketList } from '@/lib/tickets/views';
 const t = useTestDb();
 let fake: FakeTickets;
 const ana = (): Session => ({ user_id: t.seed.users.ana.id, role: 'employee', name: 'Ana Souza', sid: 's' });
-const rafael = (): Session => ({ user_id: t.seed.users.rafael.id, role: 'analyst', name: 'Rafael Lima', sid: 's' });
+const elisa = (): Session => ({
+  user_id: t.seed.users.elisa.id,
+  role: 'employee',
+  name: 'Elisa Prado',
+  sid: 's',
+});
+const rafael = (): Session => ({
+  user_id: t.seed.users.rafael.id,
+  role: 'analyst',
+  name: 'Rafael Lima',
+  sid: 's',
+});
 
 beforeEach(() => {
   fake = createFakeTickets(t.now);
@@ -35,6 +46,16 @@ describe('Meus chamados (funcionário)', () => {
     const { data } = await json<{ data: TicketDetail }>(res);
     expect(data.ticket.code).toBe('INC-20150');
     expect(data.events[0]?.kind).toBe('created');
+  });
+
+  it('detalhe do INC-20519 mostra o atendimento onde o rascunho foi criado', async () => {
+    const res = await call(myTicket, { session: elisa(), params: { code: 'INC-20519' } });
+    const { data } = await json<{ data: TicketDetail }>(res);
+    expect(data.attendances[0]).toMatchObject({
+      conversation_id: t.seed.conversations.elisa,
+      relation: 'created',
+    });
+    expect(data.attendances[0]?.message_id).toBeTruthy();
   });
 
   it('chamado da Carla → 404, sem vazar nada', async () => {

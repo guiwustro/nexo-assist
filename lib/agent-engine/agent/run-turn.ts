@@ -11,6 +11,7 @@ import type { MessagePart } from '@/lib/contracts/parts';
 import type { Priority } from '@/lib/contracts/enums';
 import type { NexoDataParts, NexoUIMessage } from '@/lib/contracts/ui';
 import { appendMessage, getConversation, registerEmployeeMessage } from '@/lib/conversations/service';
+import { resolveConversation } from '@/lib/conversations/attendance';
 import { createHandoff } from '@/lib/conversations/handoff';
 import { Conflict } from '@/lib/api/errors';
 import { getTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
@@ -33,7 +34,8 @@ export type TurnWriter = UIMessageStreamWriter<NexoUIMessage>;
 type Input = { conversation_id: string; employee: Session; text: string; writer: TurnWriter; now?: Date };
 
 const PROMISE_GUARD = 'Guardrail: o agent prometeu um analista, transferência executada';
-const CREATION_GUARD = 'Guardrail: o agent disse que criou o chamado, mas só a confirmação cria — aviso mostrado';
+const CREATION_GUARD =
+  'Guardrail: o agent disse que criou o chamado, mas só a confirmação cria — aviso mostrado';
 export const NOT_CREATED_NOTICE = 'O chamado ainda não foi criado — confira o rascunho e confirme.';
 const DRAFT_ACTION = { create: 'draft_create', update: 'draft_update', reopen: 'reopen' } as const;
 export const BUDGET_NOTICE = 'O assistente atingiu o limite de uso de hoje';
@@ -44,7 +46,13 @@ function system(writer: TurnWriter, data: NexoDataParts['system']) {
 
 async function loadArticles(): Promise<Article[]> {
   const rows = await getDb().select().from(knowledgeArticles);
-  return rows.map((r) => ({ slug: r.slug, title: r.title, body: r.body, tags: r.tags, applies_to: r.applies_to }));
+  return rows.map((r) => ({
+    slug: r.slug,
+    title: r.title,
+    body: r.body,
+    tags: r.tags,
+    applies_to: r.applies_to,
+  }));
 }
 
 /** Turno sem modelo (transferência determinística): fica registrado com decisão de regra e custo zero. */
@@ -125,7 +133,11 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         reason_code: 'session_limit',
         level: 'N1',
         employee_words: i.text,
-        ...(await caseWithoutModel(`A sessão chegou a ${limit} mensagens sem resolver.`, reg.conversation, run_id)),
+        ...(await caseWithoutModel(
+          `A sessão chegou a ${limit} mensagens sem resolver.`,
+          reg.conversation,
+          run_id,
+        )),
       },
       now,
     );
@@ -140,7 +152,11 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
       reg.message.id,
       'Certo, transferi para um analista. Ele vai continuar este atendimento por aqui.',
       {
-        understanding: { intent: 'talk_to_human', summary: 'Pediu para falar com um analista', evidence: i.text },
+        understanding: {
+          intent: 'talk_to_human',
+          summary: 'Pediu para falar com um analista',
+          evidence: i.text,
+        },
         decision: {
           action: 'transfer',
           confidence: 1,
@@ -179,7 +195,11 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
       reg.message.id,
       `${BUDGET_NOTICE}. Transferi para um analista, que continua daqui com todo o histórico.`,
       {
-        understanding: { intent: 'other', summary: 'O assistente atingiu o teto diário de uso', evidence: i.text },
+        understanding: {
+          intent: 'other',
+          summary: 'O assistente atingiu o teto diário de uso',
+          evidence: i.text,
+        },
         decision: {
           action: 'transfer',
           confidence: 1,
@@ -196,7 +216,11 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         reason_code: 'budget_exceeded',
         level: 'N1',
         employee_words: i.text,
-        ...(await caseWithoutModel('O assistente atingiu o limite de uso de hoje e não leu esta mensagem.', reg.conversation, run_id)),
+        ...(await caseWithoutModel(
+          'O assistente atingiu o limite de uso de hoje e não leu esta mensagem.',
+          reg.conversation,
+          run_id,
+        )),
       },
       now,
     );
@@ -208,7 +232,12 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
   const model = getModel();
   const [run] = await db
     .insert(aiAgentRuns)
-    .values({ conversation_id: i.conversation_id, inbound_message_id: reg.message.id, status: 'running', model: model.model_id })
+    .values({
+      conversation_id: i.conversation_id,
+      inbound_message_id: reg.message.id,
+      status: 'running',
+      model: model.model_id,
+    })
     .returning();
   const run_id = run!.id;
   i.writer.write({ type: 'data-run', id: `run-${run_id}`, data: { run_id } });
@@ -269,7 +298,8 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
       for await (const chunk of stream.fullStream) {
         if (chunk.type === 'text-delta') writeText(chunk.payload.text);
         else if (chunk.type === 'step-finish') steps += 1;
-        else if (chunk.type === 'error') failed = String((chunk.payload as { error?: unknown }).error ?? 'erro do modelo');
+        else if (chunk.type === 'error')
+          failed = String((chunk.payload as { error?: unknown }).error ?? 'erro do modelo');
       }
       const u = await stream.usage;
       usage = { in: u.inputTokens ?? 0, out: u.outputTokens ?? 0, cached: u.cachedInputTokens ?? 0 };
@@ -288,7 +318,10 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
 
     const actionList = [...actions.values()];
     if (turn.focus_ticket_code) {
-      await db.update(conversations).set({ focus_ticket_code: turn.focus_ticket_code }).where(eq(conversations.id, i.conversation_id));
+      await db
+        .update(conversations)
+        .set({ focus_ticket_code: turn.focus_ticket_code })
+        .where(eq(conversations.id, i.conversation_id));
     }
     const outbound = await appendMessage(db, {
       conversation_id: i.conversation_id,
@@ -329,13 +362,15 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         ...decision.decision.sources.filter((s) => previous.has(`${s.kind}:${s.id}`)),
       ]);
       const declared = decision.decision.confidence;
-      const adjusted = adjustConfidence(declared, {
-        intent: decision.understanding.intent,
-        sources_count: sources.length,
-        action: decision.decision.action,
-      }) ?? declared;
+      const adjusted =
+        adjustConfidence(declared, {
+          intent: decision.understanding.intent,
+          sources_count: sources.length,
+          action: decision.decision.action,
+        }) ?? declared;
       const rules = [...decision.decision.rules_applied];
-      if (adjusted < declared) rules.push('Confiança ajustada: dúvida respondida sem fonte na central (máximo 50%)');
+      if (adjusted < declared)
+        rules.push('Confiança ajustada: dúvida respondida sem fonte na central (máximo 50%)');
       // A ação também sai do que a tool fez: transferir vence (o agent fica pausado); senão, um rascunho montado
       // define se foi criação, atualização ou reabertura.
       const action = turn.handoff_created
@@ -343,7 +378,10 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
         : turn.draft_kind
           ? DRAFT_ACTION[turn.draft_kind]
           : decision.decision.action;
-      decision = { ...decision, decision: { ...decision.decision, action, confidence: adjusted, sources, rules_applied: rules } };
+      decision = {
+        ...decision,
+        decision: { ...decision.decision, action, confidence: adjusted, sources, rules_applied: rules },
+      };
     }
 
     // 7. Pós-turno: só se a conversa continua com o agent (o analista pode ter assumido durante o stream).
@@ -355,79 +393,89 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
     } else if (current?.status !== 'ai_handling') {
       outcome = 'paused';
     } else if (!failed) {
-      const g = evaluateTriggers({
-        employee_text: i.text,
-        confidence: decision?.decision.confidence ?? null,
-        draft_priority: turn.draft_priority,
-        overdue_ticket_code: turn.overdue_ticket_code,
-        session_count: reg.count,
-        limit,
-        threshold: env.LOW_CONFIDENCE_THRESHOLD,
-      });
-      if ('transfer' in g && g.transfer) {
-        const transferred = await transferIfWithAgent(
-          {
-            conversation_id: i.conversation_id,
-            ticket_code: turn.overdue_ticket_code ?? null,
-            ticket_priority: turn.draft_priority,
-            origin: 'trigger',
-            reason_code: g.reason,
-            level: g.level,
-            employee_words: i.text,
-            agent_reading: decision?.understanding.summary ?? answer,
-            attempts: actionList,
-            confidence: decision?.decision.confidence ?? null,
-          },
-          now,
-        );
-        if (transferred) {
-          rules.push(g.rule);
-          system(i.writer, { kind: 'transferred', text: 'Transferida para um analista' });
-          outcome = 'transferred';
-        } else outcome = 'paused';
+      const resolved = turn.resolved ? await resolveConversation(i.conversation_id, now) : null;
+      if (resolved) {
+        outcome = 'answered';
       } else {
-        if ('offer' in g) rules.push(g.rule);
-        if (promisedAnalyst(answer)) {
+        const g = evaluateTriggers({
+          employee_text: i.text,
+          confidence: decision?.decision.confidence ?? null,
+          draft_priority: turn.draft_priority,
+          overdue_ticket_code: turn.overdue_ticket_code,
+          session_count: reg.count,
+          limit,
+          threshold: env.LOW_CONFIDENCE_THRESHOLD,
+        });
+        if ('transfer' in g && g.transfer) {
           const transferred = await transferIfWithAgent(
             {
               conversation_id: i.conversation_id,
-              origin: 'guardrail',
-              reason_code: 'requested_human',
-              level: 'N1',
+              ticket_code: turn.overdue_ticket_code ?? null,
+              ticket_priority: turn.draft_priority,
+              origin: 'trigger',
+              reason_code: g.reason,
+              level: g.level,
               employee_words: i.text,
-              agent_reading: `O agent respondeu "${answer}" sem transferir; a transferência foi feita pelo sistema.`,
+              agent_reading: decision?.understanding.summary ?? answer,
               attempts: actionList,
               confidence: decision?.decision.confidence ?? null,
             },
             now,
           );
           if (transferred) {
-            rules.push(PROMISE_GUARD);
-            system(i.writer, { kind: 'guardrail', text: 'Transferida para um analista' });
+            rules.push(g.rule);
+            system(i.writer, { kind: 'transferred', text: 'Transferida para um analista' });
             outcome = 'transferred';
           } else outcome = 'paused';
+        } else {
+          if ('offer' in g) rules.push(g.rule);
+          if (promisedAnalyst(answer)) {
+            const transferred = await transferIfWithAgent(
+              {
+                conversation_id: i.conversation_id,
+                origin: 'guardrail',
+                reason_code: 'requested_human',
+                level: 'N1',
+                employee_words: i.text,
+                agent_reading: `O agent respondeu "${answer}" sem transferir; a transferência foi feita pelo sistema.`,
+                attempts: actionList,
+                confidence: decision?.decision.confidence ?? null,
+              },
+              now,
+            );
+            if (transferred) {
+              rules.push(PROMISE_GUARD);
+              system(i.writer, { kind: 'guardrail', text: 'Transferida para um analista' });
+              outcome = 'transferred';
+            } else outcome = 'paused';
+          }
         }
-      }
-      if (claimsCreation(answer)) {
-        rules.push(CREATION_GUARD);
-        await appendMessage(db, {
-          conversation_id: i.conversation_id,
-          direction: 'outbound',
-          type: 'system',
-          sent_via: 'system',
-          body: NOT_CREATED_NOTICE,
-          agent_run_id: run_id,
-        });
-        system(i.writer, { kind: 'guardrail', text: NOT_CREATED_NOTICE });
+        if (claimsCreation(answer)) {
+          rules.push(CREATION_GUARD);
+          await appendMessage(db, {
+            conversation_id: i.conversation_id,
+            direction: 'outbound',
+            type: 'system',
+            sent_via: 'system',
+            body: NOT_CREATED_NOTICE,
+            agent_run_id: run_id,
+          });
+          system(i.writer, { kind: 'guardrail', text: NOT_CREATED_NOTICE });
+        }
       }
     }
     if (decision && rules.length) {
-      decision = { ...decision, decision: { ...decision.decision, rules_applied: [...decision.decision.rules_applied, ...rules] } };
+      decision = {
+        ...decision,
+        decision: { ...decision.decision, rules_applied: [...decision.decision.rules_applied, ...rules] },
+      };
     }
 
     // 8. Registro do run com custo somado das chamadas.
     const calls = await db.select().from(llmCalls).where(eq(llmCalls.agent_run_id, run_id));
-    const cost = calls.some((c) => c.cost_cents === null) ? null : calls.reduce((s, c) => s + (c.cost_cents ?? 0), 0);
+    const cost = calls.some((c) => c.cost_cents === null)
+      ? null
+      : calls.reduce((s, c) => s + (c.cost_cents ?? 0), 0);
     await db
       .update(aiAgentRuns)
       .set({
@@ -486,21 +534,36 @@ async function caseWithoutModel(
   const caseInfo = await summarizeCase(conv.id, runId);
   const reading = [
     matchReason,
-    caseInfo.summaries.length ? `Assuntos dos últimos turnos: ${caseInfo.summaries.map((r) => `"${r}"`).join('; ')}.` : '',
+    caseInfo.summaries.length
+      ? `Assuntos dos últimos turnos: ${caseInfo.summaries.map((r) => `"${r}"`).join('; ')}.`
+      : '',
     conv.focus_ticket_code ? `Chamado em foco: ${conv.focus_ticket_code}.` : '',
   ];
-  return { agent_reading: reading.filter(Boolean).join(' '), attempts: caseInfo.attempts, ticket_code: conv.focus_ticket_code };
+  return {
+    agent_reading: reading.filter(Boolean).join(' '),
+    attempts: caseInfo.attempts,
+    ticket_code: conv.focus_ticket_code,
+  };
 }
 
 /**
  * Resumo do caso para a passagem sem modelo: o que o agent entendeu nos últimos turnos e o que
  * ele já fez, a partir dos runs gravados. Sem chamada ao modelo, para não gastar token numa sessão já no limite.
  */
-async function summarizeCase(conversationId: string, exceptRunId: string): Promise<{ summaries: string[]; attempts: ActionTrace[] }> {
+async function summarizeCase(
+  conversationId: string,
+  exceptRunId: string,
+): Promise<{ summaries: string[]; attempts: ActionTrace[] }> {
   const runs = await getDb()
     .select({ decision: aiAgentRuns.decision, tool_calls: aiAgentRuns.tool_calls })
     .from(aiAgentRuns)
-    .where(and(eq(aiAgentRuns.conversation_id, conversationId), ne(aiAgentRuns.id, exceptRunId), isNotNull(aiAgentRuns.decision)))
+    .where(
+      and(
+        eq(aiAgentRuns.conversation_id, conversationId),
+        ne(aiAgentRuns.id, exceptRunId),
+        isNotNull(aiAgentRuns.decision),
+      ),
+    )
     .orderBy(desc(aiAgentRuns.started_at))
     .limit(5);
   const summaries = [...new Set(runs.map((r) => r.decision!.understanding.summary))].slice(0, 3).reverse();
@@ -521,7 +584,9 @@ async function getFocusTicket(
   try {
     const tickets = getTicketsClient();
     const t = await tickets.get(code, employeeId);
-    await tickets.transfer(t.code, { requester_id: employeeId, level, summary: 'Funcionário pediu um analista' }).catch(() => null);
+    await tickets
+      .transfer(t.code, { requester_id: employeeId, level, summary: 'Funcionário pediu um analista' })
+      .catch(() => null);
     return { code: t.code, title: t.title, priority: t.priority };
   } catch {
     return null;

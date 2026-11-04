@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createFakeTickets } from '@/tests/helpers/fake-tickets';
 import { runTool, TOOL_DEFS, type ToolCtx } from '@/lib/agent-engine/tools';
 import { SEED_ARTICLES, userByKey } from '@/lib/db/seed-data';
 import type { ActionTrace } from '@/lib/contracts/decision';
 import type { MessagePart } from '@/lib/contracts/parts';
+import type { TurnSignals } from '@/lib/agent-engine/tools/types';
+
+vi.mock('@/lib/conversations/ticket-elsewhere', () => ({ findAnalystAttendanceFor: async () => null }));
 
 const now = new Date('2026-11-03T13:00:00.000Z');
 
@@ -39,6 +42,17 @@ describe('tools do agent', () => {
     }
   });
 
+  it('mark_resolved registra a confirmação no turno', async () => {
+    const turn: TurnSignals = { sources: [] };
+    const { c, actions } = ctx({ turn });
+    const out = await runTool(c, 'mark_resolved', { summary: 'O funcionário confirmou a resolução.' });
+    expect(out).toMatchObject({ ok: true });
+    expect(turn.resolved).toBe(true);
+    expect(final(actions)).toContainEqual(
+      expect.objectContaining({ label: 'encerrou o atendimento', result: 'ok' }),
+    );
+  });
+
   it('get_ticket de chamado alheio → found:false sem vazar nada', async () => {
     const { c, parts, actions } = ctx();
     const out = await runTool(c, 'get_ticket', { code: 'INC-20388' });
@@ -55,7 +69,11 @@ describe('tools do agent', () => {
     expect(out.tickets.map((t) => t.code).sort()).toEqual(['INC-20298', 'INC-20311', 'REQ-10442']);
     expect(parts).toHaveLength(1);
     expect(parts[0]?.kind).toBe('ticket_selector');
-    expect(final(actions)[0]).toMatchObject({ label: 'consultou seus chamados', result: 'ok', tool: 'list_my_tickets' });
+    expect(final(actions)[0]).toMatchObject({
+      label: 'consultou seus chamados',
+      result: 'ok',
+      tool: 'list_my_tickets',
+    });
   });
 
   it('list_my_tickets com status=closed → seletor só com os resolvidos/encerrados', async () => {
@@ -87,9 +105,16 @@ describe('tools do agent', () => {
 
   it('get_ticket INC-20311 → card vencido "há 6 dias"', async () => {
     const { c, parts, actions } = ctx();
-    const out = (await runTool(c, 'get_ticket', { code: 'INC-20311' })) as { found: boolean; overdue: boolean };
+    const out = (await runTool(c, 'get_ticket', { code: 'INC-20311' })) as {
+      found: boolean;
+      overdue: boolean;
+    };
     expect(out).toMatchObject({ found: true, overdue: true });
-    expect(parts[0]).toMatchObject({ kind: 'ticket_card', overdue: true, overdue_label: 'há 6 dias · prazo vencido' });
+    expect(parts[0]).toMatchObject({
+      kind: 'ticket_card',
+      overdue: true,
+      overdue_label: 'há 6 dias · prazo vencido',
+    });
     expect(final(actions).map((a) => a.label)).toEqual(['consultou o INC-20311', 'calculou o prazo']);
   });
 
@@ -103,7 +128,9 @@ describe('tools do agent', () => {
 
   it('search_articles devolve até 3 artigos', async () => {
     const { c } = ctx();
-    const out = (await runTool(c, 'search_articles', { query: 'vpn erro 809' })) as { articles: Array<{ slug: string }> };
+    const out = (await runTool(c, 'search_articles', { query: 'vpn erro 809' })) as {
+      articles: Array<{ slug: string }>;
+    };
     expect(out.articles[0]?.slug).toBe('vpn-erro-809');
     expect(out.articles.length).toBeLessThanOrEqual(3);
   });
@@ -111,7 +138,11 @@ describe('tools do agent', () => {
   it('offer_options emite as opções rápidas sem ação na status line', async () => {
     const { c, parts, actions } = ctx();
     await runTool(c, 'offer_options', { question: 'Qual sistema?', options: ['Windows 10', 'Windows 11'] });
-    expect(parts[0]).toEqual({ kind: 'quick_replies', question: 'Qual sistema?', options: ['Windows 10', 'Windows 11'] });
+    expect(parts[0]).toEqual({
+      kind: 'quick_replies',
+      question: 'Qual sistema?',
+      options: ['Windows 10', 'Windows 11'],
+    });
     expect(actions).toHaveLength(0);
   });
 

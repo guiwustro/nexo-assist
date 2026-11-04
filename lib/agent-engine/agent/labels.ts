@@ -23,6 +23,8 @@ export function labelsFor(tool: string, input: unknown, output: unknown): string
       return ['classificou a prioridade', 'consultou o SLA', 'montou o rascunho'];
     case 'transfer_to_analyst':
       return ['transferiu para um analista'];
+    case 'mark_resolved':
+      return ['encerrou o atendimento'];
     case 'offer_options':
       return [];
     default:

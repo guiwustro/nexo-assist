@@ -38,6 +38,8 @@ export type Scenario = {
     hides_tickets?: string[];
     /** Trechos que não podem aparecer em nenhuma resposta (minúsculas, sem acento não importa). */
     text_excludes?: string[];
+    /** Motivo de encerramento esperado para o atendimento do cenário. */
+    closed_reason?: 'analyst' | 'resolved' | 'merged';
   };
 };
 
@@ -54,6 +56,20 @@ export const SCENARIOS: Scenario[] = [
       outcome: 'answered',
       draft: null,
       cites_article: 'horario-service-desk',
+    },
+  },
+  {
+    id: 'duvida-resolvida',
+    description: 'Dúvida da central resolvida: encerra o atendimento com confirmação do funcionário',
+    persona: 'diego',
+    turns: ['Qual o horário do service desk?', 'Isso resolveu, obrigado!'],
+    expected: {
+      tools_include: ['search_articles', 'mark_resolved'],
+      tools_exclude: ['build_draft', 'transfer_to_analyst'],
+      final_action: 'answer',
+      outcome: 'answered',
+      draft: null,
+      closed_reason: 'resolved',
     },
   },
   {

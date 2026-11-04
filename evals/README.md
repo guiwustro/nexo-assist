@@ -5,7 +5,8 @@ Os testes unitários, de integração e E2E rodam com um modelo roteirizado: ele
 
 ## O que roda
 
-`scenarios.ts` traz 14 cenários tirados das histórias do PRD: dúvida resolvida pela central, VPN 809 no
+`scenarios.ts` traz 15 cenários tirados das histórias do PRD: dúvida resolvida pela central, encerramento
+depois da confirmação do funcionário, VPN 809 no
 Windows 10 e no 11, consulta de status, chamado vencido, complemento, duplicado, reabertura dentro e fora da
 janela de 7 dias, caso crítico, assunto fora de TI, prompt injection e requisição de equipamento.
 
@@ -21,7 +22,7 @@ enviado. Não há juiz LLM: todo critério é verificável no banco.
 docker compose up -d db
 # no .env: LLM_PROVIDER=deepseek, DEEPSEEK_API_KEY=..., e para medir custo:
 # LLM_PRICE_IN_CENTS_PER_MTOK=... LLM_PRICE_OUT_CENTS_PER_MTOK=...
-pnpm eval                      # 14 cenários × 3, grava evals/resultados.md
+pnpm eval                      # 15 cenários × 3, grava evals/resultados.md
 pnpm eval --only reopen-sap   # um cenário (ids separados por vírgula)
 pnpm eval --vezes 1            # menos repetições
 pnpm eval --scripted           # com o modelo roteirizado: confere o runner sem gastar nada

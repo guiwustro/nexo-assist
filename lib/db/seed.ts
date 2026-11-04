@@ -7,15 +7,25 @@ import {
   handoffs,
   knowledgeArticles,
   messages,
+  ticketDrafts,
   ticketEvents,
   tickets,
   users,
 } from './schema';
-import { DEMO_PASSWORD, SEED_ARTICLES, SEED_OFFSETS, SEED_TICKETS, SEED_USERS, userByKey, type UserKey } from './seed-data';
+import {
+  DEMO_PASSWORD,
+  SEED_ARTICLES,
+  SEED_OFFSETS,
+  SEED_TICKETS,
+  SEED_USERS,
+  userByKey,
+  type UserKey,
+} from './seed-data';
 import { hashPassword } from '@/lib/auth/password';
 import { computeDeadline, timeInSaoPaulo } from '@/lib/rules/deadline';
 import type { TurnDecision } from '@/lib/contracts/decision';
 import type { MessagePart } from '@/lib/contracts/parts';
+import type { DraftPayload } from '@/lib/contracts/drafts';
 
 export type SeedResult = {
   users: Record<UserKey, { id: string; email: string }>;
@@ -24,6 +34,42 @@ export type SeedResult = {
 
 const { H, D } = SEED_OFFSETS;
 const MIN = 60_000;
+
+const TICKET_HISTORY: Record<
+  string,
+  Array<{ kind: 'comment' | 'status_changed'; body: string; actor: string; ago: number }>
+> = {
+  'INC-20298': [
+    {
+      kind: 'comment',
+      body: 'Verificando a permissão com o dono da pasta Financeiro.',
+      actor: 'Juliana Costa',
+      ago: 2 * H,
+    },
+    { kind: 'status_changed', body: 'Em andamento', actor: 'Juliana Costa', ago: 1 * H },
+  ],
+  'INC-20311': [
+    {
+      kind: 'comment',
+      body: 'Pedi o log de desempenho; aguardando retorno da funcionária.',
+      actor: 'Rafael Lima',
+      ago: 6 * D,
+    },
+  ],
+  'REQ-10442': [
+    { kind: 'status_changed', body: 'Aprovado pelo gestor', actor: 'Rafael Lima', ago: 3 * D },
+    {
+      kind: 'comment',
+      body: 'Monitor separado no estoque; entrega na próxima remessa.',
+      actor: 'Juliana Costa',
+      ago: 2 * D,
+    },
+  ],
+  'INC-20150': [
+    { kind: 'comment', body: 'Senha desbloqueada no SAP.', actor: 'Rafael Lima', ago: 4 * D + H },
+    { kind: 'status_changed', body: 'Resolvido', actor: 'Juliana Costa', ago: 4 * D },
+  ],
+};
 
 const APP_TABLES = [
   'api_audit_log',
@@ -78,7 +124,12 @@ function seedConversations(now: number): ConvSeed[] {
       unread: 1,
       focus: 'INC-20388',
       msgs: [
-        { at: now - 12 * MIN, direction: 'inbound', sent_via: 'user', body: 'Quero falar com um analista, por favor.' },
+        {
+          at: now - 12 * MIN,
+          direction: 'inbound',
+          sent_via: 'user',
+          body: 'Quero falar com um analista, por favor.',
+        },
         {
           at: now - 12 * MIN + 2000,
           direction: 'outbound',
@@ -87,7 +138,12 @@ function seedConversations(now: number): ConvSeed[] {
           body: `Transferida para Suporte N1 · ${timeInSaoPaulo(new Date(now - 12 * MIN))}`,
           parts: [{ kind: 'handoff_notice', reason_code: 'requested_human', level: 'N1' }],
         },
-        { at: now - 5 * MIN, direction: 'inbound', sent_via: 'user', body: 'Preciso de acesso ao SAP ainda hoje' },
+        {
+          at: now - 5 * MIN,
+          direction: 'inbound',
+          sent_via: 'user',
+          body: 'Preciso de acesso ao SAP ainda hoje',
+        },
       ],
       handoff: {
         reason: 'requested_human',
@@ -109,7 +165,13 @@ function seedConversations(now: number): ConvSeed[] {
           sent_via: 'user',
           body: 'O sistema de estoque mostra um aviso estranho quando eu fecho o lote, não sei se é problema meu',
         },
-        { at: now - 39 * MIN, direction: 'outbound', sent_via: 'ai', body: 'Vou chamar um analista para isso.', run: true },
+        {
+          at: now - 39 * MIN,
+          direction: 'outbound',
+          sent_via: 'ai',
+          body: 'Vou chamar um analista para isso.',
+          run: true,
+        },
         {
           at: now - 39 * MIN + 2000,
           direction: 'outbound',
@@ -124,8 +186,10 @@ function seedConversations(now: number): ConvSeed[] {
         origin: 'trigger',
         level: 'N1',
         priority: 'medium',
-        employee_words: 'O sistema de estoque mostra um aviso estranho quando eu fecho o lote, não sei se é problema meu',
-        agent_reading: 'Aviso no fechamento de lote do sistema de estoque; não há artigo nem chamado relacionado.',
+        employee_words:
+          'O sistema de estoque mostra um aviso estranho quando eu fecho o lote, não sei se é problema meu',
+        agent_reading:
+          'Aviso no fechamento de lote do sistema de estoque; não há artigo nem chamado relacionado.',
         confidence: 0.41,
       },
       decision: {
@@ -161,8 +225,46 @@ function seedConversations(now: number): ConvSeed[] {
       status: 'ai_handling',
       focus: 'INC-20519',
       msgs: [
-        { at: now - 2 * H - 2 * MIN, direction: 'inbound', sent_via: 'user', body: 'Pode confirmar o chamado do teclado.' },
+        {
+          at: now - 2 * H - 2 * MIN,
+          direction: 'inbound',
+          sent_via: 'user',
+          body: 'Pode confirmar o chamado do teclado.',
+        },
         { at: now - 2 * H, direction: 'outbound', sent_via: 'ai', body: 'Chamado INC-20519 criado.' },
+      ],
+    },
+    {
+      key: 'ana',
+      status: 'closed',
+      closed_reason: 'resolved',
+      focus: 'INC-19877',
+      msgs: [
+        {
+          at: now - 3 * D - 10 * MIN,
+          direction: 'inbound',
+          sent_via: 'user',
+          body: 'O Outlook do celular parou de sincronizar.',
+        },
+        {
+          at: now - 3 * D - 9 * MIN,
+          direction: 'outbound',
+          sent_via: 'ai',
+          body: 'Remova e adicione novamente sua conta corporativa no Outlook.',
+        },
+        {
+          at: now - 3 * D - 5 * MIN,
+          direction: 'inbound',
+          sent_via: 'user',
+          body: 'Funcionou, obrigado!',
+        },
+        {
+          at: now - 3 * D,
+          direction: 'outbound',
+          sent_via: 'system',
+          type: 'system',
+          body: `Atendimento resolvido · ${timeInSaoPaulo(new Date(now - 3 * D))}`,
+        },
       ],
     },
     {
@@ -185,7 +287,12 @@ function seedConversations(now: number): ConvSeed[] {
       status: 'closed',
       closed_reason: 'resolved',
       msgs: [
-        { at: now - D - 2 * H, direction: 'inbound', sent_via: 'user', body: 'Qual a senha do Wi-Fi de visitantes?' },
+        {
+          at: now - D - 2 * H,
+          direction: 'inbound',
+          sent_via: 'user',
+          body: 'Qual a senha do Wi-Fi de visitantes?',
+        },
         {
           at: now - D - 2 * H + 4000,
           direction: 'outbound',
@@ -279,6 +386,15 @@ export async function resetAndSeed(url: string, now: Date = new Date()): Promise
           actor: userByKey(st.owner).name,
           created_at: new Date(t0 - st.created_ago),
         });
+        for (const event of TICKET_HISTORY[st.code] ?? []) {
+          await tx.insert(ticketEvents).values({
+            ticket_id: row!.id,
+            kind: event.kind,
+            body: event.body,
+            actor: event.actor,
+            created_at: new Date(t0 - event.ago),
+          });
+        }
       }
     });
 
@@ -308,25 +424,59 @@ export async function resetAndSeed(url: string, now: Date = new Date()): Promise
       const conversation_id = conv!.id;
       convIds[c.key] = conversation_id;
 
+      let seededElisaDraft: { id: string; code: string; payload: DraftPayload } | null = null;
+      if (c.key === 'elisa') {
+        const payload: DraftPayload = {
+          title: 'Teclado do notebook com teclas falhando',
+          description: 'As teclas A, S e D do notebook falham com frequência.',
+          type: 'incident',
+          category: 'hardware',
+          affected: 'me',
+          blocks_work: false,
+          deadline_today: false,
+          priority: 'medium',
+          priority_rule: 'Prioridade média: impacto individual sem compromisso imediato.',
+          due_at: computeDeadline('medium', new Date(t0 - 2 * H)).due_at.toISOString(),
+        };
+        const [draft] = await db
+          .insert(ticketDrafts)
+          .values({
+            code: 'D-SEED-INC-20519',
+            conversation_id,
+            kind: 'create',
+            target_ticket_code: null,
+            payload,
+            status: 'confirmed',
+            result_ticket_code: 'INC-20519',
+            created_at: new Date(t0 - 2 * H),
+            decided_at: new Date(t0 - 2 * H),
+          })
+          .returning({ id: ticketDrafts.id, code: ticketDrafts.code });
+        seededElisaDraft = { id: draft!.id, code: draft!.code, payload };
+      }
+
       let handoffId: string | null = null;
       if (c.handoff) {
         const h = c.handoff;
         const at = new Date(c.msgs[1]!.at);
-        const [hrow] = await db.insert(handoffs).values({
-          conversation_id,
-          ticket_code: h.ticket_code ?? null,
-          origin: h.origin,
-          reason_code: h.reason,
-          support_level: h.level,
-          title: h.reason === 'requested_human' ? 'Pediu para falar com um analista' : 'Agent pediu ajuda',
-          body: `Palavras do funcionário: "${h.employee_words}"\nSegundo o agent — confira: ${h.agent_reading}`,
-          employee_words: h.employee_words,
-          agent_reading: h.agent_reading,
-          attempts: [],
-          confidence: h.confidence ?? null,
-          due_at: computeDeadline(h.priority, at).due_at,
-          created_at: at,
-        }).returning({ id: handoffs.id });
+        const [hrow] = await db
+          .insert(handoffs)
+          .values({
+            conversation_id,
+            ticket_code: h.ticket_code ?? null,
+            origin: h.origin,
+            reason_code: h.reason,
+            support_level: h.level,
+            title: h.reason === 'requested_human' ? 'Pediu para falar com um analista' : 'Agent pediu ajuda',
+            body: `Palavras do funcionário: "${h.employee_words}"\nSegundo o agent — confira: ${h.agent_reading}`,
+            employee_words: h.employee_words,
+            agent_reading: h.agent_reading,
+            attempts: [],
+            confidence: h.confidence ?? null,
+            due_at: computeDeadline(h.priority, at).due_at,
+            created_at: at,
+          })
+          .returning({ id: handoffs.id });
         handoffId = hrow!.id;
       }
 
@@ -361,6 +511,21 @@ export async function resetAndSeed(url: string, now: Date = new Date()): Promise
             .returning({ id: aiAgentRuns.id });
           agent_run_id = run!.id;
         }
+        const draftCard: MessagePart[] =
+          seededElisaDraft && m.sent_via === 'ai' && m.body.includes('INC-20519')
+            ? [
+                {
+                  kind: 'draft_card',
+                  draft_id: seededElisaDraft.id,
+                  code: seededElisaDraft.code,
+                  draft_kind: 'create',
+                  target_code: null,
+                  status: 'confirmed',
+                  payload: seededElisaDraft.payload,
+                  result_ticket_code: 'INC-20519',
+                },
+              ]
+            : [];
         await db.insert(messages).values({
           conversation_id,
           direction: m.direction,
@@ -368,16 +533,17 @@ export async function resetAndSeed(url: string, now: Date = new Date()): Promise
           sent_via: m.sent_via,
           sent_by_user_id: m.sent_via === 'user' && m.direction === 'inbound' ? employee.id : null,
           body: m.body,
-          parts: m.parts ?? [],
+          parts: m.parts ?? draftCard,
           agent_run_id,
           metadata: m.type === 'system' && handoffId ? { handoff_id: handoffId } : {},
           created_at: new Date(m.at),
         });
       }
-
     }
 
-    const usersOut = Object.fromEntries(SEED_USERS.map((u) => [u.key, { id: u.id, email: u.email }])) as SeedResult['users'];
+    const usersOut = Object.fromEntries(
+      SEED_USERS.map((u) => [u.key, { id: u.id, email: u.email }]),
+    ) as SeedResult['users'];
     return { users: usersOut, conversations: convIds };
   } finally {
     await db.$client.end({ timeout: 1 });
@@ -386,10 +552,16 @@ export async function resetAndSeed(url: string, now: Date = new Date()): Promise
 
 // Só como CLI (`pnpm db:seed`). Empacotado no bootstrap do container, import.meta.url é o do bundle e o
 // seed rodaria a cada start apagando o histórico — por isso o nome do arquivo também é conferido.
-if (process.argv[1] && /seed\.[cm]?[tj]s$/.test(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  /seed\.[cm]?[tj]s$/.test(process.argv[1]) &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   await import('dotenv/config');
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL não definida');
   const r = await resetAndSeed(url);
-  console.log(`seed applied: ${Object.keys(r.users).length} users, ${Object.keys(r.conversations).length} conversations`);
+  console.log(
+    `seed applied: ${Object.keys(r.users).length} users, ${Object.keys(r.conversations).length} conversations`,
+  );
 }
