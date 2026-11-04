@@ -135,6 +135,24 @@ export const SCRIPTS: Script[] = [
       ),
   },
   {
+    id: 'resolvidos',
+    match: /resolvid|antig|encerrad|hist[oó]rico/i,
+    steps: [
+      { tool_calls: [{ name: 'buscar_meus_chamados', args: { status: 'closed', show: true } }] },
+      {
+        text: (c) => {
+          if (caiu(c)) return FORA_DO_AR;
+          const r = c.results.find((x) => x.toolName === 'buscar_meus_chamados')?.output as { tickets?: unknown[] } | undefined;
+          const n = r?.tickets?.length ?? 0;
+          if (n === 0) return 'Você ainda não tem chamados resolvidos.';
+          return `Estes são os seus ${n === 1 ? 'chamado resolvido' : `${n} chamados resolvidos`}. Todos ficam também em "Meus chamados", no menu ao lado.`;
+        },
+      },
+    ],
+    decision: ({ text }) =>
+      d('status', 'Quer ver os chamados já resolvidos', text, 'answer', 0.86, 'Listei os chamados resolvidos e encerrados.'),
+  },
+  {
     id: 'status',
     match: /status|como est[aá][\s\S]*chamado|meus chamados/i,
     steps: [

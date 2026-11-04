@@ -61,7 +61,7 @@ janela e assuma a conversa.
 │  UI (React)                  │  API /api/v1 (Route Handlers)         │  Agent (Mastra)        │
 │  /login                      │  POST conversations/:id/messages      │  runTurn               │
 │  /atendimento  (funcionário) │       → stream (AI SDK UI messages)   │   ├ tools (6)          │
-│  /perfil                     │  POST drafts/:id/confirm (idempotente)│   ├ decisão declarada  │
+│  /perfil · /chamados         │  POST drafts/:id/confirm (idempotente)│   ├ decisão declarada  │
 │  /console      (analista)    │  GET  conversations (fila) · claim ·  │   ├ regras/ (puras)    │
 │                              │       release · close · handoffs      │   ├ gatilhos/          │
 │                              │  GET  events (SSE)  · ai/runs/:id     │   └ guardrails/        │
@@ -136,9 +136,9 @@ Duas perguntas diferentes, dois instrumentos:
 | Camada | Comando | O que cobre | Resultado |
 |---|---|---|---|
 | Typecheck + lint | `pnpm typecheck && pnpm lint` | TS estrito, React hooks | 0 erros, 0 avisos |
-| Unitários | `pnpm test` | Anexo A, prazos em horário útil, reabertura, máquina de estados, gatilhos, guardrails, busca, contratos, componentes | **245/245** (30 arquivos) |
-| Integração | `pnpm test:int` (Postgres) | `runTurn` com memória e banco reais, API com sessão e papéis, serviço de chamados, idempotência, SSE | **112/112** (11 arquivos) |
-| E2E | `pnpm test:e2e` (Playwright) | As histórias do PRD de ponta a ponta: abrir, consultar, complementar, transparência, privacidade, fora de escopo, transferência e console, instabilidade do legado, limite da sessão, continuidade, conta e controles do console | **38/38** (~1,5 min) |
+| Unitários | `pnpm test` | Anexo A, prazos em horário útil, reabertura, máquina de estados, gatilhos, guardrails, busca, contratos, componentes | **251/251** (31 arquivos) |
+| Integração | `pnpm test:int` (Postgres) | `runTurn` com memória e banco reais, API com sessão e papéis, serviço de chamados, idempotência, SSE | **121/121** (12 arquivos) |
+| E2E | `pnpm test:e2e` (Playwright) | As histórias do PRD de ponta a ponta: abrir, consultar, complementar, transparência, privacidade, fora de escopo, transferência e console, instabilidade do legado, limite da sessão, continuidade, conta e controles do console, histórico | **45/45** (~1,5 min) |
 | Evals | `pnpm eval` (DeepSeek) | Julgamento do modelo nas 13 histórias | **39/39 (100%)** |
 
 `pnpm check` roda typecheck, lint e unitários juntos. Números da última rodada completa, em 04/11/2026.
@@ -236,6 +236,13 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
     `GET /tickets/search`; se ele cair, a busca segue só com nome e mensagens);
   - termos de até 3 letras só valem como palavra inteira no texto (`ana` não acha "analista");
   - resultados por nome vêm primeiro, e cada resultado mostra por que apareceu (o chamado ou o trecho da mensagem).
+- **Adição — histórico:**
+  - tela **Meus chamados** (`/chamados`), com abas "Em andamento" e "Resolvidos";
+  - o detalhe usa o mesmo card do chat, mais responsável, prazo e o histórico do legado;
+  - "Falar sobre este chamado" abre o atendimento com `Sobre o INC-…: ` no composer;
+  - no chat, "meus chamados resolvidos/antigos" lista só os encerrados (`status: closed` na tool);
+  - "Carregar mensagens anteriores" no topo do chat e da conversa do console. O cursor é o id da mensagem, para não
+    pular mensagens gravadas no mesmo instante.
 - "Manter conectado neste computador" agora vale: desmarcado, o cookie é da sessão do navegador.
 
 ### Telas (capturas do E2E, `e2e/visual.spec.ts`)
@@ -252,6 +259,8 @@ O cache de prefixo da DeepSeek (instruções e histórico) baixa o custo real ab
 | Adição — perfil do analista | ![Console, perfil](docs/telas/console-perfil.png) |
 | Adição — busca na lista e na conversa | ![Console, busca](docs/telas/console-busca.png) |
 | Adição — detalhe do chamado | ![Console, detalhe do chamado](docs/telas/console-detalhe-chamado.png) |
+| Adição — Meus chamados | ![Meus chamados](docs/telas/meus-chamados.png) |
+| Adição — detalhe de um chamado (funcionário) | ![Detalhe do chamado](docs/telas/meu-chamado-detalhe.png) |
 
 ---
 

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 
 export function TopBar() {
   const path = usePathname();
-  const here = path.startsWith('/perfil') ? 'Meu perfil' : 'Atendimento';
+  const here = path.startsWith('/perfil') ? 'Meu perfil' : path.startsWith('/chamados') ? 'Meus chamados' : 'Atendimento';
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 border-b border-rule px-8">
       <div className="flex flex-1 items-center gap-2 text-body">

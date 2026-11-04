@@ -16,6 +16,7 @@ export async function declararDecisao(i: {
   employee_text: string;
   actions: ActionTrace[];
   answer_text: string;
+  cards: string[];
   model: ModelInfo;
   agent_run_id: string;
 }): Promise<TurnDecision | null> {
@@ -29,7 +30,7 @@ export async function declararDecisao(i: {
       messages: [
         {
           role: 'user',
-          content: `${decisionPrompt({ employee_text: i.employee_text, actions: i.actions, answer_text: i.answer_text })}\n\n${FORMATO}`,
+          content: `${decisionPrompt({ employee_text: i.employee_text, actions: i.actions, answer_text: i.answer_text, cards: i.cards })}\n\n${FORMATO}`,
         },
       ],
     });

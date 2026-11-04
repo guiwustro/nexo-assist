@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getDb } from '@/lib/db/client';
 import { aiAgentRuns, conversations, handoffs, messages as messagesTable, users } from '@/lib/db/schema';
@@ -42,6 +42,8 @@ export type ListOptions = {
   /** Chamados que casaram com `q` no serviço de chamados (a fila não lê o schema do legado). */
   ticketHits?: TicketHit[];
 };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const ORDEM_DO_MOTIVO = { name: 0, ticket: 1, message: 2 } as const;
 
@@ -246,6 +248,9 @@ export async function listMessages(conversationId: string, opts: { limit?: numbe
   next_cursor: string | null;
 }> {
   const limit = Math.min(opts.limit ?? 50, 100);
+  // Cursor opaco = id da mensagem mais antiga da página anterior. Compara (created_at, id) lidos do próprio
+  // banco: microssegundos e empates no mesmo instante não pulam nem repetem mensagens.
+  if (opts.cursor !== undefined && !UUID.test(opts.cursor)) return { messages: [], next_cursor: null };
   const db = getDb();
   const rows = await db
     .select({
@@ -261,7 +266,9 @@ export async function listMessages(conversationId: string, opts: { limit?: numbe
     .where(
       and(
         eq(messagesTable.conversation_id, conversationId),
-        opts.cursor ? lt(messagesTable.created_at, new Date(opts.cursor)) : undefined,
+        opts.cursor
+          ? sql`(${messagesTable.created_at}, ${messagesTable.id}) < (select c.created_at, c.id from messages c where c.id = ${opts.cursor} and c.conversation_id = ${conversationId})`
+          : undefined,
       ),
     )
     .orderBy(desc(messagesTable.created_at), desc(messagesTable.id))
@@ -276,6 +283,6 @@ export async function listMessages(conversationId: string, opts: { limit?: numbe
         r.sender_level,
       ),
     ),
-    next_cursor: rows.length > limit ? (page[0]?.m.created_at.toISOString() ?? null) : null,
+    next_cursor: rows.length > limit ? (page[0]?.m.id ?? null) : null,
   };
 }

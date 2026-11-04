@@ -6,13 +6,18 @@ export const buscarMeusChamados = defineTool({
   name: 'buscar_meus_chamados',
   description:
     'Lista os chamados do próprio funcionário (identidade vem da sessão). Use SEMPRE antes de montar um rascunho, para evitar duplicidade. ' +
-    'Passe show=true só quando o funcionário quer ver os chamados (ex.: "qual o status do meu chamado?") — aí a lista aparece para ele escolher.',
+    'Passe show=true só quando o funcionário quer ver os chamados (ex.: "qual o status do meu chamado?") — aí a lista aparece para ele escolher. ' +
+    'Se ele pedir chamados antigos, resolvidos, encerrados ou o histórico, use status=closed (ou all para ver tudo).',
   inputSchema: z.object({
-    status: z.enum(['open', 'all']).default('open').describe('open = só os em andamento; all = inclui resolvidos e encerrados'),
+    status: z
+      .enum(['open', 'closed', 'all'])
+      .default('open')
+      .describe('open = só os em andamento; closed = só os resolvidos e encerrados; all = todos'),
     show: z.boolean().default(false).describe('true para mostrar a lista ao funcionário'),
   }),
   async run(ctx, input) {
-    const list = await ctx.tickets.listByRequester(ctx.employee_id, input.status);
+    const all = await ctx.tickets.listByRequester(ctx.employee_id, input.status === 'open' ? 'open' : 'all');
+    const list = input.status === 'closed' ? all.filter((t) => t.status === 'resolved' || t.status === 'closed') : all;
     const tickets = list.map((t) => ({
       code: t.code,
       title: t.title,
@@ -24,6 +29,8 @@ export const buscarMeusChamados = defineTool({
       overdue: estaVencido(t, ctx.now),
     }));
     if (input.show) {
+      // O que o funcionário vê é a base da resposta: entra como fonte (a checagem de duplicidade, interna, não).
+      for (const t of list) ctx.turn?.sources.push({ kind: 'ticket', id: t.code, title: t.title });
       if (list.length === 1) {
         const t = list[0]!;
         const atraso = descreverAtraso(t, ctx.now);

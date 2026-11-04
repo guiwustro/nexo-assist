@@ -2,8 +2,7 @@
 
 import { ArrowRightLeft, CheckCheck, CircleCheck, Headset, Info } from 'lucide-react';
 import type { ApiMessage } from '@/lib/conversations/serialize';
-import { CATEGORY_LABEL, PRIORITY_LABEL, STATUS_LABEL } from '@/lib/contracts/enums';
-import type { MessagePart } from '@/lib/contracts/parts';
+import { summarizeParts } from '@/lib/conversations/parts-summary';
 import { hora } from '@/lib/format';
 import { mesmoDiaSp } from '@/lib/regras/prazo';
 import { Realce } from './ConversationSearch';
@@ -29,16 +28,6 @@ function Sistema({ m, destaque }: { m: ApiMessage; destaque?: Destaque }) {
 function Corpo({ m, destaque }: { m: ApiMessage; destaque?: Destaque }) {
   if (!destaque?.termo.trim()) return <>{m.body}</>;
   return <Realce texto={m.body} termo={destaque.termo} ativa={destaque.ativo?.id === m.id ? destaque.ativo.k : null} />;
-}
-
-function resumoDasPartes(parts: MessagePart[]): string[] {
-  return parts.flatMap((p) => {
-    if (p.kind === 'draft_card') return [`Rascunho ${p.code} · ${PRIORITY_LABEL[p.payload.priority]} · ${CATEGORY_LABEL[p.payload.category]}`];
-    if (p.kind === 'ticket_card') return [`${p.ticket.code} · ${STATUS_LABEL[p.ticket.status]}${p.overdue ? ' · prazo vencido' : ''}`];
-    if (p.kind === 'ticket_selector') return [`Mostrou ${p.tickets.length} chamados para escolher`];
-    if (p.kind === 'quick_replies') return [`Perguntou: ${p.question} (${p.options.join(' / ')})`];
-    return [];
-  });
 }
 
 export function ConsoleThread({
@@ -87,7 +76,7 @@ export function ConsoleThread({
           );
         }
         const ia = m.sent_via === 'ai';
-        const extras = ia ? resumoDasPartes(m.parts) : [];
+        const extras = ia ? summarizeParts(m.parts) : [];
         return (
           <div key={m.id} data-testid={ia ? 'ai-message' : 'human-message'} className={`flex flex-col items-end gap-1 ${colada ? 'pt-[3px]' : 'pt-4'}`}>
             {!colada && (

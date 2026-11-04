@@ -33,7 +33,13 @@ const DECISION_OPEN = '<mensagem_do_funcionario>';
 const DECISION_CLOSE = '</mensagem_do_funcionario>';
 
 /** Prompt da chamada de fechamento (decisão do turno). O modelo roteirizado acha a fala do funcionário pelas tags. */
-export function decisionPrompt(i: { employee_text: string; actions: ActionTrace[]; answer_text: string }): string {
+export function decisionPrompt(i: {
+  employee_text: string;
+  actions: ActionTrace[];
+  answer_text: string;
+  /** Cards mostrados ao funcionário (o texto da resposta não os repete). */
+  cards?: string[];
+}): string {
   const acoes = i.actions.length
     ? i.actions.map((a) => `- ${a.label} (${a.tool}): ${a.result} · ${a.summary}`).join('\n')
     : '- nenhuma ferramenta usada';
@@ -43,6 +49,7 @@ export function decisionPrompt(i: { employee_text: string; actions: ActionTrace[
     `${DECISION_OPEN}${i.employee_text}${DECISION_CLOSE}`,
     `Ações executadas:\n${acoes}`,
     `Resposta enviada ao funcionário:\n${i.answer_text}`,
+    `Cards mostrados junto com a resposta:\n${i.cards?.length ? i.cards.map((c) => `- ${c}`).join('\n') : '- nenhum'}`,
   ].join('\n\n');
 }
 

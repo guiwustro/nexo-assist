@@ -1,10 +1,13 @@
 'use client';
 
 import { Bot, CircleCheckBig, EllipsisVertical, Search } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DecisionPanel } from '@/components/chat/DecisionPanel';
 import { Toast } from '@/components/ui/Toast';
-import { api, ApiFailure } from '@/lib/client/api';
+import { LoadOlderButton } from '@/components/ui/LoadOlderButton';
+import { api, ApiFailure, apiWithMeta } from '@/lib/client/api';
+import { mergeLatest, prependOlder } from '@/lib/client/message-pages';
+import { useConversationScroller } from '@/lib/client/use-keep-scroll';
 import { useEvents } from '@/lib/client/use-events';
 import type { QueueItem } from '@/lib/conversations/queries';
 import type { ApiMessage } from '@/lib/conversations/serialize';
@@ -18,7 +21,9 @@ import { EmployeeTickets, type EmployeeTicketsData } from './EmployeeTickets';
 import type { HandoffView } from './HandoffCard';
 import { TakeoverBar, type TakeoverMode } from './TakeoverBar';
 
-type State = { item: QueueItem; messages: ApiMessage[]; handoffs: HandoffView[] };
+type State = { item: QueueItem; messages: ApiMessage[]; handoffs: HandoffView[]; nextCursor: string | null };
+
+const cursorOf = (meta: Record<string, unknown>) => (typeof meta.next_cursor === 'string' ? meta.next_cursor : null);
 
 export function ConsoleConversation({ id, me }: { id: string; me: { id: string; name: string } }) {
   const [state, setState] = useState<State | null>(null);
@@ -29,7 +34,7 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
   const [why, setWhy] = useState<string | null>(null);
   const [busca, setBusca] = useState<string | null>(null);
   const [buscaAtual, setBuscaAtual] = useState(0);
-  const scroller = useRef<HTMLDivElement>(null);
+  const { scroller, keepScroll, scrollToBottom } = useConversationScroller(state?.messages[0]?.id);
   const fecharToast = useCallback(() => setToast(null), []);
   const fecharWhy = useCallback(() => setWhy(null), []);
 
@@ -43,14 +48,27 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
   }, []);
 
   const load = useCallback(async () => {
-    const [item, messages, handoffs] = await Promise.all([
+    const [item, page, handoffs] = await Promise.all([
       api<QueueItem>(`/api/v1/conversations/${id}`),
-      api<ApiMessage[]>(`/api/v1/conversations/${id}/messages`),
+      apiWithMeta<ApiMessage[]>(`/api/v1/conversations/${id}/messages`),
       api<HandoffView[]>(`/api/v1/conversations/${id}/handoffs`),
     ]);
-    setState({ item, messages, handoffs });
+    // Últimas 50; as antigas já carregadas continuam na tela.
+    setState((prev) => {
+      if (!prev) return { item, messages: page.data, handoffs, nextCursor: cursorOf(page.meta) };
+      const messages = mergeLatest(prev.messages, page.data);
+      return { item, messages, handoffs, nextCursor: messages.length > page.data.length ? prev.nextCursor : cursorOf(page.meta) };
+    });
     return item;
   }, [id]);
+
+  const loadOlder = async () => {
+    const cursor = state?.nextCursor;
+    if (!cursor) return;
+    keepScroll();
+    const page = await apiWithMeta<ApiMessage[]>(`/api/v1/conversations/${id}/messages?cursor=${encodeURIComponent(cursor)}`);
+    setState((prev) => (prev ? { ...prev, messages: prependOlder(prev.messages, page.data), nextCursor: cursorOf(page.meta) } : prev));
+  };
 
   useEffect(() => {
     let vivo = true;
@@ -70,10 +88,10 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
     }
   });
 
+  const lastId = state?.messages[state.messages.length - 1]?.id;
   useEffect(() => {
-    const el = scroller.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [state?.messages.length]);
+    scrollToBottom();
+  }, [lastId]); // eslint-disable-line react-hooks/exhaustive-deps -- scrollToBottom só lê o ref
 
   /** Resultados da busca, da mensagem mais recente para a mais antiga (o primeiro é o que está mais perto do fim). */
   const resultados = useMemo(() => {
@@ -86,7 +104,7 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
 
   useEffect(() => {
     scroller.current?.querySelector('[data-busca-ativa]')?.scrollIntoView?.({ block: 'center' });
-  }, [ativo?.id, ativo?.k]);
+  }, [ativo?.id, ativo?.k]); // eslint-disable-line react-hooks/exhaustive-deps -- o ref é estável
 
   const fecharBusca = useCallback(() => {
     setBusca(null);
@@ -215,6 +233,7 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
         )}
         <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto px-10 pt-5 pb-4">
           <div className="mt-auto">
+            {state.nextCursor && <LoadOlderButton onLoad={loadOlder} />}
             <ConsoleThread messages={state.messages} handoffs={state.handoffs} employeeName={item.employee.name} onWhy={setWhy}
               destaque={busca ? { termo: busca, ativo } : undefined}
             />

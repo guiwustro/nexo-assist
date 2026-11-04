@@ -8,7 +8,7 @@ import {
   registerEmployeeMessage,
 } from '@/lib/conversations/service';
 import { createHandoff } from '@/lib/conversations/handoff';
-import { countsForAnalyst, listForAnalyst } from '@/lib/conversations/queries';
+import { countsForAnalyst, listForAnalyst, listMessages } from '@/lib/conversations/queries';
 import { AppError } from '@/lib/api/errors';
 
 const t = useTestDb();
@@ -290,5 +290,39 @@ describe('mensagem do 409 de assumir', () => {
     await applyTransition(carla, 'claim', rafael());
     const e = await erroDe(applyTransition(carla, 'claim', juliana()));
     expect(e.message).toBe('Rafael Lima já assumiu esta conversa');
+  });
+});
+
+describe('listMessages (paginação)', () => {
+  it('página pelo cursor sem pular nem repetir, mesmo com mensagens no mesmo instante', async () => {
+    const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
+    const base = new Date(t.agora.getTime() - 3_600_000);
+    // 120 mensagens em 40 instantes: 3 por instante, para o corte de página cair no meio de um empate.
+    await t.db.insert(messages).values(
+      Array.from({ length: 120 }, (_, i) => ({
+        conversation_id: conv.id,
+        direction: 'inbound' as const,
+        sent_via: 'user' as const,
+        body: `mensagem ${i}`,
+        created_at: new Date(base.getTime() + Math.floor(i / 3) * 1000 + 0.4),
+      })),
+    );
+    const vistas: string[] = [];
+    let cursor: string | undefined;
+    for (let pagina = 0; pagina < 10; pagina++) {
+      const r = await listMessages(conv.id, { limit: 50, cursor });
+      vistas.unshift(...r.messages.map((m) => m.id));
+      if (!r.next_cursor) break;
+      cursor = r.next_cursor;
+    }
+    expect(vistas).toHaveLength(120);
+    expect(new Set(vistas).size).toBe(120);
+    const todas = await listMessages(conv.id, { limit: 100 });
+    expect(vistas.slice(-100)).toEqual(todas.messages.map((m) => m.id));
+  });
+
+  it('cursor inválido ou de outra conversa → página vazia, sem erro', async () => {
+    const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
+    expect((await listMessages(conv.id, { cursor: 'lixo' })).messages).toEqual([]);
   });
 });

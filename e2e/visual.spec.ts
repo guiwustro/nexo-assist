@@ -15,6 +15,20 @@ test.describe('capturas das telas', () => {
     await page.screenshot({ path: 'test-results/telas/perfil.png' });
   });
 
+  test('meus-chamados', async ({ page, loginAs }) => {
+    await loginAs(page, 'ana');
+    await page.goto('/chamados');
+    await expect(page.getByTestId('my-tickets')).toBeVisible();
+    await page.screenshot({ path: 'test-results/telas/meus-chamados.png' });
+  });
+
+  test('meu-chamado-detalhe', async ({ page, loginAs }) => {
+    await loginAs(page, 'ana');
+    await page.goto('/chamados/INC-20311');
+    await expect(page.getByTestId('ticket-history')).toBeVisible();
+    await page.screenshot({ path: 'test-results/telas/meu-chamado-detalhe.png' });
+  });
+
   test('console-menu-conta', async ({ page, loginAs }) => {
     await loginAs(page, 'rafael');
     await page.getByTestId('console-user').click();

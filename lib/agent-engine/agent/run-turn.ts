@@ -23,6 +23,7 @@ import { TOOL_CTX_KEY, type ToolCtx } from '@/lib/agent-engine/tools';
 import type { TurnSignals } from '@/lib/agent-engine/tools/types';
 import type { Article } from '@/lib/agent-engine/conhecimento/busca';
 import { declararDecisao } from './decisao';
+import { summarizeParts } from '@/lib/conversations/parts-summary';
 import { createNexoAgent } from './nexo-agent';
 
 export type TurnOutcome = 'answered' | 'transferred' | 'paused' | 'limit' | 'failed';
@@ -311,7 +312,14 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
   // 6. Decisão declarada (ausente ≠ vazia) + ajustes determinísticos.
   let decision = failed
     ? null
-    : await declararDecisao({ employee_text: i.text, actions: actionList, answer_text: answer, model, agent_run_id: run_id });
+    : await declararDecisao({
+        employee_text: i.text,
+        actions: actionList,
+        answer_text: answer,
+        cards: summarizeParts(parts),
+        model,
+        agent_run_id: run_id,
+      });
   if (decision) {
     // Fontes saem das tools de verdade, não do que o modelo disse que consultou. Uma fonte citada que uma tool
     // retornou num turno anterior desta conversa também vale (ex.: "Windows 10" respondido com o artigo já buscado).
@@ -321,7 +329,11 @@ export async function runTurn(i: Input): Promise<{ run_id: string | null; outcom
       ...decision.decision.sources.filter((s) => anteriores.has(`${s.kind}:${s.id}`)),
     ]);
     const declarada = decision.decision.confidence;
-    const ajustada = ajustarConfianca(declarada, { intent: decision.understanding.intent, sources_count: sources.length }) ?? declarada;
+    const ajustada = ajustarConfianca(declarada, {
+      intent: decision.understanding.intent,
+      sources_count: sources.length,
+      action: decision.decision.action,
+    }) ?? declarada;
     const rules = [...decision.decision.rules_applied];
     if (ajustada < declarada) rules.push('Confiança ajustada: dúvida respondida sem fonte na central (máximo 50%)');
     // A ação também sai do que a tool fez: transferir vence (o agent fica pausado); senão, um rascunho montado

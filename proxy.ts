@@ -15,12 +15,12 @@ export async function proxy(req: NextRequest) {
   if (session.role === 'employee' && pathname.startsWith('/console')) {
     return NextResponse.redirect(new URL('/atendimento', req.url));
   }
-  if (session.role === 'analyst' && (pathname.startsWith('/atendimento') || pathname.startsWith('/perfil'))) {
+  if (session.role === 'analyst' && ['/atendimento', '/perfil', '/chamados'].some((p) => pathname.startsWith(p))) {
     return NextResponse.redirect(new URL('/console', req.url));
   }
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/', '/login', '/atendimento/:path*', '/perfil/:path*', '/console/:path*'],
+  matcher: ['/', '/login', '/atendimento/:path*', '/perfil/:path*', '/chamados/:path*', '/console/:path*'],
 };

@@ -90,7 +90,17 @@ cada tela e confere que algo acontece.
 
 ---
 
-## 3. Histórico: chamados e conversas anteriores (média, decidir o escopo primeiro)
+## 3. Histórico: chamados e conversas anteriores (média) — ✅ feito em 04/11, com a sugestão abaixo
+
+> - Tela "Meus chamados" (`/chamados`, `/chamados/:code`), com rotas novas `GET /api/v1/me/tickets[/:code]`.
+> - Tool com `status: closed`, instrução nova e cenário `chamados-resolvidos` nos evals.
+> - Dois achados no caminho:
+>   - os chamados mostrados ao funcionário não contavam como fonte, e o guardrail de confiança limitava a 50%
+>     (transferia por "baixa confiança" uma resposta certa);
+>   - o prompt de decisão não via os cards.
+> - Paginação com cursor por id (o antigo, por `created_at` em ms, pulava mensagens).
+>
+> E2E em `e2e/historico.spec.ts`.
 
 **O que acontece:**
 - O funcionário não tem tela para ver os próprios chamados. Hoje só dá para ver pelo chat ("qual o status do meu

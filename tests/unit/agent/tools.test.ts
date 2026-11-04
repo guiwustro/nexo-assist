@@ -58,6 +58,27 @@ describe('tools do agent', () => {
     expect(finais(actions)[0]).toMatchObject({ label: 'consultou seus chamados', result: 'ok', tool: 'buscar_meus_chamados' });
   });
 
+  it('buscar_meus_chamados com status=closed → seletor só com os resolvidos/encerrados', async () => {
+    const { c, parts } = ctx();
+    const out = (await runTool(c, 'buscar_meus_chamados', { status: 'closed', show: true })) as {
+      tickets: Array<{ code: string; status: string }>;
+    };
+    expect(out.tickets.length).toBe(3);
+    expect(out.tickets.every((t) => t.status === 'resolved' || t.status === 'closed')).toBe(true);
+    expect(parts[0]?.kind).toBe('ticket_selector');
+  });
+
+  it('chamados mostrados ao funcionário contam como fonte do turno; a checagem interna não', async () => {
+    const turn = { sources: [] as Array<{ kind: 'article' | 'ticket'; id: string; title: string }> };
+    const { c } = ctx({ turn });
+    await runTool(c, 'buscar_meus_chamados', { status: 'closed', show: true });
+    expect(turn.sources.map((s) => s.id).sort()).toEqual(['INC-19410', 'INC-19877', 'INC-20150'].sort());
+    expect(turn.sources.every((s) => s.kind === 'ticket')).toBe(true);
+    const interno = { sources: [] as typeof turn.sources };
+    await runTool(ctx({ turn: interno }).c, 'buscar_meus_chamados', { status: 'open' });
+    expect(interno.sources).toEqual([]);
+  });
+
   it('buscar_meus_chamados só para checar duplicidade não mostra card', async () => {
     const { c, parts } = ctx();
     await runTool(c, 'buscar_meus_chamados', { status: 'open' });

@@ -1,0 +1,31 @@
+import { getTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
+import type { Ticket, TicketEvent } from '@/lib/contracts/tickets';
+import { serverNow } from '@/lib/env';
+import { descreverAtraso, estaVencido } from '@/lib/regras/vencido';
+
+export type TicketView = Ticket & { overdue: boolean; overdue_label: string | null };
+export type TicketList = { tickets: TicketView[]; open: number; closed: number };
+export type TicketDetail = { ticket: TicketView; events: TicketEvent[] };
+
+const CLOSED = new Set(['resolved', 'closed']);
+
+export const isClosed = (t: Pick<Ticket, 'status'>) => CLOSED.has(t.status);
+
+function toView(t: Ticket, now: Date): TicketView {
+  return { ...t, overdue: estaVencido(t, now), overdue_label: descreverAtraso(t, now) };
+}
+
+/** Todos os chamados de um solicitante (em andamento e encerrados), pela borda do legado. */
+export async function listTicketsOf(requesterId: string): Promise<TicketList> {
+  const now = serverNow();
+  const tickets = (await getTicketsClient().listByRequester(requesterId, 'all')).map((t) => toView(t, now));
+  const closed = tickets.filter(isClosed).length;
+  return { tickets, open: tickets.length - closed, closed };
+}
+
+/** Um chamado do solicitante com o histórico. Alheio ou inexistente → TicketsNotFoundError (404). */
+export async function getTicketDetailOf(requesterId: string, code: string): Promise<TicketDetail> {
+  const tickets = getTicketsClient();
+  const [ticket, events] = await Promise.all([tickets.get(code, requesterId), tickets.events(code, requesterId)]);
+  return { ticket: toView(ticket, serverNow()), events };
+}

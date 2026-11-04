@@ -48,6 +48,7 @@ type Resultado = {
   tokens: { in: number; out: number };
   /** Última resposta do agent (para entender a falha). */
   resposta: string;
+  decisao: string;
 };
 
 const normalizar = (s: string) =>
@@ -129,7 +130,7 @@ async function main() {
     );
     const textos = novo(
       await db
-        .select({ id: messages.id, body: messages.body })
+        .select({ id: messages.id, body: messages.body, parts: messages.parts })
         .from(messages)
         .where(and(eq(messages.conversation_id, conv.id), eq(messages.direction, 'outbound'))),
     );
@@ -167,6 +168,15 @@ async function main() {
       falhas.push(`categoria ${rascunho?.payload.category ?? 'sem rascunho'} ≠ ${e.categoria}`);
     if (e.tipo && rascunho?.payload.type !== e.tipo) falhas.push(`tipo ${rascunho?.payload.type ?? 'sem rascunho'} ≠ ${e.tipo}`);
     if (e.cita_artigo && !fontes.has(e.cita_artigo)) falhas.push(`não citou ${e.cita_artigo}`);
+    const mostrados = new Set(
+      textos.flatMap((t) =>
+        t.parts.flatMap((p) =>
+          p.kind === 'ticket_selector' ? p.tickets.map((x) => x.code) : p.kind === 'ticket_card' ? [p.ticket.code] : [],
+        ),
+      ),
+    );
+    for (const code of e.mostra_chamados ?? []) if (!mostrados.has(code)) falhas.push(`não mostrou ${code}`);
+    for (const code of e.nao_mostra_chamados ?? []) if (mostrados.has(code)) falhas.push(`mostrou ${code}`);
     for (const proibido of e.texto_nao_contem ?? [])
       if (texto.includes(normalizar(proibido))) falhas.push(`texto contém "${proibido}"`);
 
@@ -177,7 +187,9 @@ async function main() {
       out: chamadas.reduce((s, x) => s + x.output_tokens, 0),
     };
     const resposta = textos.at(-1)?.body ?? '';
-    return { cenario: c, ok: falhas.length === 0, falhas, custo_cents: custo, latencia_ms: latencia, turnos: runs.length, tokens, resposta };
+    const dec = ultimo?.decision?.decision;
+    const decisao = dec ? `${dec.action} ${Math.round(dec.confidence * 100)}% — ${dec.why}` : 'sem decisão registrada';
+    return { cenario: c, ok: falhas.length === 0, falhas, custo_cents: custo, latencia_ms: latencia, turnos: runs.length, tokens, resposta, decisao };
   }
 
   const porCenario = new Map<string, Resultado[]>();
@@ -188,11 +200,12 @@ async function main() {
       try {
         r = await rodar(c, rep);
       } catch (err) {
-        r = { cenario: c, ok: false, falhas: [`erro: ${err instanceof Error ? err.message : String(err)}`], custo_cents: null, latencia_ms: 0, turnos: 0, tokens: { in: 0, out: 0 }, resposta: '' };
+        r = { cenario: c, ok: false, falhas: [`erro: ${err instanceof Error ? err.message : String(err)}`], custo_cents: null, latencia_ms: 0, turnos: 0, tokens: { in: 0, out: 0 }, resposta: '', decisao: '' };
       }
       lista.push(r);
       console.log(`${r.ok ? '✓' : '✗'} ${c.id} #${rep + 1}${r.ok ? '' : ` — ${r.falhas.join('; ')}`}`);
       if (!r.ok && r.resposta) console.log(`    agent: ${r.resposta.replace(/\s+/g, ' ').slice(0, 300)}`);
+      if (!r.ok && r.decisao) console.log(`    decisão: ${r.decisao.slice(0, 300)}`);
     }
     porCenario.set(c.id, lista);
   }

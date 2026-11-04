@@ -4,7 +4,10 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Banner } from '@/components/ui/Banner';
-import { api, ApiFailure, parseChatError, type CurrentData } from '@/lib/client/api';
+import { LoadOlderButton } from '@/components/ui/LoadOlderButton';
+import { api, ApiFailure, apiWithMeta, parseChatError, type CurrentData } from '@/lib/client/api';
+import { mergeLatest, prependOlder } from '@/lib/client/message-pages';
+import { useConversationScroller } from '@/lib/client/use-keep-scroll';
 import { useEvents } from '@/lib/client/use-events';
 import type { ActionTrace } from '@/lib/contracts/decision';
 import type { DraftEdit } from '@/lib/contracts/drafts';
@@ -30,13 +33,20 @@ function Skeleton() {
   );
 }
 
-export function ChatView() {
+export function ChatView({ aboutTicket }: { aboutTicket?: string } = {}) {
   const [data, setData] = useState<CurrentData | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
-      setData(await api<CurrentData>('/api/v1/conversations/current'));
+      const fresh = await api<CurrentData>('/api/v1/conversations/current');
+      // A janela nova são as últimas 50; o que já estava na tela e saiu dela (mais antigo) continua.
+      setData((prev) => {
+        if (!prev || prev.conversation.id !== fresh.conversation.id) return fresh;
+        const messages = mergeLatest(prev.messages, fresh.messages);
+        const keptOlder = messages.length > fresh.messages.length;
+        return { ...fresh, messages, next_cursor: keptOlder ? prev.next_cursor : fresh.next_cursor };
+      });
       setErro(null);
     } catch (e) {
       setErro(e instanceof ApiFailure ? e.message : 'Não foi possível carregar a conversa');
@@ -66,7 +76,19 @@ export function ChatView() {
       </div>
     );
   }
-  return <ChatSession key={data.conversation.id} data={data} reload={reload} />;
+  const loadOlder = async () => {
+    const { id } = data.conversation;
+    if (!data.next_cursor) return;
+    const page = await apiWithMeta<ApiMessage[]>(
+      `/api/v1/conversations/${id}/messages?cursor=${encodeURIComponent(data.next_cursor)}`,
+    );
+    const next = typeof page.meta.next_cursor === 'string' ? page.meta.next_cursor : null;
+    setData((prev) =>
+      prev && prev.conversation.id === id ? { ...prev, messages: prependOlder(prev.messages, page.data), next_cursor: next } : prev,
+    );
+  };
+
+  return <ChatSession key={data.conversation.id} data={data} reload={reload} loadOlder={loadOlder} aboutTicket={aboutTicket} />;
 }
 
 type Live = { text: string; parts: MessagePart[]; actions: ActionTrace[]; systems: string[]; runId: string | null; decisionReady: boolean };
@@ -89,16 +111,32 @@ function fromUI(m: NexoUIMessage): Live {
 
 const userText = (m: NexoUIMessage) => m.parts.map((p) => (p.type === 'text' ? p.text : '')).join('');
 
-function ChatSession({ data, reload }: { data: CurrentData; reload: () => Promise<void> }) {
+function ChatSession({
+  data,
+  reload,
+  loadOlder,
+  aboutTicket,
+}: {
+  data: CurrentData;
+  reload: () => Promise<void>;
+  loadOlder: () => Promise<void>;
+  aboutTicket?: string;
+}) {
   const convId = data.conversation.id;
   const [now, setNow] = useState(() => new Date());
   const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const [prefill, setPrefill] = useState<{ text: string; n: number }>();
+  const [prefill, setPrefill] = useState<{ text: string; n: number } | undefined>(() =>
+    aboutTicket ? { text: `Sobre o ${aboutTicket}: `, n: 1 } : undefined,
+  );
+  // O ?sobre= já virou rascunho no composer: tira da URL para um recarregar não escrever de novo.
+  useEffect(() => {
+    if (aboutTicket) window.history.replaceState(null, '', '/atendimento');
+  }, [aboutTicket]);
   const [openRun, setOpenRun] = useState<string | null>(null);
   const closeRun = useCallback(() => setOpenRun(null), []);
-  const scroller = useRef<HTMLDivElement>(null);
+  const { scroller, keepScroll, scrollToBottom } = useConversationScroller(data.messages[0]?.id);
   const lastSent = useRef<string>('');
 
   const transport = useMemo(
@@ -157,10 +195,12 @@ function ChatSession({ data, reload }: { data: CurrentData; reload: () => Promis
     [busy, chat],
   );
 
+  // Desce ao fim só quando chega mensagem nova no fim (não ao carregar as antigas no topo).
+  const lastId = data.messages[data.messages.length - 1]?.id;
   useEffect(() => {
-    const el = scroller.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [data.messages.length, chat.messages, failed]);
+    scrollToBottom();
+  }, [lastId, chat.messages, failed]); // eslint-disable-line react-hooks/exhaustive-deps -- scrollToBottom só lê o ref
+
 
   const drafts: DraftHandlers = {
     errors: draftErrors,
@@ -201,6 +241,14 @@ function ChatSession({ data, reload }: { data: CurrentData; reload: () => Promis
     <div className="flex h-full flex-col">
       <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="mt-auto flex flex-col gap-5 px-[200px] pt-7 pb-1">
+          {data.next_cursor && (
+            <LoadOlderButton
+              onLoad={async () => {
+                keepScroll();
+                await loadOlder();
+              }}
+            />
+          )}
           {historico.map((m) => (
             <HistoryItem
               key={m.id}

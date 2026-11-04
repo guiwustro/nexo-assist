@@ -32,6 +32,10 @@ export type Cenario = {
     alvo?: string;
     /** Artigo que precisa estar entre as fontes de algum turno. */
     cita_artigo?: string;
+    /** Chamados que precisam aparecer num card ou seletor mostrado ao funcionário. */
+    mostra_chamados?: string[];
+    /** Chamados que não podem aparecer em card ou seletor (ex.: os em andamento, quando pediu os resolvidos). */
+    nao_mostra_chamados?: string[];
     /** Trechos que não podem aparecer em nenhuma resposta (minúsculas, sem acento não importa). */
     texto_nao_contem?: string[];
   };
@@ -96,6 +100,21 @@ export const CENARIOS: Cenario[] = [
       acao_final: ['answer', 'ask'],
       outcome: 'answered',
       rascunho: null,
+    },
+  },
+  {
+    id: 'chamados-resolvidos',
+    descricao: 'Pede os chamados já resolvidos: lista só os encerrados para escolher',
+    persona: 'ana',
+    turnos: ['Quero ver meus chamados antigos, os que já foram resolvidos'],
+    esperado: {
+      tools_incluem: ['buscar_meus_chamados'],
+      tools_excluem: ['montar_rascunho', 'transferir_para_analista'],
+      acao_final: ['answer', 'ask'],
+      outcome: 'answered',
+      rascunho: null,
+      mostra_chamados: ['INC-20150', 'INC-19877'],
+      nao_mostra_chamados: ['INC-20311', 'INC-20298'],
     },
   },
   {

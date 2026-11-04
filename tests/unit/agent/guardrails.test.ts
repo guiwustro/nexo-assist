@@ -47,6 +47,10 @@ describe('ajustarConfianca', () => {
   it('outra intenção mantém', () => {
     expect(ajustarConfianca(0.9, { intent: 'status', sources_count: 0 })).toBe(0.9);
   });
+  it('redirecionamento fora do escopo mantém: a base é a regra de escopo, não a central', () => {
+    expect(ajustarConfianca(0.9, { intent: 'question', sources_count: 0, action: 'redirect' })).toBe(0.9);
+    expect(ajustarConfianca(0.9, { intent: 'question', sources_count: 0, action: 'answer' })).toBe(0.5);
+  });
   it('null permanece null', () => {
     expect(ajustarConfianca(null, { intent: 'question', sources_count: 0 })).toBeNull();
   });

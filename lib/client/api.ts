@@ -21,6 +21,11 @@ export class ApiFailure extends Error {
 }
 
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
+  return (await apiWithMeta<T>(url, init)).data;
+}
+
+/** Como `api`, mas devolve também o `meta` do envelope (ex.: `next_cursor` da paginação). */
+export async function apiWithMeta<T>(url: string, init?: RequestInit): Promise<{ data: T; meta: Record<string, unknown> }> {
   let res: Response;
   try {
     res = await fetch(url, {
@@ -30,7 +35,11 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   } catch {
     throw new ApiFailure(0, 'network_error', 'Sem conexão');
   }
-  const json = (await res.json().catch(() => null)) as { data?: T; error?: { code: string; message: string } } | null;
+  const json = (await res.json().catch(() => null)) as {
+    data?: T;
+    meta?: Record<string, unknown>;
+    error?: { code: string; message: string };
+  } | null;
   if (!res.ok || !json || json.data === undefined) {
     const ra = Number(res.headers.get('retry-after'));
     throw new ApiFailure(
@@ -40,7 +49,7 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
       Number.isFinite(ra) && ra > 0 ? ra : undefined,
     );
   }
-  return json.data;
+  return { data: json.data, meta: json.meta ?? {} };
 }
 
 /** Erro do transport do useChat: o corpo vem como texto JSON do envelope `{ error }`. */

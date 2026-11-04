@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, MessageSquare, UserRound } from 'lucide-react';
+import { LogOut, MessageSquare, Ticket, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { NexoMark } from '@/components/ui/NexoMark';
@@ -8,6 +8,7 @@ import { useSair } from '@/lib/client/use-sair';
 
 const NAV = [
   { href: '/atendimento', label: 'Atendimento', Icon: MessageSquare },
+  { href: '/chamados', label: 'Meus chamados', Icon: Ticket },
   { href: '/perfil', label: 'Meu perfil', Icon: UserRound },
 ];
 
