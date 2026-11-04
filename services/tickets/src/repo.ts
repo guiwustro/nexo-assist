@@ -4,7 +4,7 @@ import type { DbOrTx } from '@/lib/db/client';
 import { ticketEvents, tickets } from '@/lib/db/schema';
 import type { CreateTicketInput, Ticket, TicketEvent, TicketHit } from '@/lib/contracts/tickets';
 import { TYPE_PREFIX } from '@/lib/contracts/enums';
-import { calcularPrazo } from '@/lib/regras/prazo';
+import { computeDeadline } from '@/lib/rules/deadline';
 import type { Priority, TicketStatus } from '@/lib/contracts/enums';
 
 type Row = typeof tickets.$inferSelect;
@@ -100,7 +100,7 @@ export async function createTicket(db: DbOrTx, input: CreateTicketInput, now: Da
       affected: input.affected,
       status: 'open',
       requester_id: input.requester_id,
-      due_at: calcularPrazo(input.priority, now).due_at,
+      due_at: computeDeadline(input.priority, now).due_at,
       last_update_at: now,
       created_at: now,
     })
@@ -121,7 +121,7 @@ export async function touch(
     .set({
       ...changes,
       last_update_at: now,
-      due_at: calcularPrazo(row.priority as Priority, now).due_at,
+      due_at: computeDeadline(row.priority as Priority, now).due_at,
     })
     .where(eq(tickets.id, row.id))
     .returning();

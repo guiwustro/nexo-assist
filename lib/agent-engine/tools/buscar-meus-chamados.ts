@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { descreverAtraso, estaVencido } from '@/lib/regras/vencido';
+import { describeOverdue, isOverdue } from '@/lib/rules/overdue';
 import { defineTool } from './types';
 
 export const buscarMeusChamados = defineTool({
@@ -26,14 +26,14 @@ export const buscarMeusChamados = defineTool({
       priority: t.priority,
       last_update_at: t.last_update_at,
       resolved_at: t.resolved_at,
-      overdue: estaVencido(t, ctx.now),
+      overdue: isOverdue(t, ctx.now),
     }));
     if (input.show) {
       // O que o funcionário vê é a base da resposta: entra como fonte (a checagem de duplicidade, interna, não).
       for (const t of list) ctx.turn?.sources.push({ kind: 'ticket', id: t.code, title: t.title });
       if (list.length === 1) {
         const t = list[0]!;
-        const atraso = descreverAtraso(t, ctx.now);
+        const atraso = describeOverdue(t, ctx.now);
         ctx.emitPart({ kind: 'ticket_card', ticket: t, overdue: atraso !== null, ...(atraso ? { overdue_label: atraso } : {}) });
       } else if (list.length > 1) {
         ctx.emitPart({

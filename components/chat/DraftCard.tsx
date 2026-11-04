@@ -18,7 +18,7 @@ import {
 } from '@/lib/contracts/enums';
 import type { DraftEdit } from '@/lib/contracts/drafts';
 import type { DraftCardPart } from '@/lib/contracts/parts';
-import { formatarPrazoCurto } from '@/lib/regras/prazo';
+import { formatShortDeadline } from '@/lib/rules/deadline';
 
 const EYEBROW: Record<DraftCardPart['draft_kind'], (c?: string | null) => string> = {
   create: () => 'Novo chamado',
@@ -224,7 +224,7 @@ export function DraftCard({
               <>
                 <Dot tone={PRIORITY_TONE[p.priority]} className="size-1.5" />
                 <span>{PRIORITY_LABEL[p.priority]}</span>
-                <span className="text-body font-normal text-ink-3">{`· ${formatarPrazoCurto(new Date(p.due_at), now)}`}</span>
+                <span className="text-body font-normal text-ink-3">{`· ${formatShortDeadline(new Date(p.due_at), now)}`}</span>
               </>
             )}
           </Campo>

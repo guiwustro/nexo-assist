@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { TicketsNotFoundError } from '@/lib/agent-engine/edge/tickets/errors';
 import { STATUS_LABEL } from '@/lib/contracts/enums';
 import { TicketCodeSchema } from '@/lib/contracts/tickets';
-import { descreverAtraso } from '@/lib/regras/vencido';
-import { calcularPrazo } from '@/lib/regras/prazo';
+import { describeOverdue } from '@/lib/rules/overdue';
+import { computeDeadline } from '@/lib/rules/deadline';
 import { defineTool } from './types';
 
 export const verChamado = defineTool({
@@ -15,7 +15,7 @@ export const verChamado = defineTool({
   async run(ctx, input) {
     try {
       const ticket = await ctx.tickets.get(input.code, ctx.employee_id);
-      const atraso = descreverAtraso(ticket, ctx.now);
+      const atraso = describeOverdue(ticket, ctx.now);
       ctx.emitPart({ kind: 'ticket_card', ticket, overdue: atraso !== null, ...(atraso ? { overdue_label: atraso } : {}) });
       if (ctx.turn) {
         ctx.turn.sources.push({ kind: 'ticket', id: ticket.code, title: ticket.title });
@@ -27,7 +27,7 @@ export const verChamado = defineTool({
         ticket,
         overdue: atraso !== null,
         overdue_label: atraso,
-        sla_rule: calcularPrazo(ticket.priority, new Date(ticket.last_update_at)).regra,
+        sla_rule: computeDeadline(ticket.priority, new Date(ticket.last_update_at)).rule,
       };
     } catch (e) {
       if (e instanceof TicketsNotFoundError) return { found: false };

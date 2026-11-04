@@ -4,7 +4,7 @@ import { ArrowRightLeft, CheckCheck, CircleCheck, Headset, Info } from 'lucide-r
 import type { ApiMessage } from '@/lib/conversations/serialize';
 import { summarizeParts } from '@/lib/conversations/parts-summary';
 import { hora } from '@/lib/format';
-import { mesmoDiaSp } from '@/lib/regras/prazo';
+import { isSameDayInSaoPaulo } from '@/lib/rules/deadline';
 import { Realce } from './ConversationSearch';
 import { HandoffCard, type HandoffView } from './HandoffCard';
 
@@ -43,7 +43,7 @@ export function ConsoleThread({
   onWhy: (runId: string) => void;
   destaque?: Destaque;
 }) {
-  const hoje = messages.length > 0 && mesmoDiaSp(new Date(messages[0]!.created_at), new Date());
+  const hoje = messages.length > 0 && isSameDayInSaoPaulo(new Date(messages[0]!.created_at), new Date());
   return (
     <div data-testid="console-thread" className="flex flex-col">
       {messages.length > 0 && (

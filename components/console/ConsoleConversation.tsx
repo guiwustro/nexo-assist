@@ -12,7 +12,7 @@ import { useEvents } from '@/lib/client/use-events';
 import type { QueueItem } from '@/lib/conversations/queries';
 import type { ApiMessage } from '@/lib/conversations/serialize';
 import { hora } from '@/lib/format';
-import { formatarPrazoCurto } from '@/lib/regras/prazo';
+import { formatShortDeadline } from '@/lib/rules/deadline';
 import { acharTrechos } from '@/lib/text/trechos';
 import { Avatar } from './avatar';
 import { ConsoleThread } from './ConsoleThread';
@@ -242,7 +242,7 @@ export function ConsoleConversation({ id, me }: { id: string; me: { id: string; 
         <TakeoverBar
           mode={mode}
           firstName={primeiro}
-          dueLabel={item.handoff ? formatarPrazoCurto(new Date(item.handoff.due_at), new Date()).replace('resposta até', 'até') : null}
+          dueLabel={item.handoff ? formatShortDeadline(new Date(item.handoff.due_at), new Date()).replace('resposta até', 'até') : null}
           otherName={item.assigned_to?.name ?? null}
           onClaim={() => acao('claim')}
           onRelease={() => acao('release')}

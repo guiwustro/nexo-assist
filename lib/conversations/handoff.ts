@@ -5,8 +5,8 @@ import { conversations, handoffs } from '@/lib/db/schema';
 import { emitEvent } from '@/lib/event-log/emit';
 import type { ActionTrace } from '@/lib/contracts/decision';
 import type { ConversationStatus, Priority, ReasonCode, SupportLevel } from '@/lib/contracts/enums';
-import { transicao } from '@/lib/regras/conversa-estado';
-import { calcularPrazo, horaSp } from '@/lib/regras/prazo';
+import { transition } from '@/lib/rules/conversation-state';
+import { computeDeadline, timeInSaoPaulo } from '@/lib/rules/deadline';
 import { serverNow } from '@/lib/env';
 import { appendMessage } from './service';
 
@@ -51,7 +51,7 @@ export async function createHandoff(input: HandoffInput, now: Date = serverNow()
       .where(eq(conversations.id, input.conversation_id))
       .for('update');
     if (!conv) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
-    const r = transicao(conv.status as ConversationStatus, 'transfer');
+    const r = transition(conv.status as ConversationStatus, 'transfer');
     if (!r.ok) throw new Conflict('invalid_transition', `Conversa em ${conv.status} não pode ser transferida`);
     const agora = new Date();
     await tx
@@ -79,7 +79,7 @@ export async function createHandoff(input: HandoffInput, now: Date = serverNow()
         agent_reading: input.agent_reading,
         attempts: input.attempts,
         confidence: input.confidence ?? null,
-        due_at: calcularPrazo(input.ticket_priority ?? 'high', now).due_at,
+        due_at: computeDeadline(input.ticket_priority ?? 'high', now).due_at,
       })
       .returning();
     await appendMessage(tx, {
@@ -87,7 +87,7 @@ export async function createHandoff(input: HandoffInput, now: Date = serverNow()
       direction: 'outbound',
       type: 'system',
       sent_via: 'system',
-      body: `Transferida para Suporte ${input.level} · ${horaSp(now)}`,
+      body: `Transferida para Suporte ${input.level} · ${timeInSaoPaulo(now)}`,
       parts: [{ kind: 'handoff_notice', reason_code: input.reason_code, level: input.level }],
       metadata: { handoff_id: h!.id },
     });

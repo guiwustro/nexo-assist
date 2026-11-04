@@ -12,7 +12,7 @@ import {
   users,
 } from './schema';
 import { SEED_ARTICLES, SEED_OFFSETS, SEED_TICKETS, SEED_USERS, userByKey, type UserKey } from './seed-data';
-import { calcularPrazo, horaSp } from '@/lib/regras/prazo';
+import { computeDeadline, timeInSaoPaulo } from '@/lib/rules/deadline';
 import type { TurnDecision } from '@/lib/contracts/decision';
 import type { MessagePart } from '@/lib/contracts/parts';
 
@@ -81,7 +81,7 @@ function conversasDoSeed(agora: number): ConvSeed[] {
           direction: 'outbound',
           sent_via: 'system',
           type: 'system',
-          body: `Transferida para Suporte N1 · ${horaSp(new Date(agora - 12 * MIN))}`,
+          body: `Transferida para Suporte N1 · ${timeInSaoPaulo(new Date(agora - 12 * MIN))}`,
           parts: [{ kind: 'handoff_notice', reason_code: 'requested_human', level: 'N1' }],
         },
         { at: agora - 5 * MIN, direction: 'inbound', sent_via: 'user', body: 'Preciso de acesso ao SAP ainda hoje' },
@@ -112,7 +112,7 @@ function conversasDoSeed(agora: number): ConvSeed[] {
           direction: 'outbound',
           sent_via: 'system',
           type: 'system',
-          body: `Transferida para Suporte N1 · ${horaSp(new Date(agora - 39 * MIN))}`,
+          body: `Transferida para Suporte N1 · ${timeInSaoPaulo(new Date(agora - 39 * MIN))}`,
           parts: [{ kind: 'handoff_notice', reason_code: 'low_confidence', level: 'N1' }],
         },
       ],
@@ -248,7 +248,7 @@ export async function resetAndSeed(url: string, agora: Date = new Date()): Promi
             status: st.status,
             requester_id: userByKey(st.owner).id,
             assignee_name: st.assignee_name,
-            due_at: calcularPrazo(st.priority, last).due_at,
+            due_at: computeDeadline(st.priority, last).due_at,
             last_update_at: last,
             resolved_at: st.resolved_ago === null ? null : new Date(t0 - st.resolved_ago),
             created_at: new Date(t0 - st.created_ago),
@@ -304,7 +304,7 @@ export async function resetAndSeed(url: string, agora: Date = new Date()): Promi
           agent_reading: h.agent_reading,
           attempts: [],
           confidence: h.confidence ?? null,
-          due_at: calcularPrazo(h.priority, at).due_at,
+          due_at: computeDeadline(h.priority, at).due_at,
           created_at: at,
         }).returning({ id: handoffs.id });
         handoffId = hrow!.id;

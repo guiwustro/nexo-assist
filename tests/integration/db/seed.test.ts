@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { useTestDb } from '@/tests/helpers/db';
 import { conversations, handoffs, knowledgeArticles, tickets, users } from '@/lib/db/schema';
-import { estaVencido } from '@/lib/regras/vencido';
-import { podeReabrir } from '@/lib/regras/reabertura';
+import { isOverdue } from '@/lib/rules/overdue';
+import { canReopen } from '@/lib/rules/reopening';
 
 const t = useTestDb();
 
@@ -36,13 +36,13 @@ describe('resetAndSeed', () => {
   });
 
   it('INC-20311 está vencido e INC-20298 não', async () => {
-    expect(estaVencido(await ticket('INC-20311'), t.agora)).toBe(true);
-    expect(estaVencido(await ticket('INC-20298'), t.agora)).toBe(false);
+    expect(isOverdue(await ticket('INC-20311'), t.agora)).toBe(true);
+    expect(isOverdue(await ticket('INC-20298'), t.agora)).toBe(false);
   });
 
   it('INC-20150 pode ser reaberto e INC-19877 não', async () => {
-    expect(podeReabrir(await ticket('INC-20150'), t.agora).ok).toBe(true);
-    expect(podeReabrir(await ticket('INC-19877'), t.agora).ok).toBe(false);
+    expect(canReopen(await ticket('INC-20150'), t.agora).ok).toBe(true);
+    expect(canReopen(await ticket('INC-19877'), t.agora).ok).toBe(false);
   });
 
   it('Ana tem 6 chamados e nenhum da Carla', async () => {

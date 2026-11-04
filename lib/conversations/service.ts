@@ -5,8 +5,8 @@ import { conversations, messages, users } from '@/lib/db/schema';
 import { emitEvent } from '@/lib/event-log/emit';
 import type { ConversationStatus } from '@/lib/contracts/enums';
 import type { MessagePart } from '@/lib/contracts/parts';
-import { transicao, type ConversationEvent } from '@/lib/regras/conversa-estado';
-import { horaSp } from '@/lib/regras/prazo';
+import { transition, type ConversationEvent } from '@/lib/rules/conversation-state';
+import { timeInSaoPaulo } from '@/lib/rules/deadline';
 import { serverNow } from '@/lib/env';
 
 export type Conversation = typeof conversations.$inferSelect;
@@ -114,7 +114,7 @@ export async function registerEmployeeMessage(
     if (count > limit && !comAnalista(conv.status as ConversationStatus)) {
       throw new Conflict('session_limit_reached', `Limite de ${limit} mensagens nesta sessão`, { limit });
     }
-    const r = transicao(conv.status as ConversationStatus, 'employee_message');
+    const r = transition(conv.status as ConversationStatus, 'employee_message');
     const next = r.ok ? r.next : (conv.status as ConversationStatus);
     const [updated] = await tx
       .update(conversations)
@@ -172,7 +172,7 @@ export async function applyTransition(
     if (!conv) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
     const lido = conv.status as ConversationStatus;
     if (opts.expectedStatus && opts.expectedStatus !== lido) throw conflitoPara(conv, event);
-    const r = transicao(lido, event);
+    const r = transition(lido, event);
     if (!r.ok) throw conflitoPara(conv, event);
     if (
       (event === 'release' || event === 'close') &&
@@ -204,7 +204,7 @@ export async function applyTransition(
         type: 'system',
         sent_via: 'system',
         sent_by_user_id: actor.user_id,
-        body: texto(await nomeDe(tx, actor.user_id), horaSp(now)),
+        body: texto(await nomeDe(tx, actor.user_id), timeInSaoPaulo(now)),
         metadata: { event },
       });
     }

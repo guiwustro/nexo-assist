@@ -5,7 +5,7 @@ import { createFakeTickets } from '@/tests/helpers/fake-tickets';
 import { runTool, type ToolCtx } from '@/lib/agent-engine/tools';
 import { ticketDrafts } from '@/lib/db/schema';
 import { getOrCreateCurrent } from '@/lib/conversations/service';
-import { calcularPrazo } from '@/lib/regras/prazo';
+import { computeDeadline } from '@/lib/rules/deadline';
 import { SEED_ARTICLES } from '@/lib/db/seed-data';
 import type { MessagePart } from '@/lib/contracts/parts';
 import type { ActionTrace } from '@/lib/contracts/decision';
@@ -53,7 +53,7 @@ describe('montar_rascunho', () => {
     };
     expect(out.priority).toBe('high');
     expect(out.priority_rule.startsWith('Alta')).toBe(true);
-    expect(out.due_at).toBe(calcularPrazo('high', t.agora).due_at.toISOString());
+    expect(out.due_at).toBe(computeDeadline('high', t.agora).due_at.toISOString());
     expect(out.draft_code).toBe('D-381');
     const [row] = await t.db.select().from(ticketDrafts).where(eq(ticketDrafts.code, 'D-381'));
     expect(row?.status).toBe('pending');

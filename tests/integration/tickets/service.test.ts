@@ -4,7 +4,7 @@ import { useTestDb } from '@/tests/helpers/db';
 import { createTicketsApp } from '@/services/tickets/src/app';
 import { createChaos } from '@/services/tickets/src/chaos';
 import { ticketEvents, tickets } from '@/lib/db/schema';
-import { calcularPrazo } from '@/lib/regras/prazo';
+import { computeDeadline } from '@/lib/rules/deadline';
 import type { Ticket } from '@/lib/contracts/tickets';
 
 const t = useTestDb();
@@ -90,7 +90,7 @@ describe('serviço de chamados', () => {
     expect(ca.code).toMatch(/^INC-\d+$/);
     expect(cb.code).toBe(ca.code);
     expect(await t.db.$count(tickets)).toBe(antes + 1);
-    expect(ca.due_at).toBe(calcularPrazo('high', t.agora).due_at.toISOString());
+    expect(ca.due_at).toBe(computeDeadline('high', t.agora).due_at.toISOString());
   });
 
   it('mesma chave com corpo diferente → 422', async () => {
@@ -137,7 +137,7 @@ describe('serviço de chamados', () => {
     expect(res.status).toBe(200);
     const data = ((await res.json()) as { data: Ticket }).data;
     expect(data.last_update_at).toBe(clock.now.toISOString());
-    expect(data.due_at).toBe(calcularPrazo('medium', clock.now).due_at.toISOString());
+    expect(data.due_at).toBe(computeDeadline('medium', clock.now).due_at.toISOString());
     const [row] = await t.db.select().from(tickets).where(eq(tickets.code, 'INC-20298'));
     const eventos = await t.db.select().from(ticketEvents).where(eq(ticketEvents.ticket_id, row!.id));
     expect(eventos.some((e) => e.kind === 'comment' && e.body.includes('acesso negado'))).toBe(true);

@@ -11,7 +11,7 @@ import { createDraft } from '@/lib/drafts/service';
 import { getOrCreateCurrent, appendMessage } from '@/lib/conversations/service';
 import { setTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import { closeMemory } from '@/lib/agent-engine/agent/memory';
-import { calcularPrazo } from '@/lib/regras/prazo';
+import { computeDeadline } from '@/lib/rules/deadline';
 import { getDb } from '@/lib/db/client';
 import type { Session } from '@/lib/auth/session';
 import type { DraftPayload } from '@/lib/contracts/drafts';
@@ -46,7 +46,7 @@ const payload = (): DraftPayload => ({
   deadline_today: true,
   priority: 'high',
   priority_rule: 'Alta: …',
-  due_at: calcularPrazo('high', t.agora).due_at.toISOString(),
+  due_at: computeDeadline('high', t.agora).due_at.toISOString(),
 });
 
 async function draftDa(employeeId: string) {

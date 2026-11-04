@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { TZDate } from '@date-fns/tz';
-import { addBusinessDays, addBusinessHours } from '@/lib/regras/horario-util';
-import { calcularPrazo, formatarPrazoCurto } from '@/lib/regras/prazo';
+import { addBusinessDays, addBusinessHours } from '@/lib/rules/business-hours';
+import { computeDeadline, formatShortDeadline } from '@/lib/rules/deadline';
 import type { Priority } from '@/lib/contracts/enums';
 
 const SP = 'America/Sao_Paulo';
@@ -29,17 +29,17 @@ afterAll(() => {
 describe.each(['UTC', 'Asia/Tokyo', 'America/Sao_Paulo'])('com o servidor em %s', (tz) => {
   it.each(casos)('%s + %s → prazo esperado', (_rotulo, desde, prioridade, esperado) => {
     process.env.TZ = tz;
-    expect(calcularPrazo(prioridade, desde).due_at.toISOString()).toBe(esperado.toISOString());
+    expect(computeDeadline(prioridade, desde).due_at.toISOString()).toBe(esperado.toISOString());
   });
 
   it('formatarPrazoCurto no mesmo dia mostra só a hora', () => {
     process.env.TZ = tz;
-    expect(formatarPrazoCurto(sp(3, 13, 43), sp(3, 9, 43))).toBe('resposta até 13:43');
+    expect(formatShortDeadline(sp(3, 13, 43), sp(3, 9, 43))).toBe('resposta até 13:43');
   });
 
   it('formatarPrazoCurto em outro dia mostra o dia da semana', () => {
     process.env.TZ = tz;
-    expect(formatarPrazoCurto(sp(4, 10), sp(3, 16))).toBe('resposta até qua 10:00');
+    expect(formatShortDeadline(sp(4, 10), sp(3, 16))).toBe('resposta até qua 10:00');
   });
 });
 
@@ -54,9 +54,9 @@ describe('horário útil', () => {
     expect(addBusinessDays(sp(3, 10), 1).toISOString()).toBe(sp(4, 10).toISOString());
   });
   it('a regra descreve o prazo do Anexo A', () => {
-    expect(calcularPrazo('high', sp(3, 10)).regra).toBe('Alta: 4 horas úteis (seg–sex, 8h–18h)');
-    expect(calcularPrazo('critical', sp(3, 10)).regra).toBe('Crítica: 1 hora corrida (plantão 24h)');
-    expect(calcularPrazo('medium', sp(3, 10)).regra).toBe('Média: 3 dias úteis (seg–sex, 8h–18h)');
-    expect(calcularPrazo('low', sp(3, 10)).regra).toBe('Baixa: 5 dias úteis (seg–sex, 8h–18h)');
+    expect(computeDeadline('high', sp(3, 10)).rule).toBe('Alta: 4 horas úteis (seg–sex, 8h–18h)');
+    expect(computeDeadline('critical', sp(3, 10)).rule).toBe('Crítica: 1 hora corrida (plantão 24h)');
+    expect(computeDeadline('medium', sp(3, 10)).rule).toBe('Média: 3 dias úteis (seg–sex, 8h–18h)');
+    expect(computeDeadline('low', sp(3, 10)).rule).toBe('Baixa: 5 dias úteis (seg–sex, 8h–18h)');
   });
 });

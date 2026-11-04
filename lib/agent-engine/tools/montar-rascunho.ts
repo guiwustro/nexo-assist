@@ -4,9 +4,9 @@ import { AffectedSchema, CategorySchema, PRIORITY_LABEL, TicketTypeSchema } from
 import { DraftKindSchema, type DraftPayload } from '@/lib/contracts/drafts';
 import { TicketCodeSchema } from '@/lib/contracts/tickets';
 import { createDraft } from '@/lib/drafts/service';
-import { calcularPrazo, formatarPrazoCurto } from '@/lib/regras/prazo';
-import { calcularPrioridade } from '@/lib/regras/prioridade';
-import { podeReabrir } from '@/lib/regras/reabertura';
+import { computeDeadline, formatShortDeadline } from '@/lib/rules/deadline';
+import { computePriority } from '@/lib/rules/priority';
+import { canReopen } from '@/lib/rules/reopening';
 import { defineTool } from './types';
 
 export const montarRascunho = defineTool({
@@ -42,8 +42,8 @@ export const montarRascunho = defineTool({
       try {
         const alvo = await ctx.tickets.get(input.target_code, ctx.employee_id);
         if (input.kind === 'reopen') {
-          const r = podeReabrir(alvo, ctx.now);
-          if (!r.ok) return { ok: false, error: 'reopen_window_expired', regra: r.regra };
+          const r = canReopen(alvo, ctx.now);
+          if (!r.ok) return { ok: false, error: 'reopen_window_expired', regra: r.rule };
         }
       } catch (e) {
         if (e instanceof TicketsNotFoundError) return { found: false };
@@ -63,8 +63,8 @@ export const montarRascunho = defineTool({
         };
       }
     }
-    const prioridade = calcularPrioridade(input);
-    const prazo = calcularPrazo(prioridade.priority, ctx.now);
+    const prioridade = computePriority(input);
+    const prazo = computeDeadline(prioridade.priority, ctx.now);
     const payload: DraftPayload = {
       title: input.title,
       description: input.description,
@@ -74,7 +74,7 @@ export const montarRascunho = defineTool({
       blocks_work: input.blocks_work,
       deadline_today: input.deadline_today,
       priority: prioridade.priority,
-      priority_rule: prioridade.regra,
+      priority_rule: prioridade.rule,
       due_at: prazo.due_at.toISOString(),
       ...(input.comment ? { comment: input.comment } : {}),
     };
@@ -103,8 +103,8 @@ export const montarRascunho = defineTool({
       draft_code: draft.code,
       draft_id: draft.id,
       priority: prioridade.priority,
-      priority_rule: prioridade.regra,
-      sla_rule: prazo.regra,
+      priority_rule: prioridade.rule,
+      sla_rule: prazo.rule,
       due_at: payload.due_at,
       note: 'Rascunho mostrado ao funcionário. O chamado ainda NÃO existe: peça para conferir e clicar em Confirmar.',
     };
@@ -123,7 +123,7 @@ export const montarRascunho = defineTool({
       return `já existe chamado aberto nesta categoria: ${o.open_tickets!.map((t) => t.code).join(', ')}`;
     }
     if (o.error) return o.error === 'reopen_window_expired' ? 'fora da janela de 7 dias para reabrir' : o.error;
-    return `${o.draft_code} · ${PRIORITY_LABEL[o.priority!]} · ${formatarPrazoCurto(new Date(o.due_at!), ctx.now)}`;
+    return `${o.draft_code} · ${PRIORITY_LABEL[o.priority!]} · ${formatShortDeadline(new Date(o.due_at!), ctx.now)}`;
   },
 });
 

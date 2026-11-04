@@ -13,9 +13,9 @@ import { getTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import { TicketsRejectedError } from '@/lib/agent-engine/edge/tickets/errors';
 import { noteToMemory } from '@/lib/agent-engine/agent/memory';
 import { appendMessage } from '@/lib/conversations/service';
-import { calcularPrazo, formatarPrazoCurto } from '@/lib/regras/prazo';
-import { calcularPrioridade } from '@/lib/regras/prioridade';
-import { descreverAtraso } from '@/lib/regras/vencido';
+import { computeDeadline, formatShortDeadline } from '@/lib/rules/deadline';
+import { computePriority } from '@/lib/rules/priority';
+import { describeOverdue } from '@/lib/rules/overdue';
 
 export type Draft = typeof ticketDrafts.$inferSelect;
 
@@ -93,12 +93,12 @@ export async function editDraft(id: string, session: Session, edit: DraftEdit): 
   // A chave de idempotência já foi usada com este conteúdo: mudar agora faria o legado recusar (ou duplicar).
   if (d.sent_at) throw JA_ENVIADO();
   const merged = { ...d.payload, ...Object.fromEntries(Object.entries(edit).filter(([, v]) => v !== undefined)) };
-  const prioridade = calcularPrioridade(merged);
+  const prioridade = computePriority(merged);
   const payload: DraftPayload = {
     ...merged,
     priority: prioridade.priority,
-    priority_rule: prioridade.regra,
-    due_at: calcularPrazo(prioridade.priority, serverNow()).due_at.toISOString(),
+    priority_rule: prioridade.rule,
+    due_at: computeDeadline(prioridade.priority, serverNow()).due_at.toISOString(),
   };
   return getDb().transaction(async (tx) => {
     const [row] = await tx
@@ -205,13 +205,13 @@ export async function confirmDraft(id: string, session: Session): Promise<{ draf
       .returning();
     if (!row) return null;
     await syncDraftCard(tx, row);
-    const atraso = descreverAtraso(ticket, now);
+    const atraso = describeOverdue(ticket, now);
     await appendMessage(tx, {
       conversation_id: row.conversation_id,
       direction: 'outbound',
       type: 'system',
       sent_via: 'system',
-      body: `${ticket.code} ${VERBO[d.kind as DraftKind]} · prioridade ${PRIORITY_LABEL[ticket.priority]} · ${formatarPrazoCurto(new Date(ticket.due_at), now)}`,
+      body: `${ticket.code} ${VERBO[d.kind as DraftKind]} · prioridade ${PRIORITY_LABEL[ticket.priority]} · ${formatShortDeadline(new Date(ticket.due_at), now)}`,
       parts: [{ kind: 'ticket_card', ticket, overdue: atraso !== null, ...(atraso ? { overdue_label: atraso } : {}) }],
       metadata: { draft_id: row.id },
     });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { transicao, type ConversationEvent } from '@/lib/regras/conversa-estado';
+import { transition, type ConversationEvent } from '@/lib/rules/conversation-state';
 import type { ConversationStatus } from '@/lib/contracts/enums';
 
 type Esperado = ConversationStatus | 'invalid';
@@ -28,7 +28,7 @@ const matriz: Array<[ConversationStatus, ConversationEvent, Esperado]> = [
 
 describe('transicao', () => {
   it.each(matriz)('%s --%s--> %s', (estado, evento, esperado) => {
-    const r = transicao(estado, evento);
+    const r = transition(estado, evento);
     if (esperado === 'invalid') {
       expect(r).toEqual({ ok: false, code: 'invalid_transition' });
     } else {

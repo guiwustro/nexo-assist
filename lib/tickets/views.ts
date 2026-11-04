@@ -1,7 +1,7 @@
 import { getTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import type { Ticket, TicketEvent } from '@/lib/contracts/tickets';
 import { serverNow } from '@/lib/env';
-import { descreverAtraso, estaVencido } from '@/lib/regras/vencido';
+import { describeOverdue, isOverdue } from '@/lib/rules/overdue';
 
 export type TicketView = Ticket & { overdue: boolean; overdue_label: string | null };
 export type TicketList = { tickets: TicketView[]; open: number; closed: number };
@@ -12,7 +12,7 @@ const CLOSED = new Set(['resolved', 'closed']);
 export const isClosed = (t: Pick<Ticket, 'status'>) => CLOSED.has(t.status);
 
 function toView(t: Ticket, now: Date): TicketView {
-  return { ...t, overdue: estaVencido(t, now), overdue_label: descreverAtraso(t, now) };
+  return { ...t, overdue: isOverdue(t, now), overdue_label: describeOverdue(t, now) };
 }
 
 /** Todos os chamados de um solicitante (em andamento e encerrados), pela borda do legado. */

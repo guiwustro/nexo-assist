@@ -2,8 +2,8 @@ import type { TicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import { TicketsNotFoundError, TicketsRejectedError, TicketsTransportError } from '@/lib/agent-engine/edge/tickets/errors';
 import type { Ticket, TicketEvent } from '@/lib/contracts/tickets';
 import { SEED_TICKETS, userByKey } from '@/lib/db/seed-data';
-import { calcularPrazo } from '@/lib/regras/prazo';
-import { podeReabrir } from '@/lib/regras/reabertura';
+import { computeDeadline } from '@/lib/rules/deadline';
+import { canReopen } from '@/lib/rules/reopening';
 import { dobrar } from '@/lib/text/trechos';
 
 export type FakeTickets = TicketsClient & {
@@ -33,7 +33,7 @@ export function createFakeTickets(agora: Date): FakeTickets {
       status: s.status,
       requester_id: userByKey(s.owner).id,
       assignee_name: s.assignee_name,
-      due_at: calcularPrazo(s.priority, last).due_at.toISOString(),
+      due_at: computeDeadline(s.priority, last).due_at.toISOString(),
       last_update_at: last.toISOString(),
       resolved_at: s.resolved_ago === null ? null : new Date(t0 - s.resolved_ago).toISOString(),
       created_at: new Date(t0 - s.created_ago).toISOString(),
@@ -96,7 +96,7 @@ export function createFakeTickets(agora: Date): FakeTickets {
         code: `${input.type === 'incident' ? 'INC' : 'REQ'}-${seq++}`,
         status: 'open',
         assignee_name: null,
-        due_at: calcularPrazo(input.priority, agora).due_at.toISOString(),
+        due_at: computeDeadline(input.priority, agora).due_at.toISOString(),
         last_update_at: agora.toISOString(),
         resolved_at: null,
         created_at: agora.toISOString(),
@@ -119,7 +119,7 @@ export function createFakeTickets(agora: Date): FakeTickets {
       guard('reopen');
       return once(key, async () => {
         const t = await fake.get(code, requesterId);
-        if (!podeReabrir(t, agora).ok) throw new TicketsRejectedError('reopen_window_expired', 'Fora da janela', 422);
+        if (!canReopen(t, agora).ok) throw new TicketsRejectedError('reopen_window_expired', 'Fora da janela', 422);
         t.status = 'open';
         t.resolved_at = null;
         registrar(code, 'reopened', 'Reaberto pelo funcionário');
