@@ -93,4 +93,12 @@ describe('DraftCard', () => {
     });
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ blocks_work: false, deadline_today: false }));
   });
+
+  it('depois de uma confirmação que falhou não oferece editar (o rascunho pode já ter chegado ao sistema)', () => {
+    render(
+      <DraftCard part={part} now={agora} onConfirm={vi.fn()} onCancel={vi.fn()} onSave={vi.fn()} error="Sistema fora do ar" />,
+    );
+    expect(screen.getByTestId('draft-confirm')).toHaveTextContent('Tentar de novo');
+    expect(screen.queryByTestId('draft-edit')).toBeNull();
+  });
 });

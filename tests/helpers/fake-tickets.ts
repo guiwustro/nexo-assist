@@ -11,6 +11,8 @@ export type FakeTickets = TicketsClient & {
   /** Histórico por código, como a tabela `ticket_events` do legado. */
   history: Map<string, TicketEvent[]>;
   down: boolean;
+  /** Executa a operação mas perde a resposta (timeout depois de gravar), como numa rede ruim. */
+  loseResponses: boolean;
   calls: string[];
 };
 
@@ -45,16 +47,19 @@ export function createFakeTickets(agora: Date): FakeTickets {
   let seq = 20520;
   const recibos = new Map<string, Ticket>();
   const once = async (key: string, fn: () => Promise<Ticket>) => {
-    const r = recibos.get(key);
-    if (r) return r;
-    const t = await fn();
-    recibos.set(key, t);
+    let t = recibos.get(key);
+    if (!t) {
+      t = await fn();
+      recibos.set(key, t);
+    }
+    if (fake.loseResponses) throw new TicketsTransportError('resposta perdida');
     return t;
   };
   const fake: FakeTickets = {
     tickets,
     history,
     down: false,
+    loseResponses: false,
     calls: [],
     async listByRequester(requesterId, status = 'all') {
       guard('list');

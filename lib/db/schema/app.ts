@@ -170,6 +170,8 @@ export const ticketDrafts = pgTable(
     result_ticket_code: text('result_ticket_code'),
     error_code: text('error_code'),
     created_at: createdAt(),
+    /** Primeira tentativa de envio ao sistema de chamados: depois dela o conteúdo não muda mais (idempotência). */
+    sent_at: tstz('sent_at'),
     decided_at: tstz('decided_at'),
   },
   (t) => [

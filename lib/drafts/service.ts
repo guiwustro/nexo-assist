@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Conflict, NotFound, Unprocessable } from '@/lib/api/errors';
 import { getDb, type DbOrTx } from '@/lib/db/client';
 import { conversations, messages, ticketDrafts } from '@/lib/db/schema';
@@ -81,9 +81,17 @@ async function syncDraftCard(db: DbOrTx, d: Draft): Promise<void> {
   }
 }
 
+const JA_ENVIADO = () =>
+  new Conflict(
+    'draft_already_sent',
+    'Este rascunho já foi enviado ao sistema de chamados e não pode mais ser editado. Confirme de novo para ver o resultado, ou cancele.',
+  );
+
 export async function editDraft(id: string, session: Session, edit: DraftEdit): Promise<Draft> {
   const d = await ownedDraft(id, session);
   if (d.status !== 'pending') throw new Conflict('draft_not_pending', 'Este rascunho não pode mais ser editado');
+  // A chave de idempotência já foi usada com este conteúdo: mudar agora faria o legado recusar (ou duplicar).
+  if (d.sent_at) throw JA_ENVIADO();
   const merged = { ...d.payload, ...Object.fromEntries(Object.entries(edit).filter(([, v]) => v !== undefined)) };
   const prioridade = calcularPrioridade(merged);
   const payload: DraftPayload = {
@@ -96,9 +104,12 @@ export async function editDraft(id: string, session: Session, edit: DraftEdit): 
     const [row] = await tx
       .update(ticketDrafts)
       .set({ payload })
-      .where(and(eq(ticketDrafts.id, id), eq(ticketDrafts.status, 'pending')))
+      .where(and(eq(ticketDrafts.id, id), eq(ticketDrafts.status, 'pending'), isNull(ticketDrafts.sent_at)))
       .returning();
-    if (!row) throw new Conflict('draft_not_pending', 'Este rascunho não pode mais ser editado');
+    if (!row) {
+      const atual = await getDraft(id, tx);
+      throw atual?.status === 'pending' ? JA_ENVIADO() : new Conflict('draft_not_pending', 'Este rascunho não pode mais ser editado');
+    }
     await syncDraftCard(tx, row);
     return row;
   });
@@ -140,7 +151,14 @@ export async function confirmDraft(id: string, session: Session): Promise<{ draf
 
   const tickets = getTicketsClient();
   const key = d.idempotency_key;
-  const p = d.payload;
+  // Marca o envio antes de chamar o legado e confirma com o conteúdo gravado nesse momento: uma edição
+  // concorrente ou posterior não pode mudar o que vai com esta chave.
+  const [enviado] = await getDb()
+    .update(ticketDrafts)
+    .set({ sent_at: sql`coalesce(${ticketDrafts.sent_at}, now())` })
+    .where(and(eq(ticketDrafts.id, id), eq(ticketDrafts.status, 'pending')))
+    .returning();
+  const p = (enviado ?? d).payload;
   let ticket: Ticket;
   try {
     if (d.kind === 'create') {

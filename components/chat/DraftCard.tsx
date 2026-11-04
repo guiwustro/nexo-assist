@@ -310,15 +310,18 @@ export function DraftCard({
                 {error ? 'Tentar de novo' : 'Confirmar'}
                 {!error && <Kbd className="bg-white/15 text-tag-list text-white/80">⌘↵</Kbd>}
               </button>
-              <button
-                type="button"
-                data-testid="draft-edit"
-                disabled={busy}
-                onClick={abrirEdicao}
-                className="flex h-9 items-center rounded-btn border border-input-border bg-paper px-3.5 text-body font-medium text-ink hover:bg-desk"
-              >
-                Editar
-              </button>
+              {/* Depois de uma tentativa de envio o servidor não aceita mais edição (idempotência). */}
+              {!error && (
+                <button
+                  type="button"
+                  data-testid="draft-edit"
+                  disabled={busy}
+                  onClick={abrirEdicao}
+                  className="flex h-9 items-center rounded-btn border border-input-border bg-paper px-3.5 text-body font-medium text-ink hover:bg-desk"
+                >
+                  Editar
+                </button>
+              )}
               <button
                 type="button"
                 data-testid="draft-cancel"

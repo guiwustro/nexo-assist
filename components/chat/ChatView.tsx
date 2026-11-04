@@ -220,7 +220,11 @@ function ChatSession({
       await reload();
     },
     save: async (id, edit: DraftEdit) => {
-      await api(`/api/v1/drafts/${id}`, { method: 'PATCH', body: JSON.stringify(edit) });
+      try {
+        await api(`/api/v1/drafts/${id}`, { method: 'PATCH', body: JSON.stringify(edit) });
+      } catch (e) {
+        setDraftErrors((d) => ({ ...d, [id]: e instanceof Error ? e.message : 'Não foi possível salvar' }));
+      }
       await reload();
     },
   };

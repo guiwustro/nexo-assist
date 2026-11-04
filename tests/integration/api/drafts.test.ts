@@ -101,6 +101,31 @@ describe('rascunhos', () => {
     expect(ok.status).toBe(200);
   });
 
+  it('confirmação com a resposta perdida: editar é recusado e confirmar de novo devolve o mesmo chamado', async () => {
+    const d = await draftDa(t.seed.users.ana.id);
+    const antes = fake.tickets.length;
+    fake.loseResponses = true;
+    expect((await call(confirm, { session: ana(), method: 'POST', params: { id: d.id } })).status).toBe(503);
+    fake.loseResponses = false;
+
+    const edit = await call(patchDraft, { session: ana(), method: 'PATCH', params: { id: d.id }, body: { title: 'Outro título' } });
+    expect(edit.status).toBe(409);
+    expect((await json(edit)).error?.code).toBe('draft_already_sent');
+    const [row] = await t.db.select().from(ticketDrafts).where(eq(ticketDrafts.id, d.id));
+    expect(row?.status).toBe('pending');
+    expect(row?.payload.title).toBe(payload().title);
+
+    const ok = await call(confirm, { session: ana(), method: 'POST', params: { id: d.id } });
+    expect(ok.status).toBe(200);
+    expect(fake.tickets.length).toBe(antes + 1);
+  });
+
+  it('antes de qualquer envio o rascunho continua editável', async () => {
+    const d = await draftDa(t.seed.users.ana.id);
+    const edit = await call(patchDraft, { session: ana(), method: 'PATCH', params: { id: d.id }, body: { title: 'Outro título' } });
+    expect(edit.status).toBe(200);
+  });
+
   it('confirmar atualização de chamado que sumiu do legado → 404, não 500', async () => {
     const conv = await getOrCreateCurrent(t.seed.users.ana.id, 'sid');
     const d = await createDraft({
