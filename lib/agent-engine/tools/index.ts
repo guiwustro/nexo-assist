@@ -61,7 +61,11 @@ export async function runTool(ctx: ToolCtx, name: ToolName, rawInput: unknown): 
   const err = (output as { error?: string } | null)?.error;
   const finais = rotulosPara(name, input, output);
   // Se o rótulo final mudou (ex.: "sistema indisponível"), os ids de "running" são reaproveitados.
-  emit(finais, err === 'tickets_unavailable' || err === 'internal_error' ? 'error' : 'ok', err ? describeError(err) : def.summary(output, input, ctx));
+  emit(
+    finais,
+    err === 'tickets_unavailable' || err === 'internal_error' ? 'error' : 'ok',
+    err && err !== 'possible_duplicate' ? describeError(err) : def.summary(output, input, ctx),
+  );
   return output;
 }
 

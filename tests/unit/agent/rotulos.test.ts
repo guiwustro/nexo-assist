@@ -20,4 +20,7 @@ describe('rotulosPara', () => {
   it('ver_chamado não encontrado não calcula prazo', () => {
     expect(rotulosPara('ver_chamado', { code: 'INC-1' }, { found: false })).toEqual(['consultou o INC-1']);
   });
+  it('rascunho recusado por duplicidade não diz que montou nada', () => {
+    expect(rotulosPara('montar_rascunho', {}, { ok: false, error: 'possible_duplicate' })).toEqual(['consultou seus chamados']);
+  });
 });

@@ -8,12 +8,15 @@ import { getOrCreateCurrent } from '@/lib/conversations/service';
 import { calcularPrazo } from '@/lib/regras/prazo';
 import { SEED_ARTICLES } from '@/lib/db/seed-data';
 import type { MessagePart } from '@/lib/contracts/parts';
+import type { ActionTrace } from '@/lib/contracts/decision';
+import type { FakeTickets } from '@/tests/helpers/fake-tickets';
 
 const t = useTestDb();
 
 async function ctx() {
   const conv = await getOrCreateCurrent(t.seed.users.ana.id, 'sid');
   const parts: MessagePart[] = [];
+  const actions: ActionTrace[] = [];
   const c: ToolCtx = {
     employee_id: t.seed.users.ana.id,
     employee_text: 'só eu, reunião às 14h',
@@ -22,11 +25,11 @@ async function ctx() {
     now: t.agora,
     tickets: createFakeTickets(t.agora),
     articles: async () => SEED_ARTICLES,
-    emitAction: () => {},
+    emitAction: (a) => actions.push(a),
     emitPart: (p) => parts.push(p),
     retry: { current: null },
   };
-  return { c, parts };
+  return { c, parts, actions };
 }
 
 const base = {
@@ -81,5 +84,42 @@ describe('montar_rascunho', () => {
     const { c } = await ctx();
     const out = await runTool(c, 'montar_rascunho', { kind: 'update', ...base });
     expect(out).toMatchObject({ ok: false, error: 'target_code_required' });
+  });
+
+  describe('chamado aberto na mesma categoria', () => {
+    const sharepoint = { ...base, title: 'Pasta Financeiro no SharePoint não abre', category: 'access' };
+
+    it('criar com um aberto na mesma categoria → possible_duplicate, sem rascunho', async () => {
+      const { c, parts, actions } = await ctx();
+      const out = await runTool(c, 'montar_rascunho', { kind: 'create', ...sharepoint });
+      expect(out).toMatchObject({ ok: false, error: 'possible_duplicate', open_tickets: [{ code: 'INC-20298' }] });
+      expect(await t.db.$count(ticketDrafts)).toBe(0);
+      expect(parts).toHaveLength(0);
+      expect(actions.find((a) => a.result !== 'running')?.summary).toMatch(/INC-20298/);
+    });
+
+    it('o agent confirma que é outro problema (distinct_from) → cria o rascunho', async () => {
+      const { c } = await ctx();
+      const out = await runTool(c, 'montar_rascunho', { kind: 'create', ...sharepoint, distinct_from: ['INC-20298'] });
+      expect(out).toMatchObject({ ok: true, draft_code: 'D-381' });
+    });
+
+    it('chamados resolvidos não contam', async () => {
+      const { c } = await ctx();
+      const out = await runTool(c, 'montar_rascunho', {
+        kind: 'create',
+        ...base,
+        title: 'Outlook não sincroniza no celular',
+        category: 'email',
+      });
+      expect(out).toMatchObject({ ok: true });
+    });
+
+    it('sistema de chamados fora: não dá para checar, o rascunho sai mesmo assim', async () => {
+      const { c } = await ctx();
+      (c.tickets as FakeTickets).down = true;
+      const out = await runTool(c, 'montar_rascunho', { kind: 'create', ...sharepoint });
+      expect(out).toMatchObject({ ok: true });
+    });
   });
 });

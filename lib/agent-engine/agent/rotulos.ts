@@ -18,6 +18,8 @@ export function rotulosPara(tool: string, input: unknown, output: unknown): stri
     case 'buscar_artigos':
       return ['buscou na central de ajuda'];
     case 'montar_rascunho':
+      // Recusado por duplicidade: só os chamados foram consultados, nenhum rascunho saiu.
+      if (out?.error === 'possible_duplicate') return ['consultou seus chamados'];
       return ['classificou a prioridade', 'consultou o SLA', 'montou o rascunho'];
     case 'transferir_para_analista':
       return ['transferiu para um analista'];
