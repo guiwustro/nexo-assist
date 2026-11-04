@@ -3,9 +3,10 @@ import { z } from 'zod';
 import { Conflict, NotFound } from '@/lib/api/errors';
 import { fail, ok, withRoute } from '@/lib/api/wrappers';
 import { chatLimiter } from '@/lib/api/rate-limit';
-import { env } from '@/lib/env';
+import { env, serverNow } from '@/lib/env';
 import { getDb } from '@/lib/db/client';
-import { appendMessage, isWithAnalyst, getConversation, getOrCreateCurrent } from '@/lib/conversations/service';
+import { appendMessage, isWithAnalyst, getConversation } from '@/lib/conversations/service';
+import { getOrCreateWithAgent, getSession, touchSession } from '@/lib/conversations/attendance';
 import { listMessages } from '@/lib/conversations/queries';
 import { toApiMessage } from '@/lib/conversations/serialize';
 import { runTurn } from '@/lib/agent-engine/agent/run-turn';
@@ -60,9 +61,19 @@ export const POST = withRoute({ role: 'any', params: Params, body: Body }, async
   }
 
   // Funcionário: a conversa é sempre a dele (a da sessão); outra → 404.
-  const conv = await getOrCreateCurrent(session.user_id, session.sid, loginAt(session));
+  await touchSession(session.user_id, session.sid, loginAt(session));
+  const requested = await getConversation(getDb(), params.id);
+  if (!requested || requested.employee_id !== session.user_id) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
+  const conv = isWithAnalyst(requested.status as ConversationStatus) || requested.status === 'closed'
+    ? requested
+    : (await getOrCreateWithAgent(session.user_id, serverNow())).conversation;
   if (conv.id !== params.id) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
-  if (0 >= env.SESSION_MESSAGE_LIMIT && !isWithAnalyst(conv.status as ConversationStatus)) { // TODO(Task 3)
+  const employeeSession = await getSession(session.user_id);
+  if (
+    conv.status !== 'closed' &&
+    (employeeSession?.message_count ?? 0) >= env.SESSION_MESSAGE_LIMIT &&
+    !isWithAnalyst(conv.status as ConversationStatus)
+  ) {
     throw new Conflict('session_limit_reached', `Limite de ${env.SESSION_MESSAGE_LIMIT} mensagens nesta sessão`);
   }
 

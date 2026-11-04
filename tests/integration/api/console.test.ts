@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { useTestDb } from '@/tests/helpers/db';
+import { getAgentAttendance } from '@/tests/helpers/attendance';
 import { createFakeTickets, type FakeTickets } from '@/tests/helpers/fake-tickets';
 import { call, json } from '@/tests/helpers/api';
 import { conversations } from '@/lib/db/schema';
@@ -14,7 +15,6 @@ import { GET as employeeTickets } from '@/app/api/v1/employees/[id]/tickets/rout
 import { GET as employeeTicket } from '@/app/api/v1/employees/[id]/tickets/[code]/route';
 import { POST as postMessage } from '@/app/api/v1/conversations/[id]/messages/route';
 import { createHandoff } from '@/lib/conversations/handoff';
-import { getOrCreateCurrent } from '@/lib/conversations/service';
 import { setTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import { closeMemory, getMemory } from '@/lib/agent-engine/agent/memory';
 import type { QueueItem } from '@/lib/conversations/queries';
@@ -36,7 +36,7 @@ afterAll(async () => {
 });
 
 async function transferAnaConversation() {
-  const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
+  const conv = await getAgentAttendance(t.seed.users.ana.id, 's', t.now);
   await createHandoff(
     {
       conversation_id: conv.id,

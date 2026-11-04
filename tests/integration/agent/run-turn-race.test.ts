@@ -2,13 +2,13 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { eq } from 'drizzle-orm';
 import type { UIMessageStreamWriter } from 'ai';
 import { useTestDb } from '@/tests/helpers/db';
+import { getAgentAttendance } from '@/tests/helpers/attendance';
 import { createFakeTickets } from '@/tests/helpers/fake-tickets';
 import { aiAgentRuns, conversations, handoffs, messages } from '@/lib/db/schema';
 import { runTurn } from '@/lib/agent-engine/agent/run-turn';
 import { closeMemory } from '@/lib/agent-engine/agent/memory';
 import { setTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import { setModelForTests } from '@/lib/agent-engine/edge/llm/provider';
-import * as service from '@/lib/conversations/service';
 import type { NexoUIMessage } from '@/lib/contracts/ui';
 
 /**
@@ -52,7 +52,7 @@ afterAll(async () => {
 });
 
 async function runTurnFor(text: string) {
-  const conv = await service.getOrCreateCurrent(t.seed.users.ana.id, 'sid-1');
+  const conv = await getAgentAttendance(t.seed.users.ana.id, 'sid-1', t.now);
   const employee = { user_id: t.seed.users.ana.id, role: 'employee' as const, name: 'Ana Souza', sid: 'sid-1' };
   return { conv, r: runTurn({ conversation_id: conv.id, employee, text, writer: writer(), now: t.now }) };
 }

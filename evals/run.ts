@@ -77,7 +77,7 @@ async function main() {
   const { closeMemory } = await import('@/lib/agent-engine/agent/memory');
   const { setTicketsClient } = await import('@/lib/agent-engine/edge/tickets/client');
   const { getModel } = await import('@/lib/agent-engine/edge/llm/provider');
-  const { getOrCreateCurrent, applyTransition } = await import('@/lib/conversations/service');
+  const { getOrCreateWithAgent, touchSession } = await import('@/lib/conversations/attendance');
   const { createFakeTickets } = await import('@/tests/helpers/fake-tickets');
 
   await migrateDb(TEST_DB_URL);
@@ -93,12 +93,8 @@ async function main() {
     setTicketsClient(createFakeTickets(NOW));
     const user = userByKey(c.persona);
     const session: Session = { user_id: user.id, role: 'employee', name: user.name, sid: `eval-${c.id}-${rep}` };
-    const conv = await getOrCreateCurrent(user.id, session.sid);
-    // Conversas semeadas como "aguardando analista" voltam ao agent: o cenário começa do zero com ele.
-    if (conv.status !== 'ai_handling') {
-      await applyTransition(conv.id, 'claim', { user_id: userByKey('rafael').id, role: 'analyst' }).catch(() => {});
-      await applyTransition(conv.id, 'release', { user_id: userByKey('rafael').id, role: 'analyst' });
-    }
+    await touchSession(user.id, session.sid, NOW);
+    const conv = (await getOrCreateWithAgent(user.id, NOW)).conversation;
     // O que já existia antes do cenário (seed) fica de fora da avaliação.
     const before = async () => {
       const ids = await Promise.all([

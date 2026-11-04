@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import type { UIMessageStreamWriter } from 'ai';
 import { useTestDb } from '@/tests/helpers/db';
+import { getAgentAttendance } from '@/tests/helpers/attendance';
 import { call, json } from '@/tests/helpers/api';
 import { createFakeTickets } from '@/tests/helpers/fake-tickets';
 import { aiAgentRuns, conversations, handoffs, llmCalls, messages } from '@/lib/db/schema';
@@ -9,7 +10,6 @@ import { runTurn } from '@/lib/agent-engine/agent/run-turn';
 import { closeMemory } from '@/lib/agent-engine/agent/memory';
 import { setTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import { setModelForTests } from '@/lib/agent-engine/edge/llm/provider';
-import { getOrCreateCurrent } from '@/lib/conversations/service';
 import { listForAnalyst } from '@/lib/conversations/queries';
 import { resetEnvCache } from '@/lib/env';
 import { POST as postMessage } from '@/app/api/v1/conversations/[id]/messages/route';
@@ -32,7 +32,7 @@ function writer() {
 }
 
 async function todaySpend(cents: number) {
-  const conv = await getOrCreateCurrent(t.seed.users.diego.id, 'sid-outro');
+  const conv = await getAgentAttendance(t.seed.users.diego.id, 'sid-outro', t.now);
   const [run] = await t.db.insert(aiAgentRuns).values({ conversation_id: conv.id, status: 'completed', model: 'x' }).returning();
   await t.db.insert(llmCalls).values({
     agent_run_id: run!.id,
@@ -74,7 +74,7 @@ describe('teto diário de gasto com o modelo', () => {
     resetEnvCache();
     await todaySpend(120);
     const before = await t.db.$count(llmCalls);
-    const conv = await getOrCreateCurrent(ana().user_id, 'sid-b');
+    const conv = await getAgentAttendance(ana().user_id, 'sid-b', t.now);
     const { w, chunks } = writer();
     const r = await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Qual o horário do service desk?', writer: w, now: t.now });
 
@@ -92,7 +92,7 @@ describe('teto diário de gasto com o modelo', () => {
   });
 
   it('a passagem pelo teto leva o resumo do caso e o chamado em foco', async () => {
-    const conv = await getOrCreateCurrent(ana().user_id, 'sid-b');
+    const conv = await getAgentAttendance(ana().user_id, 'sid-b', t.now);
     await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Meu notebook não conecta na VPN, erro 809', writer: writer().w, now: t.now });
     const [before] = await t.db.select().from(aiAgentRuns).where(eq(aiAgentRuns.conversation_id, conv.id));
     await t.db.update(conversations).set({ focus_ticket_code: 'INC-20298' }).where(eq(conversations.id, conv.id));
@@ -115,7 +115,7 @@ describe('teto diário de gasto com o modelo', () => {
     process.env.LLM_PRICE_OUT_CENTS_PER_MTOK = '120';
     resetEnvCache();
     await todaySpend(40);
-    const conv = await getOrCreateCurrent(ana().user_id, 'sid-b');
+    const conv = await getAgentAttendance(ana().user_id, 'sid-b', t.now);
     const r = await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Qual o horário do service desk?', writer: writer().w, now: t.now });
     expect(r.outcome).toBe('answered');
   });
@@ -127,7 +127,7 @@ describe('teto diário de gasto com o modelo', () => {
     resetEnvCache();
     await todaySpend(500);
     await t.db.update(llmCalls).set({ created_at: new Date(t.now.getTime() - 24 * 3600_000) });
-    const conv = await getOrCreateCurrent(ana().user_id, 'sid-b');
+    const conv = await getAgentAttendance(ana().user_id, 'sid-b', t.now);
     const r = await runTurn({ conversation_id: conv.id, employee: ana(), text: 'Qual o horário do service desk?', writer: writer().w, now: t.now });
     expect(r.outcome).toBe('answered');
   });
@@ -138,7 +138,7 @@ describe('rate limit', () => {
     process.env.RATE_LIMIT_PER_MINUTE = '2';
     resetEnvCache();
     (globalThis as unknown as { __nexoLimiters?: unknown }).__nexoLimiters = undefined;
-    const conv = await getOrCreateCurrent(ana().user_id, 'sid-b');
+    const conv = await getAgentAttendance(ana().user_id, 'sid-b', t.now);
     const send = () => call(postMessage, { session: ana(), method: 'POST', params: { id: conv.id }, body: { text: 'oi' } });
     expect((await send()).status).toBe(200);
     expect((await send()).status).toBe(200);

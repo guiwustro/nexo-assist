@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { useTestDb } from '@/tests/helpers/db';
+import { getAgentAttendance } from '@/tests/helpers/attendance';
 import { createFakeTickets, type FakeTickets } from '@/tests/helpers/fake-tickets';
 import { call, json } from '@/tests/helpers/api';
 import { messages, ticketDrafts } from '@/lib/db/schema';
@@ -8,7 +9,7 @@ import { PATCH as patchDraft } from '@/app/api/v1/drafts/[id]/route';
 import { POST as confirm } from '@/app/api/v1/drafts/[id]/confirm/route';
 import { POST as cancel } from '@/app/api/v1/drafts/[id]/cancel/route';
 import { createDraft } from '@/lib/drafts/service';
-import { getOrCreateCurrent, appendMessage } from '@/lib/conversations/service';
+import { appendMessage } from '@/lib/conversations/service';
 import { setTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import { closeMemory } from '@/lib/agent-engine/agent/memory';
 import { computeDeadline } from '@/lib/rules/deadline';
@@ -50,7 +51,7 @@ const payload = (): DraftPayload => ({
 });
 
 async function draftFor(employeeId: string) {
-  const conv = await getOrCreateCurrent(employeeId, 'sid');
+  const conv = await getAgentAttendance(employeeId, 'sid', t.now);
   const d = await createDraft({ conversation_id: conv.id, agent_run_id: null, kind: 'create', target_ticket_code: null, payload: payload() });
   await appendMessage(getDb(), {
     conversation_id: conv.id,
@@ -127,7 +128,7 @@ describe('rascunhos', () => {
   });
 
   it('confirmar atualização de chamado que sumiu do legado → 404, não 500', async () => {
-    const conv = await getOrCreateCurrent(t.seed.users.ana.id, 'sid');
+    const conv = await getAgentAttendance(t.seed.users.ana.id, 'sid', t.now);
     const d = await createDraft({
       conversation_id: conv.id,
       agent_run_id: null,

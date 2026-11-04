@@ -2,13 +2,14 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import type { UIMessageStreamWriter } from 'ai';
 import { useTestDb } from '@/tests/helpers/db';
+import { getAgentAttendance } from '@/tests/helpers/attendance';
 import { createFakeTickets, type FakeTickets } from '@/tests/helpers/fake-tickets';
 import { aiAgentRuns, conversations, employeeSessions, handoffs, llmCalls, messages } from '@/lib/db/schema';
 import { runTurn } from '@/lib/agent-engine/agent/run-turn';
 import { closeMemory } from '@/lib/agent-engine/agent/memory';
 import { setTicketsClient } from '@/lib/agent-engine/edge/tickets/client';
 import { setModelForTests } from '@/lib/agent-engine/edge/llm/provider';
-import { applyTransition, getOrCreateCurrent } from '@/lib/conversations/service';
+import { applyTransition } from '@/lib/conversations/service';
 import type { Session } from '@/lib/auth/session';
 import type { NexoUIMessage } from '@/lib/contracts/ui';
 
@@ -29,7 +30,7 @@ function collector() {
 const ana = (): Session => ({ user_id: t.seed.users.ana.id, role: 'employee', name: 'Ana Souza', sid: 'sid-1' });
 
 async function runTurnFor(text: string, conversationId?: string) {
-  const conv = conversationId ? { id: conversationId } : await getOrCreateCurrent(ana().user_id, 'sid-1');
+  const conv = conversationId ? { id: conversationId } : await getAgentAttendance(ana().user_id, 'sid-1', t.now);
   const c = collector();
   const employee = conversationId
     ? { ...ana(), user_id: (await t.db.select().from(conversations).where(eq(conversations.id, conversationId)))[0]!.employee_id }
@@ -97,7 +98,7 @@ describe('runTurn', () => {
   });
 
   it('a 30ª mensagem transfere por limite da sessão', async () => {
-    const conv = await getOrCreateCurrent(ana().user_id, 'sid-1');
+    const conv = await getAgentAttendance(ana().user_id, 'sid-1', t.now);
     await t.db.update(employeeSessions).set({ message_count: 29 }).where(eq(employeeSessions.employee_id, ana().user_id));
     const r = await runTurnFor('mais uma pergunta');
     expect(r.outcome).toBe('limit');
@@ -152,7 +153,7 @@ describe('runTurn', () => {
   });
 
   it('analista assume no meio do turno: resposta salva, nenhum gatilho aplicado', async () => {
-    const conv = await getOrCreateCurrent(ana().user_id, 'sid-1');
+    const conv = await getAgentAttendance(ana().user_id, 'sid-1', t.now);
     setModelForTests({
       onStep: async (_id, step) => {
         if (step === 0) await applyTransition(conv.id, 'claim', { user_id: t.seed.users.rafael.id, role: 'analyst' });

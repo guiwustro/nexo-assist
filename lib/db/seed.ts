@@ -35,6 +35,7 @@ const APP_TABLES = [
   'ai_agent_runs',
   'messages',
   'conversations',
+  'employee_sessions',
   'knowledge_articles',
   'users',
 ];

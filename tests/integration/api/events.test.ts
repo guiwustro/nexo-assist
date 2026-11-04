@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { getAgentAttendance } from '@/tests/helpers/attendance';
 import { useTestDb } from '@/tests/helpers/db';
 import { cookieFor } from '@/tests/helpers/api';
 import { GET as events } from '@/app/api/v1/events/route';
-import { applyTransition, getOrCreateCurrent } from '@/lib/conversations/service';
+import { applyTransition } from '@/lib/conversations/service';
 import { createHandoff } from '@/lib/conversations/handoff';
 import type { Session } from '@/lib/auth/session';
 
@@ -67,7 +68,7 @@ async function transferAndClaim(convId: string) {
 
 describe('GET /events (SSE)', () => {
   it('Ana recebe os eventos da conversa dela; Carla não', async () => {
-    const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
+    const conv = await getAgentAttendance(t.seed.users.ana.id, 's', t.now);
     const [anaEvents, carlaEvents] = await Promise.all([
       listen(ana(), 2600, () => transferAndClaim(conv.id)),
       listen(carla(), 2600),
@@ -81,7 +82,7 @@ describe('GET /events (SSE)', () => {
   });
 
   it('reconexão com Last-Event-ID não repete eventos', async () => {
-    const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
+    const conv = await getAgentAttendance(t.seed.users.ana.id, 's', t.now);
     const firstName = await listen(ana(), 2600, () => transferAndClaim(conv.id));
     const last = firstName[firstName.length - 1]!.cursor;
     const second = await listen(ana(), 1500, undefined, last);

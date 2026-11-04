@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { useTestDb } from '@/tests/helpers/db';
 import { conversations, employeeSessions, eventLog, handoffs, messages } from '@/lib/db/schema';
+import { getOrCreateWithAgent, touchSession } from '@/lib/conversations/attendance';
 import {
   applyTransition,
-  getOrCreateCurrent,
   registerEmployeeMessage,
 } from '@/lib/conversations/service';
 import { createHandoff } from '@/lib/conversations/handoff';
@@ -33,34 +33,40 @@ async function sessionCount(employeeId: string) {
   return session?.message_count ?? 0;
 }
 
-describe('getOrCreateCurrent', () => {
-  it('mesmo sid → mesma conversa e contador preservado; sid novo zera', async () => {
+async function agentAttendance(employeeId: string, sid: string, loginAt: Date = t.now) {
+  await touchSession(employeeId, sid, loginAt);
+  return (await getOrCreateWithAgent(employeeId, t.now)).conversation;
+}
+
+describe('sessão do funcionário', () => {
+  it('mesmo sid → mesmo atendimento e contador preservado; login mais novo zera', async () => {
     const ana = t.seed.users.ana.id;
-    const c1 = await getOrCreateCurrent(ana, 'sid-a');
+    const loginA = t.now;
+    const c1 = await agentAttendance(ana, 'sid-a', loginA);
     await registerEmployeeMessage(c1.id, 'oi', 30);
-    const c2 = await getOrCreateCurrent(ana, 'sid-a');
+    const c2 = await agentAttendance(ana, 'sid-a', loginA);
     expect(c2.id).toBe(c1.id);
     expect(await sessionCount(ana)).toBe(1);
-    const c3 = await getOrCreateCurrent(ana, 'sid-b');
+    const c3 = await agentAttendance(ana, 'sid-b', new Date(loginA.getTime() + 1));
     expect(c3.id).toBe(c1.id);
     expect(await sessionCount(ana)).toBe(0);
   });
 
   it('dois aparelhos alternando não zeram o contador; só um login mais novo zera', async () => {
     const ana = t.seed.users.ana.id;
-    const loginA = new Date(Date.now() - 120_000);
-    const loginB = new Date(Date.now() - 60_000);
-    const a1 = await getOrCreateCurrent(ana, 'sid-a', loginA);
+    const loginA = new Date(t.now.getTime() - 120_000);
+    const loginB = new Date(t.now.getTime() - 60_000);
+    const a1 = await agentAttendance(ana, 'sid-a', loginA);
     await registerEmployeeMessage(a1.id, 'oi do notebook', 30);
-    const b1 = await getOrCreateCurrent(ana, 'sid-b', loginB);
+    const b1 = await agentAttendance(ana, 'sid-b', loginB);
     expect(await sessionCount(ana)).toBe(0);
     await registerEmployeeMessage(b1.id, 'oi do celular', 30);
     await registerEmployeeMessage(b1.id, 'de novo', 30);
 
-    const a2 = await getOrCreateCurrent(ana, 'sid-a', loginA);
+    const a2 = await agentAttendance(ana, 'sid-a', loginA);
     expect(await sessionCount(ana)).toBe(2);
     await registerEmployeeMessage(a2.id, 'voltei ao notebook', 30);
-    const b2 = await getOrCreateCurrent(ana, 'sid-b', loginB);
+    const b2 = await agentAttendance(ana, 'sid-b', loginB);
     expect(b2.id).toBe(a2.id);
     expect(await sessionCount(ana)).toBe(3);
   });
@@ -68,7 +74,7 @@ describe('getOrCreateCurrent', () => {
 
 describe('registerEmployeeMessage', () => {
   it('a 30ª atinge o limite e a 31ª é recusada', async () => {
-    const conv = await getOrCreateCurrent(t.seed.users.ana.id, 'sid-a');
+    const conv = await agentAttendance(t.seed.users.ana.id, 'sid-a');
     await t.db.update(employeeSessions).set({ message_count: 29 }).where(eq(employeeSessions.employee_id, t.seed.users.ana.id));
     const r = await registerEmployeeMessage(conv.id, 'trigésima', 30);
     expect(r).toMatchObject({ count: 30, reached_limit: true });
@@ -88,7 +94,7 @@ describe('registerEmployeeMessage', () => {
   });
 
   it('grava a mensagem, atualiza o preview e emite evento', async () => {
-    const conv = await getOrCreateCurrent(t.seed.users.ana.id, 'sid-a');
+    const conv = await agentAttendance(t.seed.users.ana.id, 'sid-a');
     const { message } = await registerEmployeeMessage(conv.id, 'VPN com erro 809', 30);
     expect(message).toMatchObject({ direction: 'inbound', sent_via: 'user', body: 'VPN com erro 809' });
     const [row] = await t.db.select().from(conversations).where(eq(conversations.id, conv.id));
@@ -96,11 +102,12 @@ describe('registerEmployeeMessage', () => {
     expect(await events(conv.id, 'conversation.message_created')).toHaveLength(1);
   });
 
-  it('conversa encerrada volta para o agent quando o funcionário escreve', async () => {
+  it('mensagem em conversa encerrada é recusada como transição inválida', async () => {
     const fabio = t.seed.conversations.fabio!;
-    await registerEmployeeMessage(fabio, 'voltou a falhar', 30);
+    const error = await errorOf(registerEmployeeMessage(fabio, 'voltou a falhar', 30));
+    expect(error.code).toBe('invalid_transition');
     const [row] = await t.db.select().from(conversations).where(eq(conversations.id, fabio));
-    expect(row?.status).toBe('ai_handling');
+    expect(row?.status).toBe('closed');
   });
 
   it('mensagem em conversa assumida incrementa as não lidas do analista', async () => {
@@ -167,7 +174,7 @@ describe('applyTransition', () => {
 
 describe('createHandoff', () => {
   it('transfere com briefing literal e mensagem de sistema', async () => {
-    const conv = await getOrCreateCurrent(t.seed.users.ana.id, 'sid-a');
+    const conv = await agentAttendance(t.seed.users.ana.id, 'sid-a');
     const h = await createHandoff(
       {
         conversation_id: conv.id,
@@ -197,7 +204,7 @@ describe('createHandoff', () => {
 
 describe('fila do analista', () => {
   it('contadores e filtros coerentes após uma transferência', async () => {
-    const conv = await getOrCreateCurrent(t.seed.users.ana.id, 'sid-a');
+    const conv = await agentAttendance(t.seed.users.ana.id, 'sid-a');
     await createHandoff(
       {
         conversation_id: conv.id,
@@ -238,7 +245,7 @@ describe('fila do analista', () => {
 
     /** Conversa da Ana sobre VPN em que a última mensagem não fala de VPN. */
     async function anaTalkedAboutVpn() {
-      const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
+      const conv = await agentAttendance(t.seed.users.ana.id, 's');
       await registerEmployeeMessage(conv.id, 'Meu notebook não conecta na VPN, aparece o erro 809', 30);
       await registerEmployeeMessage(conv.id, 'Ok, vou tentar e te aviso', 30);
       return conv;
@@ -282,7 +289,7 @@ describe('fila do analista', () => {
     });
 
     it('nome vem antes de conteúdo', async () => {
-      const conv = await getOrCreateCurrent(t.seed.users.bruno.id, 's');
+      const conv = await agentAttendance(t.seed.users.bruno.id, 's');
       await registerEmployeeMessage(conv.id, 'A Carla Mendes também está sem acesso', 30);
       expect(names(await listForAnalyst(rafa(), { q: 'carla' }))).toEqual(['Carla Mendes', 'Bruno Tavares']);
     });
@@ -319,7 +326,7 @@ describe('mensagem do 409 de assumir', () => {
 
 describe('listMessages (paginação)', () => {
   it('página pelo cursor sem pular nem repetir, mesmo com mensagens no mesmo instante', async () => {
-    const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
+    const conv = await agentAttendance(t.seed.users.ana.id, 's');
     const base = new Date(t.now.getTime() - 3_600_000);
     // 120 mensagens em 40 instantes: 3 por instante, para o corte de página cair no meio de um empate.
     await t.db.insert(messages).values(
@@ -346,7 +353,7 @@ describe('listMessages (paginação)', () => {
   });
 
   it('cursor inválido ou de outra conversa → página vazia, sem erro', async () => {
-    const conv = await getOrCreateCurrent(t.seed.users.ana.id, 's');
+    const conv = await agentAttendance(t.seed.users.ana.id, 's');
     expect((await listMessages(conv.id, { cursor: 'lixo' })).messages).toEqual([]);
   });
 });

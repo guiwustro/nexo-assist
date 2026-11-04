@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { useTestDb } from '@/tests/helpers/db';
+import { getAgentAttendance } from '@/tests/helpers/attendance';
 import { createFakeTickets } from '@/tests/helpers/fake-tickets';
 import { runTool, type ToolCtx } from '@/lib/agent-engine/tools';
 import { ticketDrafts } from '@/lib/db/schema';
-import { getOrCreateCurrent } from '@/lib/conversations/service';
 import { computeDeadline } from '@/lib/rules/deadline';
 import { SEED_ARTICLES } from '@/lib/db/seed-data';
 import type { MessagePart } from '@/lib/contracts/parts';
@@ -14,7 +14,7 @@ import type { FakeTickets } from '@/tests/helpers/fake-tickets';
 const t = useTestDb();
 
 async function ctx() {
-  const conv = await getOrCreateCurrent(t.seed.users.ana.id, 'sid');
+  const conv = await getAgentAttendance(t.seed.users.ana.id, 'sid', t.now);
   const parts: MessagePart[] = [];
   const actions: ActionTrace[] = [];
   const c: ToolCtx = {

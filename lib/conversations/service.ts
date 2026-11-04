@@ -13,35 +13,6 @@ export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Actor = { user_id: string; role: 'employee' | 'analyst' };
 
-/**
- * A conversa contínua do funcionário. Um login mais novo que o início da sessão atual (`loginAt`, o `iat` do
- * token) começa outra sessão e zera o contador; um aparelho com um login mais antigo continua a sessão vigente,
- * para que alternar entre dois aparelhos não zere o limite.
- */
-export async function getOrCreateCurrent(employeeId: string, sid: string, loginAt: Date = new Date()): Promise<Conversation> {
-  const db = getDb();
-  const now = new Date();
-  let [current] = await db.select().from(conversations).where(eq(conversations.employee_id, employeeId)).limit(1);
-  if (!current) {
-    await db
-      .insert(conversations)
-      .values({ employee_id: employeeId, status: 'ai_handling' })
-      .onConflictDoNothing({ target: conversations.employee_id, where: sql`status = 'ai_handling'` });
-    [current] = await db.select().from(conversations).where(eq(conversations.employee_id, employeeId)).limit(1);
-  }
-  if (!current) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
-  const [session] = await db.select().from(employeeSessions).where(eq(employeeSessions.employee_id, employeeId));
-  if (!session) {
-    await db.insert(employeeSessions).values({ employee_id: employeeId, session_id: sid, session_started_at: loginAt });
-  } else if (session.session_id !== sid && session.session_started_at < loginAt) {
-    await db
-      .update(employeeSessions)
-      .set({ session_id: sid, session_started_at: loginAt, message_count: 0, updated_at: now })
-      .where(eq(employeeSessions.employee_id, employeeId));
-  }
-  return current;
-}
-
 export async function getConversation(db: DbOrTx, id: string): Promise<Conversation | null> {
   const [c] = await db.select().from(conversations).where(eq(conversations.id, id));
   return c ?? null;
@@ -111,6 +82,9 @@ export async function registerEmployeeMessage(
   return getDb().transaction(async (tx) => {
     const [conv] = await tx.select().from(conversations).where(eq(conversations.id, conversationId)).for('update');
     if (!conv) throw new NotFound('conversation_not_found', 'Conversa não encontrada');
+    const r = transition(conv.status as ConversationStatus, 'employee_message');
+    if (!r.ok) throw conflictFor(conv, 'employee_message');
+
     let [session] = await tx
       .select()
       .from(employeeSessions)
@@ -120,14 +94,22 @@ export async function registerEmployeeMessage(
       [session] = await tx
         .insert(employeeSessions)
         .values({ employee_id: conv.employee_id, session_id: 'legacy', session_started_at: new Date(0) })
+        .onConflictDoNothing({ target: employeeSessions.employee_id })
         .returning();
+      if (!session) {
+        [session] = await tx
+          .select()
+          .from(employeeSessions)
+          .where(eq(employeeSessions.employee_id, conv.employee_id))
+          .for('update');
+      }
     }
-    const count = session!.message_count + 1;
+    if (!session) throw new NotFound('employee_session_not_found', 'Sessão do funcionário não encontrada');
+    const count = session.message_count + 1;
     if (count > limit && !isWithAnalyst(conv.status as ConversationStatus)) {
       throw new Conflict('session_limit_reached', `Limite de ${limit} mensagens nesta sessão`, { limit });
     }
-    const r = transition(conv.status as ConversationStatus, 'employee_message');
-    const next = r.ok ? r.next : (conv.status as ConversationStatus);
+    const next = r.next;
     const [updated] = await tx
       .update(conversations)
       .set({
@@ -165,12 +147,14 @@ const TEXT_BY_TRANSITION: Partial<Record<ConversationEvent, (name: string, time:
   claim: (name, time) => `${name} assumiu · agent pausado · ${time}`,
   release: (name, time) => `${name} devolveu ao agent · ${time}`,
   close: (name, time) => `Atendimento encerrado por ${name} · ${time}`,
+  resolve: (_name, time) => `Atendimento resolvido pelo agent · ${time}`,
 };
 
 const EVENT_BY_TRANSITION: Partial<Record<ConversationEvent, `${string}.${string}`>> = {
   claim: 'conversation.claimed',
   release: 'conversation.released',
   close: 'conversation.closed',
+  resolve: 'conversation.closed',
 };
 
 /**
@@ -232,11 +216,12 @@ export async function applyTransition(
     }
     const type = EVENT_BY_TRANSITION[event];
     if (type) {
+      const reason = event === 'close' ? 'analyst' : event === 'resolve' ? 'resolved' : undefined;
       await emitEvent(tx, {
         type: type,
         conversation_id: conversationId,
         actor_user_id: actor.user_id,
-        payload: { status: r.next, from: read },
+        payload: { status: r.next, from: read, ...(reason ? { reason } : {}) },
       });
     }
     return updated[0]!;
